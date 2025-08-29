@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Library</title>
+    <style>
+        body { font-family: sans-serif; background-color: #f4f4f9; color: #333; margin: 0; padding: 20px; }
+        .container { width: 100%; max-width: 1200px; margin: 0 auto; }
+        h1 { color: #5a4fcf; text-align: center; margin-bottom: 30px; }
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        .image-card {
+            border: 1px solid #eee;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+        }
+        .image-container {
+            background-image:
+                linear-gradient(45deg, #ccc 25%, transparent 25%),
+                linear-gradient(-45deg, #ccc 25%, transparent 25%),
+                linear-gradient(45deg, transparent 75%, #ccc 75%),
+                linear-gradient(-45deg, transparent 75%, #ccc 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+        }
+        .image-container img { 
+            width: 100%; 
+            display: block;
+        }
+        .action-buttons {
+            padding: 10px;
+            background-color: #f8f9fa;
+            margin-top: auto; /* Pushes buttons to the bottom */
+        }
+        .action-buttons a {
+            text-decoration: none;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 5px;
+            font-size: 14px;
+            font-weight: bold;
+            text-align: center;
+            display: block; /* Makes the link fill the width */
+            transition: opacity 0.3s;
+        }
+        .action-buttons a:hover { opacity: 0.8; }
+        .animate-btn { background-color: #007bff; }
+        .home-link { text-align: center; margin-bottom: 30px; }
+        .home-link a { font-weight: bold; color: #5a4fcf; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="home-link"><a href="/">🏠 Back to Main Menu</a></div>
+        <h1>🖼️ Image Library</h1>
+        <div class="gallery">
+            <!-- Loop through the list of image paths from the backend -->
+            {% for image_path in images %}
+            <div class="image-card">
+                <div class="image-container">
+                    <img src="{{ image_path }}" alt="Saved Image">
+                </div>
+                <div class="action-buttons">
+                    <!-- The link passes the local file path to the animation step -->
+                    <a href="/animate-image?image_url={{ image_path | urlencode }}" class="animate-btn">🎬 Animate with Kling</a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</body>
+</html>

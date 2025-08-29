@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kling AI Video Generator</title>
+    <style>
+        body { font-family: sans-serif; background-color: #f4f4f9; color: #333; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px 0; }
+        .container { background-color: white; padding: 40px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: left; width: 100%; max-width: 500px; }
+        h1 { color: #5a4fcf; text-align: center; }
+        label { display: block; margin-top: 20px; font-weight: bold; }
+        input, select, button { width: 100%; padding: 12px; margin-top: 8px; border-radius: 5px; border: 1px solid #ddd; box-sizing: border-box; }
+        button { background-color: #5a4fcf; color: white; border: none; font-size: 16px; cursor: pointer; transition: background-color 0.3s; margin-top: 30px; }
+        button:hover { background-color: #4a3fbf; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 Video Generator (from file)</h1>
+        <form action="/generate-video" method="post" enctype="multipart/form-data">
+            
+            <label for="image">Start & End Frame Image:</label>
+            <input type="file" id="image" name="image" accept="image/*" required>
+            
+            <label for="prompt">Prompt:</label>
+            <input type="text" id="prompt" name="prompt" value="A seamless loop animation of..." required>
+
+            <input type="hidden" name="aspect_ratio" value="1:1">
+
+            <label for="duration">Duration (seconds):</label>
+            <select id="duration" name="duration">
+                <option value="5">5 seconds</option>
+                <option value="10">10 seconds</option>
+            </select>
+            
+            <button type="submit">Generate Video</button>
+        </form>
+    </div>
+</body>
+</html>

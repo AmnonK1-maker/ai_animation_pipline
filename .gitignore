@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+env/
+
+# Generated Files
+ae_script_to_run.jsx
+*.log
+render_complete.txt
+
+# Media - Keep folders but ignore contents
+static/library/*
+!static/library/.gitkeep
+static/animations/generated/*
+!static/animations/generated/.gitkeep
+static/animations/approved/*
+!static/animations/approved/.gitkeep
