@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AI Workflow App{% endblock %}</title>
+    <style>
+        body { font-family: sans-serif; background-color: #f4f4f9; color: #333; margin: 0; padding: 40px; }
+        .content-container { background-color: white; padding: 40px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); max-width: 800px; margin: auto; }
+        
+        /* Styles for our new floating queue panel */
+        #queue-panel {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 400px;
+            max-height: 500px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+            z-index: 1000;
+            display: none; /* Hidden by default */
+            flex-direction: column;
+            overflow: hidden;
+        }
+        #queue-panel-header {
+            background-color: #5a4fcf;
+            color: white;
+            padding: 10px 15px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        #queue-panel-body {
+            padding: 0;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+        #queue-panel table { width: 100%; border-collapse: collapse; }
+        #queue-panel th, #queue-panel td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 14px; }
+        #queue-panel th { font-weight: bold; }
+        
+        /* Status badge styles */
+        .status { font-weight: bold; padding: 4px 8px; border-radius: 12px; color: white; font-size: 11px; white-space: nowrap; }
+        .status-queued { background-color: #6c757d; }
+        .status-processing { background-color: #007bff; }
+        .status-completed { background-color: #28a745; }
+        .status-failed { background-color: #dc3545; }
+    </style>
+</head>
+<body>
+
+    <div class="content-container">
+        {% block content %}{% endblock %}
+    </div>
+
+    <div id="queue-panel">
+        <div id="queue-panel-header">🔄 Job Queue</div>
+        <div id="queue-panel-body">
+            <table>
+                <tbody id="queue-tbody">
+                    </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% block scripts %}
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const queuePanel = document.getElementById('queue-panel');
+            const queueTbody = document.getElementById('queue-tbody');
+            const queueHeader = document.getElementById('queue-panel-header');
+            let hasActiveJobs = false;
+
+            // Function to fetch jobs and update the queue panel
+            async function updateQueue() {
+                try {
+                    const response = await fetch('/api/jobs');
+                    const jobs = await response.json();
+
+                    queueTbody.innerHTML = '';
+                    hasActiveJobs = false;
+
+                    if (jobs.length > 0) {
+                        queuePanel.style.display = 'flex';
+                    }
+
+                    jobs.forEach(job => {
+                        if (job.status === 'queued' || job.status === 'processing') {
+                            hasActiveJobs = true;
+                        }
+
+                        let resultHtml = `-`;
+                        if (job.status === 'completed') {
+                            if (job.job_type === 'style_analysis') {
+                                const encodedResult = encodeURIComponent(job.result_data);
+                                resultHtml = `<a href="/image-tool?style_prompt=${encodedResult}">➡️ Use Style</a>`;
+                            } else {
+                                resultHtml = `<a href="/${job.result_data}" target="_blank">View</a>`;
+                            }
+                        } else if (job.status === 'failed') {
+                            resultHtml = `<span title="${job.error_message}">Error</span>`;
+                        }
+                        
+                        const row = `
+                            <tr>
+                                <td>${job.id}</td>
+                                <td><span class="status status-${job.status}">${job.status}</span></td>
+                                <td>${job.job_type.replace('_', ' ')}</td>
+                                <td>${resultHtml}</td>
+                            </tr>
+                        `;
+                        queueTbody.innerHTML += row;
+                    });
+                } catch (error) {
+                    console.error('Error updating queue:', error);
+                }
+            }
+
+            // Intercept all form submissions
+            document.querySelectorAll('form').forEach(form => {
+                form.addEventListener('submit', async function(event) {
+                    event.preventDefault();
+                    
+                    const formData = new FormData(form);
+                    
+                    try {
+                        await fetch(form.action, {
+                            method: 'POST',
+                            body: formData,
+                        });
+                        
+                        updateQueue();
+                        queuePanel.style.display = 'flex';
+
+                    } catch (error) {
+                        console.error('Form submission error:', error);
+                        alert('There was an error submitting your job.');
+                    }
+                });
+            });
+            
+            // Make the panel collapsible
+            queueHeader.addEventListener('click', () => {
+                const body = document.getElementById('queue-panel-body');
+                body.style.display = body.style.display === 'none' ? 'block' : 'none';
+            });
+
+            setInterval(updateQueue, 5000);
+            updateQueue();
+        });
+    </script>
+    {% endblock %}
+
+</body>
+</html>

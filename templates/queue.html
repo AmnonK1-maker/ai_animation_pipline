@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Queue</title>
+    <style>
+        body { font-family: sans-serif; background-color: #f4f4f9; color: #333; margin: 0; padding: 20px; }
+        .container { background-color: white; padding: 20px 40px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); max-width: 1200px; margin: auto; }
+        h1 { color: #5a4fcf; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #f8f9fa; }
+        td { vertical-align: middle; }
+        .status { font-weight: bold; padding: 5px 10px; border-radius: 15px; color: white; font-size: 12px; }
+        .status-queued { background-color: #6c757d; }
+        .status-processing { background-color: #007bff; }
+        .status-completed { background-color: #28a745; }
+        .status-failed { background-color: #dc3545; }
+        .home-link { display: block; margin-bottom: 20px; font-weight: bold; color: #5a4fcf; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="home-link">🏠 Back to Main Menu</a>
+        <h1>🔄 Job Queue</h1>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Created At</th>
+                    <th>Prompt</th>
+                    <th>Result</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for job in jobs %}
+                <tr>
+                    <td>{{ job['id'] }}</td>
+                    <td>{{ job['job_type'] }}</td>
+                    <td>
+                        <span class="status status-{{ job['status'] }}">{{ job['status'] }}</span>
+                    </td>
+                    <td>{{ job['created_at'].split('.')[0] }}</td>
+                    <td>{{ job['prompt'][:50] if job['prompt'] else 'N/A' }}{% if job['prompt'] and job['prompt']|length > 50 %}...{% endif %}</td>
+                    <td>
+                        {% if job['status'] == 'completed' %}
+                            {% if job['job_type'] == 'style_analysis' %}
+                                <a href="/image-tool?style_prompt={{ job['result_data'] | urlencode }}">➡️ Use this Style</a>
+                            {% else %}
+                                <a href="/{{ job['result_data'] }}" target="_blank">View Result</a>
+                            {% endif %}
+                        {% elif job['status'] == 'failed' %}
+                            <span title="{{ job['error_message'] }}">Error</span>
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
