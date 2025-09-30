@@ -1,0 +1,124 @@
+# AI Media Workflow Dashboard - Project Context
+
+## Project Summary
+This is a comprehensive Flask-based web application for AI-powered media creation and processing. It provides a complete workflow for generating images, creating animations, and processing videos with advanced features like chroma keying and boomerang automation.
+
+## Core Architecture
+- **Flask Web Server** (`app.py`): Handles UI, routes, and job creation on port 5001
+- **Background Worker** (`worker.py`): Processes AI jobs asynchronously 
+- **SQLite Database** (`jobs.db`): Job queue and status management
+- **Two-Terminal Setup**: Flask app + worker must run simultaneously
+
+## Key Technologies
+- **Backend**: Flask, SQLite, OpenCV, FFmpeg
+- **Frontend**: Vanilla JavaScript, HTML/CSS, Jinja2 templates
+- **AI APIs**: Leonardo AI, Replicate (Kling, Seedance), OpenAI, BRIA
+- **Video Processing**: FFmpeg for stitching, OpenCV for frame extraction/chroma keying
+
+## Critical Files
+- `app.py`: Main Flask application (543 lines) - routes, database, API endpoints
+- `worker.py`: Background job processor (466 lines) - AI API calls, job processing
+- `video_processor.py`: Video utilities (146 lines) - stitching, chroma keying
+- `templates/index.html`: Main UI (869 lines) - dashboard, job log, interactive features
+- `templates/fine_tune.html`: Chroma keying interface
+- `templates/animation_step.html`: Animation creation form
+
+## Key Features Implemented
+✅ **Multi-model image generation** (Leonardo, OpenAI)
+✅ **Animation creation** (Kling v2.1, Seedance-1-Pro) 
+✅ **Boomerang automation** (A→B→A loops with consistent backgrounds)
+✅ **Video frame extraction** with scrubbing modal
+✅ **Advanced chroma keying** with real-time preview
+✅ **Optimized video stitching** (CRF 18, fast preset with 5-min timeout)
+✅ **Intelligent auto-pause** refresh when viewing job details
+✅ **Enhanced batch operations** (multi-select delete, video stitching)
+✅ **Visual job log** with thumbnails, action buttons, model names
+✅ **Job management tools** (re-stitch, re-key, retry failed jobs)
+✅ **Universal job selectability** (all jobs except actively processing)
+✅ **Aspect ratio preservation** in video stitching
+
+## Recent Major Fixes (All Working)
+- Fixed A-B-A loop automation: consistent background preprocessing for both frames
+- Eliminated auto-keying before stitching (now stitches raw videos only)
+- Fixed video stitching performance (fast preset instead of veryslow to prevent hanging)
+- Enhanced job selectability (all jobs except actively processing have checkboxes)
+- Added comprehensive job management: re-stitch, re-key, retry failed jobs
+- Fixed worker logic order: keying status takes precedence over job type
+- Added /api/reset-job endpoint for restarting jobs
+- Implemented aspect ratio preservation in video stitching
+- Fixed race conditions in boomerang automation preventing duplicate stitching jobs
+- Added visual feedback for boomerang automation child job highlighting
+- RESOLVED: Video stitching keying workflow - fixed worker routing bug and UI display
+- RESOLVED: Process pending keys functionality - fixed job status transitions
+- Added automatic ffmpeg process cleanup to prevent hung processes
+- Enhanced UI with job cancellation and bulk cleanup features
+
+## Job Types & Workflow
+1. `image_generation`: Create images via AI models
+2. `animation`: Convert images to videos
+3. `boomerang_automation`: Creates 2 child animations + stitches A→B→A loop
+4. `video_stitching`: Combines multiple videos into seamless loops
+5. `frame_extraction`: Extract specific frames from videos
+6. `background_removal`: Create transparent images via BRIA AI
+7. `keying_*`: Various chroma key processing stages
+
+## Common Issues & Solutions
+- **Port conflicts**: Flask uses 5001 (not 5000 due to macOS AirPlay)
+- **Worker stops**: Check `ps aux | grep python | grep worker`, restart with `python3 worker.py &`
+- **Template caching**: Disabled for development, hard refresh browser if needed
+- **Stuck jobs**: Check for orphaned ffmpeg processes, kill and restart worker
+- **Boomerang issues**: Auto-completion logic ensures child jobs complete properly
+
+## Database Schema (Key Columns)
+- `id`: Job identifier
+- `job_type`: Type of job (see above)
+- `status`: queued → processing → completed/pending_review
+- `parent_job_id`: For child jobs (boomerang animations)
+- `input_data`: JSON with job parameters
+- `result_data`: Path to generated files
+- `keyed_result_data`: Path to processed transparent videos
+
+## API Endpoints
+- `/api/jobs`: Get job status/history (supports all job types)
+- `/api/extract-frame`: Extract video frames with time parameter
+- `/api/batch-delete-items`: Delete multiple selected jobs
+- `/api/reset-job`: Reset job status for retry/re-processing
+- `/api/clear-all-jobs`: Clear all jobs from database
+- `/api/clear-failed-jobs`: Clear only failed jobs
+- `/api/clear-stuck-jobs`: Clear stuck processing/keying/stitching jobs
+- `/api/cancel-job/<job_id>`: Cancel specific job by ID
+- `/process-all-pending`: Process pending animations/keying jobs (supports video_stitching and re-keying)
+- `/stitch-videos`: Create video stitching jobs (can stitch any two videos)
+- `/fine-tune/<job_id>`: Chroma keying interface (works with animations and stitched videos)
+
+## Environment Setup
+```bash
+# Activate environment
+source venv/bin/activate
+
+# Run application (2 terminals required)
+python3 app.py      # Terminal 1: Web server
+python3 worker.py   # Terminal 2: Background processor
+
+# Access: http://127.0.0.1:5001
+```
+
+## All Features Working ✅
+✅ **Video stitching keying**: RESOLVED - Worker routing bug fixed, stitched jobs now properly create transparent .webm files
+✅ **Animation keying**: Works perfectly, creates proper transparent .webm files
+✅ **Keying workflow**: Process pending keys functionality completely fixed
+✅ **Job selectability**: All jobs (except actively processing) now have checkboxes
+✅ **Stitching automation**: Boomerang loops auto-stitch without user intervention
+✅ **Performance**: Fast stitching with timeout protection prevents hanging
+✅ **Process management**: Automatic cleanup of stuck ffmpeg processes
+✅ **UI enhancements**: Job cancellation, bulk cleanup, gallery support for video_stitching
+
+## Current Status
+✅ Core functionality: Image generation, animations, boomerang automation all working
+✅ Enhanced UI: Comprehensive job management with re-stitch, re-key, retry options
+✅ Robust processing: Optimized video stitching with aspect ratio preservation
+✅ Background automation: A-B-A loops with consistent preprocessing
+✅ Error handling: Timeout protection, stuck process detection, worker auto-restart
+✅ Complete keying workflow: Both animations and stitched videos support full keying pipeline
+
+**Status**: The application is production-ready with advanced workflow automation. All major features and workflows are fully functional.

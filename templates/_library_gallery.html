@@ -1,0 +1,68 @@
+3<div class="gallery">
+    {% for item in library_items %}
+    <div class="media-card" data-job-id="{{ item.id }}">
+        <input type="checkbox" class="selection-checkbox">
+        
+        {% if item.job_type == 'image_generation' or item.job_type == 'background_removal' %}
+            <div class="media-container"><img src="/{{ item.result_data }}" alt="Generated Image"></div>
+            <div class="action-buttons">
+                <a href="/animate-image?image_url=/{{ item.result_data | urlencode }}" class="action-btn animate-btn">🎬 Animate</a>
+                
+                <form action="/animation-prompt-from-url" method="POST" class="button-form">
+                    <input type="hidden" name="image_url" value="/{{ item.result_data }}">
+                    <button type="submit" class="action-btn prompt-btn">📝 Helper</button>
+                </form>
+
+                <button class="action-btn details-btn" data-job-id="{{ item.id }}">⚙️ Details</button>
+                <button class="action-btn copy-path-btn" data-path="{{ item.result_data }}">📋 Copy Path</button>
+                <button class="action-btn delete-item-btn" data-job-id="{{ item.id }}">🗑️ Delete</button>
+
+                {% if item.input_data_parsed.modelId == 'bytedance-seedream-4' and item.job_type == 'image_generation' %}
+                <form action="/remove-background" method="POST" class="button-form remove-bg-form">
+                     <input type="hidden" name="image_url" value="/{{ item.result_data }}">
+                     <button type="submit" class="action-btn remove-bg-btn">✨ Remove BG</button>
+                </form>
+                {% endif %}
+            </div>
+
+        {% elif item.job_type == 'animation' %}
+            {% if item.status == 'completed' and item.keyed_result_data %}
+                <div class="media-container"><video src="/{{ item.keyed_result_data }}" controls loop autoplay muted></video></div>
+                <div class="action-buttons">
+                     <a href="/{{ item.keyed_result_data }}" target="_blank" class="action-btn view-btn">✔️ View</a>
+                     <a href="/fine-tune/{{ item.id }}" class="action-btn adjust-btn">⚙️ Re-Key</a>
+                     <button class="action-btn details-btn" data-job-id="{{ item.id }}">📝 Prompt</button>
+                     <button class="action-btn delete-item-btn" data-job-id="{{ item.id }}">🗑️ Delete</button>
+                </div>
+            {% else %}
+                <div class="media-container"><video src="/{{ item.result_data }}" controls loop autoplay muted></video></div>
+                <div class="action-buttons">
+                    <a href="/fine-tune/{{ item.id }}" class="action-btn review-btn">🔬 Fine-tune</a>
+                    <button class="action-btn details-btn" data-job-id="{{ item.id }}">📝 Prompt</button>
+                    <button class="action-btn delete-item-btn" data-job-id="{{ item.id }}">🗑️ Delete</button>
+                </div>
+            {% endif %}
+
+        {% elif item.job_type == 'video_stitching' %}
+            {% if item.status == 'completed' and item.keyed_result_data %}
+                <div class="media-container"><video src="/{{ item.keyed_result_data }}" controls loop autoplay muted></video></div>
+                <div class="action-buttons">
+                     <a href="/{{ item.keyed_result_data }}" target="_blank" class="action-btn view-btn">✔️ View Keyed</a>
+                     <a href="/{{ item.result_data }}" target="_blank" class="action-btn view-btn">📹 View Original</a>
+                     <a href="/fine-tune/{{ item.id }}" class="action-btn adjust-btn">⚙️ Re-Key</a>
+                     <button class="action-btn details-btn" data-job-id="{{ item.id }}">📝 Details</button>
+                     <button class="action-btn delete-item-btn" data-job-id="{{ item.id }}">🗑️ Delete</button>
+                </div>
+            {% else %}
+                <div class="media-container"><video src="/{{ item.result_data }}" controls loop autoplay muted></video></div>
+                <div class="action-buttons">
+                    <a href="/{{ item.result_data }}" target="_blank" class="action-btn view-btn">📹 View</a>
+                    <a href="/fine-tune/{{ item.id }}" class="action-btn review-btn">🔬 Fine-tune</a>
+                    <button class="action-btn details-btn" data-job-id="{{ item.id }}">📝 Details</button>
+                    <button class="action-btn delete-item-btn" data-job-id="{{ item.id }}">🗑️ Delete</button>
+                </div>
+            {% endif %}
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>

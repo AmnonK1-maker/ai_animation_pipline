@@ -1,0 +1,290 @@
+{% extends "base.html" %}
+
+{% block title %}Create Animation{% endblock %}
+
+{% block content %}
+<style>
+    .animation-container { max-width: 800px; margin: 0 auto; padding: 20px; text-align: left; }
+    .image-preview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: center; margin-bottom: 25px; }
+    .image-preview-box { border: 1px solid #eee; padding: 10px; border-radius: 8px; text-align: center; }
+    .image-preview-box h3 { margin: 0 0 10px 0; font-size: 14px; color: #555; }
+    .image-preview-box img { max-width: 100%; height: auto; border-radius: 8px; }
+    .image-preview-box button { margin-top: 10px; }
+    h1 { color: #333; margin-bottom: 25px; font-size: 24px; text-align: center; }
+    .form-group { margin-bottom: 15px; text-align: left; }
+    .form-group label { display: block; margin-bottom: 6px; font-weight: 600; color: #333; font-size: 13px; }
+    .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #ddd; box-sizing: border-box; font-size: 14px; font-family: inherit; }
+    .form-group textarea { min-height: 120px; }
+    .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
+    
+    .prompt-container { position: relative; }
+    #get-animation-idea-btn {
+        position: absolute; top: 0; right: 0; background-color: #fd7e14;
+        color: white; border: none; padding: 5px 10px; font-size: 12px;
+        font-weight: bold; border-radius: 5px; cursor: pointer; transition: background-color 0.3s;
+    }
+    #get-animation-idea-btn:disabled { background-color: #6c757d; cursor: not-allowed; }
+
+    button[type="submit"] { background-color: #007bff; color: white; border: none; padding: 12px 15px; font-size: 14px; font-weight: 600; border-radius: 6px; cursor: pointer; width: 100%; margin-top: 20px; }
+    .back-link { display: block; margin-top: 25px; font-weight: bold; color: #6c757d; text-decoration: none; text-align: center; }
+    
+    .video-model-checkbox-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+    .video-model-checkbox-grid label { display: flex; align-items: center; padding: 6px 10px; background-color: #f8f9fa; border: 1px solid #ddd; border-radius: 5px; cursor: pointer; font-weight: normal; font-size: 13px; margin: 0; }
+    .video-model-checkbox-grid input[type="checkbox"] { margin-right: 8px; width: auto; }
+    .model-options { border: 1px solid #e9ecef; border-top: none; padding: 15px; margin-top: -9px; margin-bottom: 15px; border-bottom-left-radius: 5px; border-bottom-right-radius: 5px; background-color: #f8f9fa; }
+    .radio-group-label { margin-bottom: 8px; }
+    .radio-buttons { display: flex; gap: 10px; }
+    .radio-buttons label { display: flex; align-items: center; gap: 5px; font-weight: normal; font-size: 14px; }
+    
+    .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); }
+    .modal-content { background-color: #fefefe; margin: 5% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 900px; border-radius: 8px; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #ddd; padding-bottom: 10px; margin-bottom: 20px; }
+    .close-button { color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer; }
+    .library-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; max-height: 60vh; overflow-y: auto; }
+    .library-grid img { width: 100%; height: 150px; object-fit: cover; border-radius: 6px; cursor: pointer; border: 2px solid transparent; transition: border-color 0.2s; }
+    .library-grid img:hover { border-color: #007bff; }
+
+    .upload-box { border: 2px dashed #ddd; padding: 40px; border-radius: 8px; text-align: center; margin-bottom: 20px; }
+    .upload-box h2 { margin: 0 0 10px 0; }
+</style>
+
+<div class="animation-container">
+    <h1>Create Animation</h1>
+    
+    {% if image_url %}
+        <div class="image-preview-grid">
+            <div class="image-preview-box">
+                <h3>Start Frame</h3>
+                <img src="{{ image_url }}" alt="Image to Animate" id="start-frame-preview">
+            </div>
+            <div class="image-preview-box" id="end-frame-container">
+                <h3>End Frame (Optional)</h3>
+                <img src="https://placehold.co/400x400/f0f0f0/ccc?text=None" alt="End Frame Preview" id="end-frame-preview">
+                <button type="button" id="select-end-frame-btn">Select from Library</button>
+            </div>
+        </div>
+
+        <form action="/generate-animation" method="post" id="animation-form">
+            <input type="hidden" name="image_url" value="{{ image_url }}">
+            <input type="hidden" name="end_image_url" id="end_image_url_input" value="">
+            <input type="hidden" name="parent_job_id" value="{{ parent_job_id }}">
+            
+            <div class="form-group prompt-container">
+                <label for="prompt">Animation Prompt:
+                    <button type="button" id="get-animation-idea-btn">💡 Get Idea</button>
+                </label>
+                <textarea id="prompt" name="prompt" required></textarea>
+            </div>
+
+            <div class="form-group">
+                <label class="radio-group-label">Background:</label>
+                <div class="radio-buttons">
+                    <label><input type="radio" name="background" value="default" checked> As is</label>
+                    <label><input type="radio" name="background" value="green"> Place on Green Screen</label>
+                    <label><input type="radio" name="background" value="blue"> Place on Blue Screen</label>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="negative_prompt">Negative Prompt (for all selected models):</label>
+                <input type="text" name="negative_prompt" id="negative_prompt" placeholder="e.g., blurry, watermark, text, deformed">
+            </div>
+
+            <div class="form-group">
+                <label>Video Models (select one or more):</label>
+                <div class="video-model-checkbox-grid">
+                    <label><input type="checkbox" name="video_model" value="kwaivgi/kling-v2.1" data-options="options-kling" checked> Kling v2.1</label>
+                    <label><input type="checkbox" name="video_model" value="bytedance/seedance-1-pro" data-options="options-seedance"> Seedance-1 Pro</label>
+                    <label style="opacity: 0.5;"><input type="checkbox" name="video_model" value="pixverse/pixverse-v4.5" data-options="options-pixverse" disabled> Pixverse v4.5 (Currently Unavailable)</label>
+                </div>
+            </div>
+
+            <div class="model-options" id="options-kling" style="display: none;">
+                <p style="margin-top:0; font-weight: bold; font-size: 13px;">Kling Options</p>
+                <div class="form-row">
+                    <div class="form-group"><label>Duration:</label><select name="kling-duration"><option value="5">5s</option><option value="10">10s</option></select></div>
+                    <div class="form-group"><label>Mode (v2.1 only):</label><select name="kling-mode"><option value="standard">Standard (720p)</option><option value="pro" selected>Pro (1080p)</option></select></div>
+                </div>
+            </div>
+            <div class="model-options" id="options-seedance" style="display: none;">
+                <p style="margin-top:0; font-weight: bold; font-size: 13px;">Seedance Options</p>
+                <div class="form-row">
+                    <div class="form-group"><label>Duration (3-12s):</label><input type="number" name="seedance-duration" value="5" min="3" max="12"></div>
+                    <div class="form-group"><label>Resolution:</label><select name="seedance-resolution"><option value="1080p">1080p</option><option value="720p">720p</option><option value="480p">480p</option></select></div>
+                    <div class="form-group"><label>Aspect Ratio:</label><select name="seedance-aspect-ratio"><option value="16:9">16:9</option><option value="1:1" selected>1:1</option><option value="9:16">9:16</option></select></div>
+                </div>
+            </div>
+             <div class="model-options" id="options-pixverse" style="display: none;">
+                <p style="margin-top:0; font-weight: bold; font-size: 13px;">Pixverse Options</p>
+                <div class="form-row">
+                    <div class="form-group"><label>Duration:</label><select name="pixverse-duration"><option value="5">5s</option><option value="8">8s</option></select></div>
+                    <div class="form-group"><label>Style:</label><select name="pixverse-style"><option value="None">None</option><option value="realistic">Realistic</option><option value="anime">Anime</option><option value="3d_animation">3D Animation</option><option value="cinematic">Cinematic</option></select></div>
+                    <div class="form-group"><label>Aspect Ratio:</label><select name="pixverse-aspect-ratio"><option value="16:9">16:9</option><option value="1:1" selected>1:1</option><option value="9:16">9:16</option></select></div>
+                </div>
+            </div>
+            
+            <div class="form-group" id="boomerang-container" style="display: none;">
+                <label><input type="checkbox" id="boomerang_automation" name="boomerang_automation" value="true" style="width: auto; margin-right: 8px;">Create A-B-A Loop (Generates 2 videos & stitches them)</label>
+            </div>
+            
+            <div class="form-group">
+                <label><input type="checkbox" id="seamless_loop" name="seamless_loop" value="true" style="width: auto; margin-right: 8px;">Seamless Loop (uses start image as end image)</label>
+            </div>
+            
+            <button type="submit">Generate Animation(s)</button>
+        </form>
+    {% else %}
+        <div class="upload-box">
+            <h2>Start by Uploading an Image</h2>
+            <p>Upload a PNG, JPG, or WEBP file to use as the starting frame for your animation.</p>
+            <form action="/upload-for-animation" method="post" enctype="multipart/form-data" class="no-global-handler">
+                <input type="file" name="image" accept="image/*" required>
+                <button type="submit" style="width: auto; margin-top: 20px;">Upload and Continue</button>
+            </form>
+        </div>
+    {% endif %}
+    
+    <a href="/" class="back-link">🏠 Back to Dashboard</a>
+</div>
+
+<div id="library-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Select an Image from the Library</h2>
+            <span class="close-button">&times;</span>
+        </div>
+        <div id="library-grid-container" class="library-grid">
+            <p>Loading library...</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const modelCheckboxes = document.querySelectorAll('input[name="video_model"]');
+    const getIdeaBtn = document.getElementById('get-animation-idea-btn');
+    const promptTextarea = document.getElementById('prompt');
+    const startFramePreview = document.getElementById('start-frame-preview');
+    const endImageUrlInput = document.getElementById('end_image_url_input');
+    const boomerangContainer = document.getElementById('boomerang-container');
+
+    function manageModelOptions() {
+        const visibleOptions = new Set();
+        modelCheckboxes.forEach(checkbox => {
+            if (checkbox.checked) {
+                visibleOptions.add(checkbox.dataset.options);
+            }
+        });
+        document.querySelectorAll('.model-options').forEach(div => {
+            div.style.display = visibleOptions.has(div.id) ? 'block' : 'none';
+        });
+    }
+
+    if (modelCheckboxes.length > 0) {
+        modelCheckboxes.forEach(checkbox => checkbox.addEventListener('change', manageModelOptions));
+        manageModelOptions();
+    }
+    
+    if (getIdeaBtn) {
+        getIdeaBtn.addEventListener('click', async () => {
+            getIdeaBtn.textContent = '...';
+            getIdeaBtn.disabled = true;
+
+            const formData = new FormData();
+            formData.append('image_url', startFramePreview.getAttribute('src'));
+
+            try {
+                const createResponse = await fetch('/get-animation-idea', { method: 'POST', body: formData });
+                if (!createResponse.ok) throw new Error('Failed to create animation idea job.');
+                const createData = await createResponse.json();
+                if (!createData.success) throw new Error(createData.error || 'Job creation failed.');
+
+                const jobId = createData.job_id;
+
+                const pollInterval = setInterval(async () => {
+                    try {
+                        const statusResponse = await fetch(`/api/job-status/${jobId}`);
+                        if (!statusResponse.ok) return;
+                        const job = await statusResponse.json();
+
+                        if (job.status === 'completed') {
+                            clearInterval(pollInterval);
+                            promptTextarea.value = job.result_data;
+                            getIdeaBtn.textContent = '💡 Get Idea';
+                            getIdeaBtn.disabled = false;
+                        } else if (job.status === 'failed') {
+                            clearInterval(pollInterval);
+                            alert('Failed to get animation idea: ' + job.error_message);
+                            getIdeaBtn.textContent = '💡 Get Idea';
+                            getIdeaBtn.disabled = false;
+                        }
+                    } catch (pollError) {
+                         console.error('Polling error:', pollError);
+                    }
+                }, 3000);
+
+            } catch (error) {
+                console.error('Animation Idea Error:', error);
+                alert('Error: ' + error.message);
+                getIdeaBtn.textContent = '💡 Get Idea';
+                getIdeaBtn.disabled = false;
+            }
+        });
+    }
+
+    function checkEndFrame() {
+        if (endImageUrlInput && boomerangContainer) {
+            boomerangContainer.style.display = endImageUrlInput.value ? 'block' : 'none';
+        }
+    }
+
+    const modal = document.getElementById('library-modal');
+    const selectEndFrameBtn = document.getElementById('select-end-frame-btn');
+    
+    if (selectEndFrameBtn) {
+        const closeBtn = modal.querySelector('.close-button');
+        const libraryGrid = document.getElementById('library-grid-container');
+        const endFramePreview = document.getElementById('end-frame-preview');
+
+        selectEndFrameBtn.addEventListener('click', async () => {
+            libraryGrid.innerHTML = '<p>Loading library...</p>';
+            modal.style.display = 'block';
+            try {
+                const response = await fetch('/api/library-images');
+                const images = await response.json();
+                libraryGrid.innerHTML = '';
+                if (images.length === 0) {
+                    libraryGrid.innerHTML = '<p>No images found in the library.</p>';
+                }
+                images.forEach(imgPath => {
+                    const img = document.createElement('img');
+                    img.src = imgPath;
+                    img.addEventListener('click', () => {
+                        endFramePreview.src = imgPath;
+                        endImageUrlInput.value = imgPath;
+                        modal.style.display = 'none';
+                        checkEndFrame();
+                    });
+                    libraryGrid.appendChild(img);
+                });
+            } catch (error) {
+                libraryGrid.innerHTML = '<p>Error loading library.</p>';
+            }
+        });
+
+        closeBtn.addEventListener('click', () => {
+            modal.style.display = 'none';
+        });
+
+        window.addEventListener('click', (event) => {
+            if (event.target == modal) {
+                modal.style.display = 'none';
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

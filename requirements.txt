@@ -1,0 +1,8 @@
+Flask
+numpy
+opencv-python
+replicate
+requests
+Pillow
+openai
+python-dotenv

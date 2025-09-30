@@ -1,0 +1,1178 @@
+{% extends "base.html" %}
+{% block title %}AI Workflow Dashboard{% endblock %}
+{% block content %}
+<style>
+    .main-header { text-align: left; margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 15px; }
+    .main-header h1 { font-size: 22px; margin: 0 0 5px 0; }
+    .main-header p { font-size: 14px; color: #666; margin: 0; }
+    .tools-hub { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px; }
+    .tool-card { display: block; padding: 20px; border: 1px solid #ddd; border-radius: 8px; text-decoration: none; color: #333; transition: all 0.2s ease-in-out; }
+    .tool-card:hover { border-color: #007bff; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    .tool-card h3 { font-size: 16px; margin: 0 0 5px 0; }
+    .tool-card p { font-size: 13px; color: #666; margin: 0; }
+    .dashboard-section { border: 1px solid #ddd; border-radius: 8px; margin-bottom: 15px; overflow: hidden; }
+    .dashboard-section summary { font-size: 16px; font-weight: 600; padding: 12px 15px; cursor: pointer; background-color: #f8f9fa; color: #333; list-style: none; display: flex; align-items: center; }
+    .dashboard-section summary::-webkit-details-marker { display: none; }
+    .dashboard-section summary::before { content: '▶'; font-size: 12px; transition: transform 0.2s; flex-shrink: 0; margin-right: 10px; color: #666; }
+    .dashboard-section[open] summary { border-bottom: 1px solid #ddd; }
+    .dashboard-section[open] summary::before { transform: rotate(90deg); }
+    .tool-content { padding: 20px; }
+    .job-log-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; margin-bottom: 15px; }
+    .job-log-header h2 { margin: 0; padding-bottom: 10px; border-bottom: none; font-size: 18px; }
+    
+    .job-log-header-actions {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+    }
+    .job-log-header-actions .action-btn,
+    .job-log-header-actions .refresh-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 8px 12px;
+        font-size: 13px;
+        font-weight: 600;
+        border-radius: 5px;
+        border: none;
+        cursor: pointer;
+        color: white;
+        white-space: nowrap;
+        box-sizing: border-box;
+    }
+    #process-pending-btn { background-color: #28a745; }
+    #stitch-videos-btn { display: none; background-color: #6f42c1; }
+    #delete-selected-btn { display: none; background-color: #dc3545; }
+    .refresh-btn { background-color: #6c757d; }
+    .refresh-btn.active { background-color: #28a745; }
+    .refresh-btn.paused { background-color: #dc3545; }
+
+    .log-item-wrapper { position: relative; }
+    .selection-checkbox { position: absolute; top: 18px; left: 20px; z-index: 10; width: 18px; height: 18px; }
+    .log-item { border: 1px solid #e9ecef; border-radius: 8px; margin-bottom: 10px; overflow: hidden; }
+    .log-item.has-checkbox summary { padding-left: 45px; }
+    .log-item summary { display: flex; align-items: center; gap: 8px; padding: 10px 15px; cursor: pointer; background-color: #f8f9fa; list-style: none; }
+    .log-item summary::-webkit-details-marker { display: none; }
+    .log-item-pills span { display: inline-flex; align-items: center; border-radius: 12px; padding: 4px 10px; font-size: 12px; font-weight: 600; color: #495057; white-space: nowrap; }
+    .log-item-pills span:not(.status-badge) { background-color: #e9ecef; }
+    .log-item-thumbnail { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; margin-left: 10px; }
+    .log-item-prompt { font-size: 14px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-grow: 1; margin-left: 10px; }
+    .log-item-details { padding: 20px; display: grid; grid-template-columns: 300px 1fr; gap: 20px; border-top: 1px solid #e9ecef; }
+    .log-details-visuals .thumbnail { width: 100%; height: auto; border-radius: 6px; margin-bottom: 15px; }
+    .detail-preview-container { margin-top: 10px; }
+    .detail-preview-image { max-width: 100%; max-height: 400px; height: auto; border-radius: 8px; display: block; margin: 0 auto; border: 1px solid #ddd; }
+    .detail-preview-container video { margin-bottom: -5px; }
+    .log-details-info h4 { margin: 0 0 10px 0; font-size: 14px; }
+    .log-details-info pre { white-space: pre-wrap; background-color: #f8f9fa; padding: 10px; border-radius: 6px; font-size: 13px; margin-bottom: 15px; max-height: 150px; overflow-y: auto; resize: vertical; }
+    .error-message { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; border-radius: 6px; padding: 15px; margin-top: 10px; white-space: pre-wrap; }
+    .log-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; }
+    .action-btn { text-decoration: none; color: white; padding: 6px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; text-align: center; border: none; cursor: pointer; }
+    .button-form { display: inline-block; }
+    label { display: block; margin-bottom: 6px; font-weight: 600; color: #333; font-size: 13px; }
+    .form-grid { display: grid; grid-template-columns: 1fr; gap: 15px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    input, select, textarea { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #ddd; box-sizing: border-box; font-size: 14px; font-family: inherit; }
+    textarea { min-height: 100px; }
+    .unlock-prompt-container { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+    .model-checkbox-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+    .model-checkbox-grid label { display: flex; align-items: center; padding: 6px 10px; background-color: #f8f9fa; border: 1px solid #ddd; border-radius: 5px; cursor: pointer; font-weight: normal; font-size: 13px; margin: 0; }
+    .model-checkbox-grid input[type="checkbox"] { margin-right: 8px; width: auto; }
+    button[type="submit"] { background-color: #007bff; color: white; border: none; padding: 12px 15px; font-size: 14px; font-weight: 600; border-radius: 6px; cursor: pointer; width: 100%; margin-top: 15px; }
+    .analysis-output-grid { display: grid; grid-template-columns: 150px 1fr; gap: 10px; margin-top: 10px; }
+    .analysis-output-grid strong { text-align: right; padding-right: 10px; }
+    .palette-swatch-container { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+    .palette-swatch { width: 60px; height: 60px; border-radius: 8px; border: 1px solid #eee; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 10px; color: #333; position: relative; }
+    .palette-swatch .color-box { width: 100%; height: 100%; border-radius: 8px; }
+    .palette-swatch .color-label { position: absolute; bottom: 5px; background: rgba(255,255,255,0.8); padding: 2px 5px; border-radius: 3px; }
+    
+    .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); }
+    .modal-content { background-color: #fefefe; margin: 5% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 700px; border-radius: 8px; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #ddd; padding-bottom: 10px; margin-bottom: 20px; }
+    .close-button { color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer; }
+    #modal-video-container { width: 100%; background-color: #000; margin-bottom: 15px; }
+    #modal-video-container video { width: 100%; height: auto; display: block; }
+    .modal-controls { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; }
+    .modal-controls .frame-nav-btn { flex-basis: 100px; }
+    .modal-controls .save-frame-btn { flex-grow: 1; background-color: #28a745; color: white; border: none; padding: 10px; font-weight: bold; border-radius: 5px; }
+    
+    /* Visual indicators for stuck/long-running jobs */
+    .job-stuck-warning {
+        animation: pulse-warning 2s infinite;
+        border-left: 4px solid #ff6b6b !important;
+    }
+    @keyframes pulse-warning {
+        0% { background-color: rgba(255, 107, 107, 0.1); }
+        50% { background-color: rgba(255, 107, 107, 0.3); }
+        100% { background-color: rgba(255, 107, 107, 0.1); }
+    }
+    .stuck-indicator {
+        background-color: #ff6b6b;
+        color: white;
+        font-size: 11px;
+        padding: 2px 6px;
+        border-radius: 10px;
+        margin-left: 5px;
+    }
+</style>
+
+<div class="main-header">
+    <h1>AI Workflow Dashboard</h1>
+    <p>Start a new task or review your project history in the Job Log below.</p>
+</div>
+
+<div class="tools-hub">
+    <a href="#analyzer-section" class="tool-card"><h3>Analyze Style & Palette</h3><p>Upload an image to extract its artistic style or color palette.</p></a>
+    <a href="#generator-section" class="tool-card"><h3>Generate Image</h3><p>Create new images from a text prompt using multiple AI models.</p></a>
+    <a href="/animate-image" class="tool-card"><h3>Create Animation</h3><p>Upload an image or select one from the log to animate.</p></a>
+    <a href="#stitcher-section" class="tool-card"><h3>Stitch Videos</h3><p>Combine two videos from your library into one.</p></a>
+</div>
+
+<details class="dashboard-section" id="analyzer-section">
+    <summary>Style & Palette Analyzer</summary>
+    <div class="tool-content">
+        <div class="form-row">
+            <div style="border-right: 1px solid #eee; padding-right: 15px;">
+                <form action="/style-tool" method="post" enctype="multipart/form-data">
+                    <label for="image">Upload for Style Analysis:</label>
+                    <input type="file" id="image" name="image" accept="image/*" required>
+                    <div style="margin-top: 15px;">
+                        <label for="style_system_prompt">System Prompt:</label>
+                        <textarea id="style_system_prompt" name="system_prompt" disabled>You are an art director. Describe the artistic style of this image in a maximum of 3 sentences. Focus only on the most important and defining visual characteristics, such as the medium, texture, and mood. Do not mention the subject matter.</textarea>
+                        <div class="unlock-prompt-container">
+                            <input type="checkbox" id="unlock_style_prompt"><label for="unlock_style_prompt" style="font-weight: normal; font-size: 12px;">Unlock to edit</label>
+                        </div>
+                    </div>
+                    <button type="submit">Analyze Style</button>
+                </form>
+            </div>
+            <div style="padding-left: 15px;">
+                <form action="/palette-tool" method="post" enctype="multipart/form-data">
+                    <label for="palette_image">Upload for Palette Analysis:</label>
+                    <input type="file" id="palette_image" name="image" accept="image/*" required>
+                    <button type="submit">Analyze Palette</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</details>
+
+<details class="dashboard-section" id="generator-section" open>
+    <summary>Image Generator</summary>
+    <div class="tool-content">
+        <form action="/image-tool" method="post" id="image-generator-form">
+            <input type="hidden" name="parent_job_id" id="image-parent-job-id">
+            <div class="form-grid">
+                <div><label for="object_prompt">Object to Create:</label><input type="text" id="object_prompt" name="object_prompt" placeholder="e.g., a vintage armchair" required></div>
+                <div><label for="style_prompt">Style Description:</label><textarea id="style_prompt" name="style_prompt" required></textarea></div>
+                <div>
+                    <label class="form-section-label">Generation Models:</label>
+                    <div class="model-checkbox-grid">
+                        <label><input type="checkbox" name="modelId" value="replicate-gpt-image-1" data-is-leonardo="false"> OpenAI on Replicate</label>
+                        <label><input type="checkbox" name="modelId" value="bytedance-seedream-4" data-is-leonardo="false"> Bytedance Seedream-4</label>
+                        <label><input type="checkbox" name="modelId" value="b24e16ff-06e3-43eb-8d33-4416c2d75876" data-is-leonardo="true" checked> Leonardo Diffusion XL</label>
+                        <label><input type="checkbox" name="modelId" value="5c232a9e-9061-4777-980a-ddc8e65647c6" data-is-leonardo="true"> Leonardo Vision XL</label>
+                        <label><input type="checkbox" name="modelId" value="2067ae52-33fd-4a82-bb92-c2c55e7d2786" data-is-leonardo="true"> AlbedoBase XL</label>
+                    </div>
+                </div>
+                <div id="leonardo-options-container">
+                    <div class="form-row">
+                        <div>
+                            <label for="presetStyle">Artistic Style (Leonardo Only):</label>
+                            <select id="presetStyle" name="presetStyle">
+                                <option value="NONE" selected>None</option>
+                                <option value="CINEMATIC">Cinematic</option>
+                                <option value="CREATIVE">Creative</option>
+                                <option value="DYNAMIC">Dynamic</option>
+                                <option value="ENVIRONMENT">Environment</option>
+                                <option value="GENERAL">General</option>
+                                <option value="ILLUSTRATION">Illustration</option>
+                                <option value="PHOTOGRAPHY">Photography</option>
+                                <option value="RAYTRACED">Raytraced</option>
+                                <option value="RENDER_3D">3D Render</option>
+                                <option value="SKETCH_BW">B&W Sketch</option>
+                                <option value="SKETCH_COLOR">Color Sketch</option>
+                                <option value="VIBRANT">Vibrant</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <button type="submit">Generate Images</button>
+        </form>
+    </div>
+</details>
+
+<details class="dashboard-section" id="stitcher-section">
+    <summary>Video Stitcher</summary>
+    <div class="tool-content">
+        <p>Select two videos from the Job Log below by checking their boxes, then click the "Stitch Selected Videos" button that appears in the log header.</p>
+    </div>
+</details>
+
+<div class="job-log-container" id="log-section">
+    <div class="job-log-header">
+        <h2>Job Log</h2>
+        <div class="job-log-header-actions">
+            <button id="delete-selected-btn" class="action-btn">🗑️ Delete Selected (0)</button>
+            <button id="stitch-videos-btn" class="action-btn">🎬 Stitch Selected Videos (0)</button>
+            <button id="process-pending-btn" class="action-btn">⚙️ Process Pending Keys</button>
+            <button id="clear-failed-btn" class="action-btn" style="background-color: #dc3545;">🧹 Clear Failed</button>
+            <button id="clear-stuck-btn" class="action-btn" style="background-color: #ff6b6b;">⚠️ Clear Stuck</button>
+            <button id="clear-all-btn" class="action-btn" style="background-color: #6c757d;">🗑️ Clear All Jobs</button>
+            <button id="refresh-log-btn" class="refresh-btn active">⏸️ Pause Auto-Refresh</button>
+        </div>
+    </div>
+    <div id="job-log-body"><p>Loading job history...</p></div>
+</div>
+
+<div id="extract-frame-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Extract Frame</h2>
+            <span class="close-button">&times;</span>
+        </div>
+        <div id="modal-video-container"></div>
+        <div class="modal-controls">
+            <button id="modal-prev-frame-btn" class="frame-nav-btn">◄ Prev Frame</button>
+            <button id="modal-save-frame-btn" class="save-frame-btn">Save This Frame</button>
+            <button id="modal-next-frame-btn" class="frame-nav-btn">Next Frame ►</button>
+        </div>
+        <input type="hidden" id="modal-parent-job-id">
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log("✅ Job log initializing...");
+        
+        const refreshBtn = document.getElementById('refresh-log-btn');
+        const logBody = document.getElementById('job-log-body');
+        let autoRefreshInterval;
+        const AUTO_REFRESH_RATE = 5000;
+        
+        // Main function to load and display jobs
+        async function refreshJobLog() {
+            if (!logBody) {
+                console.error("❌ job-log-body element not found");
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/jobs');
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const jobs = await response.json();
+                
+                if (jobs.length === 0) {
+                    logBody.innerHTML = '<p>The job log is empty.</p>';
+                    return;
+                }
+                
+                let html = '';
+                jobs.forEach(job => {
+                    try {
+                        html += createLogItemHTML(job);
+                    } catch (error) {
+                        console.error('Error rendering job', job.id, error);
+                        html += `<div style="color:red; padding:10px;">Error rendering job #${job.id}</div>`;
+                    }
+                });
+                logBody.innerHTML = html;
+                console.log(`✅ Loaded ${jobs.length} jobs successfully`);
+                
+            } catch (error) {
+                console.error('❌ Error loading jobs:', error);
+                logBody.innerHTML = `<p style="color: red;">Error loading jobs: ${error.message}</p>`;
+            }
+        }
+        
+        // Leonardo model name mapping
+        const leonardoModelNames = {
+            'b24e16ff-06e3-43eb-8d33-4416c2d75876': 'Leonardo Diffusion XL',
+            '5c232a9e-9061-4777-980a-ddc8e65647c6': 'Leonardo Vision XL',
+            '2067ae52-33fd-4a82-bb92-c2c55e7d2786': 'AlbedoBase XL',
+            'replicate-gpt-image-1': 'OpenAI (via Replicate)',
+            'bytedance-seedream-4': 'Bytedance Seedream-4',
+            'kwaivgi/kling-v2.1': 'Kling v2.1',
+            'bytedance/seedance-1-pro': 'Seedance-1 Pro',
+            'pixverse/pixverse-v4.5': 'Pixverse v4.5'
+        };
+        
+        function getModelDisplayName(modelId) {
+            return leonardoModelNames[modelId] || modelId;
+        }
+        
+        // Complete job rendering function with all features
+        function createLogItemHTML(job) {
+            const jobTypeDisplay = job.job_type.replace(/_/g, ' ');
+            const statusClass = `status-${job.status.replace(/_/g, '-')}`;
+            const outputUrl = job.keyed_result_data || job.result_data;
+            
+            // Check if job is stuck (different timeouts for different job types)
+            const createdAt = new Date(job.created_at);
+            const now = new Date();
+            const minutesRunning = (now - createdAt) / (1000 * 60);
+            
+            let stuckThreshold = 2; // Default 2 minutes
+            if (job.job_type === 'video_stitching') {
+                stuckThreshold = 0.5; // 30 seconds for stitching
+            } else if (job.status === 'keying_processing') {
+                stuckThreshold = 3; // 3 minutes for keying (more intensive)
+            }
+            
+            const isStuck = ['processing', 'keying_processing', 'stitching'].includes(job.status) && minutesRunning > stuckThreshold;
+            
+            // Parse input data safely
+            let inputData;
+            try {
+                inputData = typeof job.input_data === 'string' ? JSON.parse(job.input_data || '{}') : job.input_data || {};
+            } catch (e) {
+                console.warn('Failed to parse input_data for job', job.id, e);
+                inputData = {};
+            }
+            
+            // For frame extraction, the output is always an image, not a video
+            const isVideo = job.job_type !== 'frame_extraction' && 
+                           typeof outputUrl === 'string' && outputUrl.length > 0 && 
+                           !outputUrl.includes('This image') && 
+                           (outputUrl.endsWith('.mp4') || outputUrl.endsWith('.webm') || outputUrl.includes('/animations/'));
+            // Make all jobs selectable except those actively processing
+            const isSelectable = job.status !== 'processing' && job.status !== 'keying_processing';
+            
+            const encodedInputData = JSON.stringify(inputData).replace(/'/g, "&apos;").replace(/"/g, "&quot;");
+            const encodedResultData = (typeof job.result_data === 'string' ? job.result_data : JSON.stringify(job.result_data || '{}')).replace(/'/g, "&apos;").replace(/"/g, "&quot;");
+
+            // Generate thumbnail for collapsed view
+            let summaryThumbnailHTML = '';
+            if (job.job_type.includes('analysis') && inputData.image_path) {
+                summaryThumbnailHTML = `<img src="/${inputData.image_path}" class="log-item-thumbnail" alt="Input Image">`;
+            } else if (job.job_type === 'frame_extraction' && typeof outputUrl === 'string' && outputUrl) {
+                // Frame extraction always produces an image
+                summaryThumbnailHTML = `<img src="/${outputUrl}" class="log-item-thumbnail" alt="Extracted Frame">`;
+            } else if (typeof outputUrl === 'string' && outputUrl && 
+                      (outputUrl.includes('.') || outputUrl.includes('/')) && 
+                      !outputUrl.includes('This image') && outputUrl.length < 200) {
+                if (isVideo) {
+                    summaryThumbnailHTML = '<span class="log-item-pills" style="padding: 4px 6px; font-size: 18px;">🎬</span>';
+                } else {
+                    summaryThumbnailHTML = `<img src="/${outputUrl}" class="log-item-thumbnail" alt="Image Thumbnail">`;
+                }
+            }
+
+            // Generate action buttons based on job type and status
+            let actionsHTML = '';
+            
+            // Actions for jobs with file outputs
+            if (typeof outputUrl === 'string' && outputUrl && 
+                (outputUrl.includes('.') || outputUrl.includes('/')) && 
+                !outputUrl.includes('This image') && outputUrl.length < 200) {
+                
+                // Image-based actions
+                if (['image_generation', 'background_removal', 'frame_extraction'].includes(job.job_type)) {
+                    actionsHTML += `<a href="/animate-image?parent_job_id=${job.id}&image_url=/${outputUrl}" class="action-btn" style="background-color:#007bff;">🎬 Animate</a>`;
+                    actionsHTML += `<form action="/remove-background" method="POST" class="button-form"><input type="hidden" name="image_url" value="/${outputUrl}"><input type="hidden" name="parent_job_id" value="${job.id}"><button type="submit" class="action-btn" style="background-color:#17a2b8;">✨ Remove BG</button></form>`;
+                }
+                
+                // Video-based actions
+                if ((job.job_type === 'animation' || job.job_type === 'video_stitching') && isVideo) {
+                    actionsHTML += `<button class="action-btn extract-frame-btn" data-job-id="${job.id}" data-video-src="/${outputUrl}" style="background-color: #17a2b8;">🖼️ Extract Frame</button>`;
+                }
+            }
+            
+            // Cancel button for processing jobs
+            if (['processing', 'keying_processing', 'stitching', 'queued', 'keying_queued'].includes(job.status)) {
+                actionsHTML += `<button class="action-btn cancel-job-btn" data-job-id="${job.id}" style="background-color: #ff6b6b;">❌ Cancel</button>`;
+            }
+            
+            // Status-based actions
+            if (job.status === 'completed') {
+                // Analysis results
+                if (job.job_type === 'style_analysis' || job.job_type === 'palette_analysis') {
+                    actionsHTML += `<button class="action-btn use-result-btn" data-job-id="${job.id}" data-result-text='${encodedResultData}' style="background-color:#fd7e14;">➡️ Use Result</button>`;
+                }
+                
+                // Regeneration options
+                if (job.job_type === 'image_generation') {
+                    actionsHTML += `<button class="action-btn regenerate-btn" style="background-color: #6f42c1;" data-input='${encodedInputData}'>🔄 Regenerate</button>`;
+                }
+                
+                // Keying options
+                if (job.job_type === 'animation' || job.job_type === 'video_stitching') {
+                    if (job.keyed_result_data) {
+                        actionsHTML += `<a href="/fine-tune/${job.id}" class="action-btn" style="background-color: #6c757d;">🔄 Re-Key</a>`;
+                    } else {
+                        actionsHTML += `<a href="/fine-tune/${job.id}" class="action-btn" style="background-color: #28a745;">⚙️ Key Video</a>`;
+                    }
+                }
+                
+                // Re-stitching for completed stitching jobs
+                if (job.job_type === 'video_stitching') {
+                    actionsHTML += `<button class="action-btn re-stitch-btn" data-job-id="${job.id}" style="background-color: #e83e8c;">🔄 Re-Stitch</button>`;
+                }
+                
+            } else if (job.status === 'pending_review' || job.status === 'pending_process') {
+                actionsHTML += `<a href="/fine-tune/${job.id}" class="action-btn" style="background-color: #28a2b8;">🔬 Key Video</a>`;
+                
+            } else if (job.status === 'failed') {
+                // Retry options for failed jobs
+                if (job.job_type === 'video_stitching') {
+                    actionsHTML += `<button class="action-btn retry-stitch-btn" data-job-id="${job.id}" style="background-color: #dc3545;">🔄 Retry Stitch</button>`;
+                }
+                if (job.job_type === 'animation') {
+                    actionsHTML += `<button class="action-btn retry-key-btn" data-job-id="${job.id}" style="background-color: #dc3545;">🔄 Retry Key</button>`;
+                }
+            }
+            
+            // Boomerang automation specific actions
+            if (job.job_type === 'boomerang_automation') {
+                if (job.status === 'stitching' || job.status === 'completed') {
+                    actionsHTML += `<button class="action-btn view-children-btn" data-job-id="${job.id}" style="background-color: #20c997;">👁️ View Parts</button>`;
+                }
+            }
+            
+            let deleteActionHTML = `<button class="action-btn delete-item-btn" data-job-id="${job.id}" style="background-color:#dc3545;">🗑️ Delete</button>`;
+
+            // Generate error display
+            const errorHTML = (job.status === 'failed' && job.error_message) 
+                ? `<h4>Error Details</h4><div class="error-message">${job.error_message}</div>` 
+                : '';
+
+            // Generate result display for analysis jobs
+            let resultDisplayHTML = '';
+            if (job.status === 'completed' && job.result_data) {
+                try {
+                    const parsedResult = JSON.parse(job.result_data);
+                    if (job.job_type === 'palette_analysis' && parsedResult.palette) {
+                        resultDisplayHTML += '<h4>Color Palette</h4><div class="palette-swatch-container">';
+                        parsedResult.palette.forEach(color => {
+                            resultDisplayHTML += `<div class="palette-swatch" title="${color.name}: ${color.hex}"><div class="color-box" style="background-color: ${color.hex};"></div><span class="color-label">${color.hex}</span></div>`;
+                        });
+                        resultDisplayHTML += '</div>';
+                    } else if (job.job_type.includes('analysis')) {
+                        resultDisplayHTML = `<h4>Analysis</h4><pre>${job.result_data}</pre>`;
+                    }
+                } catch (e) {
+                    if (job.job_type.includes('analysis')) {
+                        resultDisplayHTML = `<h4>Analysis</h4><pre>${job.result_data}</pre>`;
+                    }
+                }
+            }
+            
+            // Display model information
+            let modelDisplayHTML = '';
+            const modelId = inputData.modelId || inputData.video_model;
+            if (modelId) {
+                const modelName = getModelDisplayName(modelId);
+                modelDisplayHTML = `<h4>Model</h4><pre>${modelName}</pre>`;
+            }
+
+            // Generate visual content (input images, output images/videos)
+            let visualsHTML = '';
+            if (job.job_type === 'animation' || job.job_type === 'boomerang_automation') {
+                if(inputData.image_url) visualsHTML += `<h4>Start Frame</h4><img src="${inputData.image_url}" class="thumbnail">`;
+                if(inputData.end_image_url) visualsHTML += `<h4>End Frame</h4><img src="${inputData.end_image_url}" class="thumbnail">`;
+            } else if (job.job_type === 'frame_extraction' && inputData.source_video) {
+                // For frame extraction, show the source video as input
+                visualsHTML += `<h4>Source Video</h4><video src="/${inputData.source_video}" controls class="thumbnail" style="max-width: 200px;"></video>`;
+            } else if (job.parent_id && job.parent_result_data && job.job_type !== 'frame_extraction') {
+                // Don't show parent result for frame extraction since we handle it above
+                visualsHTML += `<h4>Input <span style="font-weight:normal; color:#666;">(From Job #${job.parent_id})</span></h4><img src="/${job.parent_result_data}" alt="Parent task output" class="thumbnail">`;
+            } else if (job.job_type.includes('analysis') && inputData.image_path) {
+                visualsHTML += `<h4>Input Image</h4><img src="/${inputData.image_path}" class="thumbnail">`;
+            }
+            
+            // Add output preview - only for actual file paths, not text content
+            if (typeof outputUrl === 'string' && outputUrl && 
+                (outputUrl.includes('.') || outputUrl.includes('/')) && 
+                !outputUrl.includes('This image') && outputUrl.length < 200) {
+                
+                visualsHTML += `<div class="detail-preview-container"><h4>Output</h4>`;
+                if (job.job_type === 'frame_extraction') {
+                    // Frame extraction always produces an image, even if detected as video path
+                    visualsHTML += `<a href="/${outputUrl}" target="_blank"><img src="/${outputUrl}" class="detail-preview-image" alt="Extracted frame"></a>`;
+                } else if (isVideo) {
+                    visualsHTML += `<video src="/${outputUrl}" controls loop autoplay muted class="detail-preview-image" data-job-id="${job.id}"></video>`;
+                } else {
+                    visualsHTML += `<a href="/${outputUrl}" target="_blank"><img src="/${outputUrl}" class="detail-preview-image" alt="Job output preview"></a>`;
+                }
+                visualsHTML += `</div>`;
+            } else if (job.status === 'completed' && job.job_type !== 'style_analysis' && job.job_type !== 'palette_analysis') {
+                // Only show "output not found" for jobs that should produce file outputs
+                visualsHTML += `<h4>Output</h4><p style="color: #888;">No visual output available.</p>`;
+            }
+            
+            return `
+                <div class="log-item-wrapper ${isStuck ? 'job-stuck-warning' : ''}" data-job-id="${job.id}">
+                    ${isSelectable ? `<input type="checkbox" class="selection-checkbox ${isVideo ? 'video-stitch-checkbox' : ''}" data-job-id="${job.id}" data-video-path="${outputUrl || ''}" data-job-type="${job.job_type}">` : ''}
+                    <details class="log-item ${isSelectable ? 'has-checkbox' : ''}">
+                        <summary>
+                            <div class="log-item-pills">
+                                <span>#${job.id}</span>
+                                <span>${jobTypeDisplay}</span>
+                                <span class="status-badge ${statusClass}">${job.status.replace(/_/g, ' ')}${isStuck ? '<span class="stuck-indicator">STUCK</span>' : ''}</span>
+                            </div>
+                            ${summaryThumbnailHTML}
+                            <span class="log-item-prompt">${job.prompt || ''}</span>
+                        </summary>
+                        <div class="log-item-details">
+                            <div class="log-details-visuals">${visualsHTML}</div>
+                            <div class="log-details-info">
+                                <h4>Prompt</h4>
+                                <pre>${job.prompt || 'N/A'}</pre>
+                                ${modelDisplayHTML}
+                                ${errorHTML}
+                                ${resultDisplayHTML}
+                                <div class="log-actions">${actionsHTML}${deleteActionHTML}</div>
+                            </div>
+                        </div>
+                    </details>
+                </div>`;
+        }
+        
+        // Auto-refresh functionality
+        function startAutoRefresh() {
+            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+            autoRefreshInterval = setInterval(refreshJobLog, AUTO_REFRESH_RATE);
+            if (refreshBtn) {
+                refreshBtn.textContent = '⏸️ Pause Auto-Refresh';
+                refreshBtn.classList.add('active');
+                refreshBtn.classList.remove('paused');
+            }
+        }
+        
+        function pauseAutoRefresh() {
+            clearInterval(autoRefreshInterval);
+            if (refreshBtn) {
+                refreshBtn.textContent = '▶️ Resume Auto-Refresh';
+                refreshBtn.classList.remove('active');
+                refreshBtn.classList.add('paused');
+            }
+        }
+        
+        // Refresh button functionality
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', function() {
+                console.log("Refresh button clicked");
+                if (refreshBtn.classList.contains('active')) {
+                    pauseAutoRefresh();
+                } else {
+                    startAutoRefresh();
+                    refreshJobLog();
+                }
+            });
+        }
+        
+        // Add all interactive event handlers
+        function setupInteractiveHandlers() {
+            // Delegate event listeners to the log body for dynamic content
+            logBody.addEventListener('click', async function(event) {
+                // Handle regenerate button
+                const regenerateBtn = event.target.closest('.regenerate-btn');
+                if (regenerateBtn) {
+                    event.preventDefault();
+                    regenerateBtn.textContent = 'Queuing...';
+                    regenerateBtn.disabled = true;
+                    const inputData = JSON.parse(regenerateBtn.dataset.input);
+                    const formData = new FormData();
+                    formData.append('object_prompt', inputData.object_prompt || '');
+                    formData.append('style_prompt', inputData.style_prompt || '');
+                    formData.append('modelId', inputData.modelId || '');
+                    formData.append('presetStyle', inputData.presetStyle || 'NONE');
+                    try {
+                        const response = await fetch('/image-tool', { method: 'POST', body: formData });
+                        if (!response.ok) throw new Error('Failed to queue regeneration job.');
+                        await refreshJobLog();
+                        document.getElementById('log-section')?.scrollIntoView({ behavior: 'smooth' });
+                    } catch (error) {
+                        alert('Error regenerating: ' + error.message);
+                        regenerateBtn.textContent = '🔄 Regenerate';
+                        regenerateBtn.disabled = false;
+                    }
+                }
+
+                // Handle delete button
+                const deleteBtn = event.target.closest('.delete-item-btn');
+                if (deleteBtn) {
+                    event.preventDefault();
+                    const jobId = deleteBtn.dataset.jobId;
+                    if (confirm(`Are you sure you want to permanently delete job #${jobId}?`)) {
+                        try {
+                            const response = await fetch(`/api/batch-delete-items`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ job_ids: [jobId] })
+                            });
+                            if (!response.ok) {
+                                const errorData = await response.json().catch(() => ({}));
+                                throw new Error(errorData.error || `Server responded with status ${response.status}`);
+                            }
+                            await refreshJobLog();
+                        } catch (error) {
+                            console.error('Error deleting item:', error);
+                            alert(`There was an error deleting the job: ${error.message}`);
+                        }
+                    }
+                }
+
+                // Handle use result button (for style/palette analysis)
+                const useBtn = event.target.closest('.use-result-btn');
+                if (useBtn) {
+                    event.preventDefault();
+                    const stylePromptTextarea = document.getElementById('style_prompt');
+                    let resultText = decodeURIComponent(useBtn.dataset.resultText);
+                    let styleToUse = resultText;
+                    try {
+                        const parsedResult = JSON.parse(resultText);
+                        if (parsedResult.palette) {
+                            styleToUse = parsedResult.palette.map(color => `${color.name} (${color.hex})`).join(', ') + ", vibrant color palette.";
+                        }
+                    } catch (e) { /* Use raw text if not JSON */ }
+                    
+                    const existingStyle = stylePromptTextarea.value.trim();
+                    stylePromptTextarea.value = existingStyle ? `${existingStyle}, ${styleToUse}` : styleToUse;
+                    document.getElementById('image-parent-job-id').value = useBtn.dataset.jobId;
+                    document.getElementById('generator-section').open = true;
+                    stylePromptTextarea.focus();
+                }
+
+                // Handle extract frame button (for videos)
+                const extractFrameBtn = event.target.closest('.extract-frame-btn');
+                if (extractFrameBtn) {
+                    event.preventDefault();
+                    const videoSrc = extractFrameBtn.dataset.videoSrc;
+                    const parentJobId = extractFrameBtn.dataset.jobId;
+                    openExtractFrameModal(videoSrc, parentJobId);
+                }
+
+                // Handle re-stitch button
+                const reStitchBtn = event.target.closest('.re-stitch-btn');
+                if (reStitchBtn) {
+                    event.preventDefault();
+                    const jobId = reStitchBtn.dataset.jobId;
+                    if (confirm('Re-stitch this video with the same source videos?')) {
+                        try {
+                            reStitchBtn.textContent = 'Re-stitching...';
+                            reStitchBtn.disabled = true;
+                            // Reset the job to queued status so it will be re-processed
+                            fetch('/api/reset-job', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ job_id: jobId, new_status: 'queued' })
+                            }).then(response => response.json()).then(data => {
+                                if (data.success) {
+                                    alert('Job queued for re-stitching!');
+                                    refreshJobLog();
+                                } else {
+                                    alert('Error: ' + data.error);
+                                }
+                            });
+                        } catch (error) {
+                            alert('Error: ' + error.message);
+                            reStitchBtn.textContent = '🔄 Re-Stitch';
+                            reStitchBtn.disabled = false;
+                        }
+                    }
+                }
+
+                // Handle retry stitch button (for failed jobs)
+                const retryStitchBtn = event.target.closest('.retry-stitch-btn');
+                if (retryStitchBtn) {
+                    event.preventDefault();
+                    const jobId = retryStitchBtn.dataset.jobId;
+                    if (confirm('Retry stitching this failed job?')) {
+                        try {
+                            retryStitchBtn.textContent = 'Retrying...';
+                            retryStitchBtn.disabled = true;
+                            fetch('/api/reset-job', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ job_id: jobId, new_status: 'queued' })
+                            }).then(response => response.json()).then(data => {
+                                if (data.success) {
+                                    alert('Job queued for retry!');
+                                    refreshJobLog();
+                                } else {
+                                    alert('Error: ' + data.error);
+                                }
+                            });
+                        } catch (error) {
+                            alert('Error: ' + error.message);
+                            retryStitchBtn.textContent = '🔄 Retry Stitch';
+                            retryStitchBtn.disabled = false;
+                        }
+                    }
+                }
+
+                // Handle retry key button (for failed keying jobs)
+                const retryKeyBtn = event.target.closest('.retry-key-btn');
+                if (retryKeyBtn) {
+                    event.preventDefault();
+                    const jobId = retryKeyBtn.dataset.jobId;
+                    if (confirm('Retry keying this failed job?')) {
+                        try {
+                            retryKeyBtn.textContent = 'Retrying...';
+                            retryKeyBtn.disabled = true;
+                            fetch('/api/reset-job', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ job_id: jobId, new_status: 'pending_review' })
+                            }).then(response => response.json()).then(data => {
+                                if (data.success) {
+                                    alert('Job reset for keying retry!');
+                                    refreshJobLog();
+                                } else {
+                                    alert('Error: ' + data.error);
+                                }
+                            });
+                        } catch (error) {
+                            alert('Error: ' + error.message);
+                            retryKeyBtn.textContent = '🔄 Retry Key';
+                            retryKeyBtn.disabled = false;
+                        }
+                    }
+                }
+
+                // Handle view children button (for boomerang automation)
+                const viewChildrenBtn = event.target.closest('.view-children-btn');
+                if (viewChildrenBtn) {
+                    event.preventDefault();
+                    const jobId = viewChildrenBtn.dataset.jobId;
+                    // Scroll to and highlight child jobs
+                    const childElements = document.querySelectorAll(`[data-job-id]`);
+                    let childCount = 0;
+                    childElements.forEach(el => {
+                        const jobEl = el.closest('.log-item-wrapper');
+                        if (jobEl && jobEl.querySelector('.log-item-details')) {
+                            // Check if this job mentions the parent ID (simple approach)
+                            const detailsText = jobEl.querySelector('.log-item-details').textContent;
+                            if (detailsText.includes(`Animation A->B:`) || detailsText.includes(`Animation B->A:`)) {
+                                jobEl.style.border = '3px solid #20c997';
+                                jobEl.style.backgroundColor = '#e7f9f5';
+                                setTimeout(() => {
+                                    jobEl.style.border = '';
+                                    jobEl.style.backgroundColor = '';
+                                }, 5000);
+                                childCount++;
+                            }
+                        }
+                    });
+                    alert(`Highlighted ${childCount} child animation jobs for 5 seconds`);
+                }
+
+                // Handle cancel job button
+                const cancelJobBtn = event.target.closest('.cancel-job-btn');
+                if (cancelJobBtn) {
+                    event.preventDefault();
+                    const jobId = cancelJobBtn.dataset.jobId;
+                    if (confirm(`Cancel job #${jobId}? This will mark it as failed and stop processing.`)) {
+                        try {
+                            cancelJobBtn.textContent = 'Cancelling...';
+                            cancelJobBtn.disabled = true;
+                            
+                            const response = await fetch(`/api/cancel-job/${jobId}`, { method: 'POST' });
+                            if (response.ok) {
+                                const result = await response.json();
+                                alert(result.message);
+                                await refreshJobLog();
+                            } else {
+                                const error = await response.json();
+                                alert('Error: ' + (error.error || 'Unknown error'));
+                            }
+                        } catch (error) {
+                            alert('Network error: ' + error.message);
+                        } finally {
+                            cancelJobBtn.textContent = '❌ Cancel';
+                            cancelJobBtn.disabled = false;
+                        }
+                    }
+                }
+            });
+
+            // Handle checkbox selections for batch operations
+            logBody.addEventListener('change', event => {
+                if (event.target.classList.contains('selection-checkbox')) {
+                    const allSelected = document.querySelectorAll('.selection-checkbox:checked');
+                    const videoCheckboxes = document.querySelectorAll('.video-stitch-checkbox:checked');
+                    
+                    const deleteSelectedBtn = document.getElementById('delete-selected-btn');
+                    const stitchBtn = document.getElementById('stitch-videos-btn');
+                    
+                    if (deleteSelectedBtn) {
+                        deleteSelectedBtn.textContent = `🗑️ Delete Selected (${allSelected.length})`;
+                        deleteSelectedBtn.style.display = allSelected.length > 0 ? 'inline-flex' : 'none';
+                    }
+                    
+                    if (stitchBtn) {
+                        stitchBtn.textContent = `🎬 Stitch Selected Videos (${videoCheckboxes.length})`;
+                        stitchBtn.style.display = videoCheckboxes.length > 0 ? 'inline-flex' : 'none';
+                        stitchBtn.disabled = videoCheckboxes.length !== 2;
+                    }
+                    
+                    // Auto-pause refresh when user selects jobs
+                    if (allSelected.length > 0) {
+                        console.log('🔄 Auto-pausing refresh due to job selection');
+                        pauseAutoRefresh();
+                    }
+                }
+            });
+
+            // Auto-pause refresh when user opens job details (using event delegation)
+            logBody.addEventListener('click', event => {
+                const detailsElement = event.target.closest('details');
+                if (detailsElement && event.target.tagName === 'SUMMARY') {
+                    // Check if details is being opened (currently closed)
+                    if (!detailsElement.open) {
+                        console.log('🔄 Auto-pausing refresh due to job details being opened');
+                        pauseAutoRefresh();
+                    }
+                }
+            });
+            
+            // Alternative approach using toggle event with better targeting
+            logBody.addEventListener('toggle', event => {
+                if (event.target.classList.contains('log-item') && event.target.open) {
+                    console.log('🔄 Auto-pausing refresh due to job details toggle');
+                    pauseAutoRefresh();
+                }
+            }, true); // Use capture phase
+
+            // Handle form submissions within job log
+            logBody.addEventListener('submit', async function(event) {
+                if (event.target.classList.contains('button-form')) {
+                    // This will be handled by the global form handler in base.html
+                    return;
+                }
+            });
+        }
+        
+        // Extract Frame Modal functionality
+        const extractFrameModal = document.getElementById('extract-frame-modal');
+        const modalVideoContainer = document.getElementById('modal-video-container');
+        let currentVideo = null;
+        let currentTime = 0;
+        
+        function openExtractFrameModal(videoSrc, parentJobId) {
+            extractFrameModal.style.display = 'block';
+            document.getElementById('modal-parent-job-id').value = parentJobId;
+            
+            modalVideoContainer.innerHTML = `
+                <video id="modal-video" src="${videoSrc}" controls style="width: 100%; max-height: 400px;">
+                    Your browser does not support the video tag.
+                </video>
+                <div class="frame-controls">
+                    <input type="range" id="frame-scrubber" min="0" max="100" value="0" step="0.1" style="width: 100%; margin: 10px 0;">
+                    <div class="time-display">
+                        <span>Current Time: </span>
+                        <span id="current-time-display">0.0s</span>
+                        <span> / </span>
+                        <span id="duration-display">-</span>
+                    </div>
+                </div>
+            `;
+            
+            currentVideo = document.getElementById('modal-video');
+            const frameScrubber = document.getElementById('frame-scrubber');
+            const currentTimeDisplay = document.getElementById('current-time-display');
+            const durationDisplay = document.getElementById('duration-display');
+            
+            // Update scrubber when video loads
+            currentVideo.addEventListener('loadedmetadata', function() {
+                frameScrubber.max = currentVideo.duration;
+                durationDisplay.textContent = currentVideo.duration.toFixed(1) + 's';
+            });
+            
+            // Update scrubber when video plays
+            currentVideo.addEventListener('timeupdate', function() {
+                frameScrubber.value = currentVideo.currentTime;
+                currentTimeDisplay.textContent = currentVideo.currentTime.toFixed(1) + 's';
+                currentTime = currentVideo.currentTime;
+            });
+            
+            // Seek when scrubber is moved
+            frameScrubber.addEventListener('input', function() {
+                currentVideo.currentTime = frameScrubber.value;
+                currentTime = frameScrubber.value;
+                currentTimeDisplay.textContent = frameScrubber.value + 's';
+            });
+        }
+        
+        // Frame navigation buttons
+        document.getElementById('modal-prev-frame-btn').addEventListener('click', function() {
+            if (currentVideo) {
+                const frameRate = 30; // Assume 30fps
+                currentVideo.currentTime = Math.max(0, currentVideo.currentTime - (1/frameRate));
+            }
+        });
+        
+        document.getElementById('modal-next-frame-btn').addEventListener('click', function() {
+            if (currentVideo) {
+                const frameRate = 30; // Assume 30fps
+                currentVideo.currentTime = Math.min(currentVideo.duration, currentVideo.currentTime + (1/frameRate));
+            }
+        });
+        
+        // Save frame button
+        document.getElementById('modal-save-frame-btn').addEventListener('click', async function() {
+            if (!currentVideo) {
+                alert('No video loaded');
+                return;
+            }
+            
+            const parentJobId = document.getElementById('modal-parent-job-id').value;
+            // Extract the proper relative path from the video source
+            const videoFullSrc = currentVideo.src;
+            const baseUrl = window.location.origin;
+            let videoSrc = videoFullSrc;
+            
+            // Remove base URL if present to get relative path
+            if (videoFullSrc.startsWith(baseUrl)) {
+                videoSrc = videoFullSrc.substring(baseUrl.length);
+            }
+            
+            // Remove leading slash if present
+            if (videoSrc.startsWith('/')) {
+                videoSrc = videoSrc.substring(1);
+            }
+            
+            console.log('Extracting frame from video path:', videoSrc);
+            
+            try {
+                this.textContent = 'Extracting...';
+                this.disabled = true;
+                
+                const response = await fetch('/api/extract-frame', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        video_path: videoSrc,
+                        frame_time: currentTime,
+                        parent_job_id: parentJobId
+                    })
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    alert('Frame extracted successfully!');
+                    extractFrameModal.style.display = 'none';
+                    await refreshJobLog();
+                } else {
+                    const error = await response.json();
+                    alert('Error extracting frame: ' + (error.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Network error: ' + error.message);
+            } finally {
+                this.textContent = 'Save This Frame';
+                this.disabled = false;
+            }
+        });
+        
+        // Modal close functionality
+        document.querySelector('#extract-frame-modal .close-button').addEventListener('click', function() {
+            extractFrameModal.style.display = 'none';
+        });
+        
+        window.addEventListener('click', function(event) {
+            if (event.target === extractFrameModal) {
+                extractFrameModal.style.display = 'none';
+            }
+        });
+        
+        // Batch delete functionality
+        const deleteSelectedBtn = document.getElementById('delete-selected-btn');
+        if (deleteSelectedBtn) {
+            deleteSelectedBtn.addEventListener('click', async function() {
+                const selectedCheckboxes = document.querySelectorAll('.selection-checkbox:checked');
+                const jobIds = Array.from(selectedCheckboxes).map(cb => cb.dataset.jobId);
+                
+                if (jobIds.length === 0) {
+                    alert('No jobs selected for deletion.');
+                    return;
+                }
+                
+                if (confirm(`Are you sure you want to permanently delete ${jobIds.length} selected jobs?`)) {
+                    try {
+                        this.textContent = 'Deleting...';
+                        this.disabled = true;
+                        
+                        const response = await fetch('/api/batch-delete-items', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ job_ids: jobIds })
+                        });
+                        
+                        if (response.ok) {
+                            alert(`${jobIds.length} jobs deleted successfully!`);
+                            await refreshJobLog();
+                        } else {
+                            const error = await response.json();
+                            alert('Error deleting jobs: ' + (error.error || 'Unknown error'));
+                        }
+                    } catch (error) {
+                        alert('Network error: ' + error.message);
+                    } finally {
+                        this.textContent = '🗑️ Delete Selected (0)';
+                        this.disabled = false;
+                        this.style.display = 'none';
+                    }
+                }
+            });
+        }
+        
+        // Video stitching functionality
+        const stitchBtn = document.getElementById('stitch-videos-btn');
+        if (stitchBtn) {
+            stitchBtn.addEventListener('click', async function() {
+                const selectedVideos = document.querySelectorAll('.video-stitch-checkbox:checked');
+                const videoPaths = Array.from(selectedVideos).map(cb => cb.dataset.videoPath);
+                
+                if (videoPaths.length !== 2) {
+                    alert('Please select exactly 2 videos to stitch together.');
+                    return;
+                }
+                
+                if (confirm('Stitch the selected videos together?')) {
+                    try {
+                        this.textContent = 'Stitching...';
+                        this.disabled = true;
+                        
+                        const response = await fetch('/stitch-videos', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ video_paths: videoPaths })
+                        });
+                        
+                        if (response.ok) {
+                            alert('Videos stitched successfully!');
+                            await refreshJobLog();
+                        } else {
+                            const error = await response.json();
+                            alert('Error stitching videos: ' + (error.error || 'Unknown error'));
+                        }
+                    } catch (error) {
+                        alert('Network error: ' + error.message);
+                    } finally {
+                        this.textContent = '🎬 Stitch Selected Videos (0)';
+                        this.disabled = true;
+                    }
+                }
+            });
+        }
+        
+        // Process pending animations button
+        const processPendingBtn = document.getElementById('process-pending-btn');
+        if (processPendingBtn) {
+            processPendingBtn.addEventListener('click', async function() {
+                if (confirm('Process all pending review animations for keying?')) {
+                    try {
+                        const response = await fetch('/process-all-pending', { method: 'POST' });
+                        if (response.ok) {
+                            alert('All pending animations have been queued for processing!');
+                            await refreshJobLog();
+                        } else {
+                            alert('Error processing pending animations.');
+                        }
+                    } catch (error) {
+                        alert('Network error: ' + error.message);
+                    }
+                }
+            });
+        }
+        
+        // Clear failed jobs button
+        const clearFailedBtn = document.getElementById('clear-failed-btn');
+        if (clearFailedBtn) {
+            clearFailedBtn.addEventListener('click', async function() {
+                if (confirm('Clear all failed jobs from the database? This action cannot be undone.')) {
+                    try {
+                        this.textContent = 'Clearing...';
+                        this.disabled = true;
+                        
+                        const response = await fetch('/api/clear-failed-jobs', { method: 'POST' });
+                        if (response.ok) {
+                            const result = await response.json();
+                            alert(result.message);
+                            await refreshJobLog();
+                        } else {
+                            const error = await response.json();
+                            alert('Error: ' + (error.error || 'Unknown error'));
+                        }
+                    } catch (error) {
+                        alert('Network error: ' + error.message);
+                    } finally {
+                        this.textContent = '🧹 Clear Failed';
+                        this.disabled = false;
+                    }
+                }
+            });
+        }
+        
+        // Clear stuck jobs button
+        const clearStuckBtn = document.getElementById('clear-stuck-btn');
+        if (clearStuckBtn) {
+            clearStuckBtn.addEventListener('click', async function() {
+                if (confirm('Clear all stuck processing jobs? This will cancel jobs that are taking too long (processing, stitching, keying). This action cannot be undone.')) {
+                    try {
+                        this.textContent = 'Clearing...';
+                        this.disabled = true;
+                        
+                        const response = await fetch('/api/clear-stuck-jobs', { method: 'POST' });
+                        if (response.ok) {
+                            const result = await response.json();
+                            alert(result.message);
+                            await refreshJobLog();
+                        } else {
+                            const error = await response.json();
+                            alert('Error: ' + (error.error || 'Unknown error'));
+                        }
+                    } catch (error) {
+                        alert('Network error: ' + error.message);
+                    } finally {
+                        this.textContent = '⚠️ Clear Stuck';
+                        this.disabled = false;
+                    }
+                }
+            });
+        }
+        
+        // Clear all jobs button
+        const clearAllBtn = document.getElementById('clear-all-btn');
+        if (clearAllBtn) {
+            clearAllBtn.addEventListener('click', async function() {
+                if (confirm('⚠️ DANGER: Clear ALL jobs from the database? This will delete EVERYTHING and cannot be undone!')) {
+                    if (confirm('Are you absolutely sure? This will permanently delete all jobs, completed work, and job history.')) {
+                        try {
+                            this.textContent = 'Clearing...';
+                            this.disabled = true;
+                            
+                            const response = await fetch('/api/clear-all-jobs', { method: 'POST' });
+                            if (response.ok) {
+                                const result = await response.json();
+                                alert(result.message);
+                                await refreshJobLog();
+                            } else {
+                                const error = await response.json();
+                                alert('Error: ' + (error.error || 'Unknown error'));
+                            }
+                        } catch (error) {
+                            alert('Network error: ' + error.message);
+                        } finally {
+                            this.textContent = '🗑️ Clear All Jobs';
+                            this.disabled = false;
+                        }
+                    }
+                }
+            });
+        }
+
+        // Initialize
+        console.log("🚀 Starting job log...");
+        setupInteractiveHandlers();
+        refreshJobLog();
+        startAutoRefresh();
+    });
+</script>
+{% endblock %}

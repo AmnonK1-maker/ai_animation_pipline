@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block title %}Fine-Tune Keying{% endblock %}
+{% block content %}
+<style>
+    .container { 
+        max-width: 900px; 
+        margin: auto; 
+    }
+    :root {
+        --checker-color1: #808080;
+        --checker-color2: #c0c0c0;
+        --checker-size: 20px;
+    }
+    .video-container {
+        width: 100%; 
+        aspect-ratio: 16/9;
+        margin-bottom: 20px; 
+        border-radius: 8px; 
+        overflow: hidden;
+        display: flex; 
+        justify-content: center; 
+        align-items: center;
+        background-color: var(--checker-color2);
+        background-image: 
+            linear-gradient(45deg, var(--checker-color1) 25%, transparent 25%),
+            linear-gradient(-45deg, var(--checker-color1) 25%, transparent 25%),
+            linear-gradient(45deg, transparent 75%, var(--checker-color1) 75%),
+            linear-gradient(-45deg, transparent 75%, var(--checker-color1) 75%);
+        background-size: var(--checker-size) var(--checker-size);
+        background-position: 0 0, 0 calc(var(--checker-size)/2), calc(var(--checker-size)/2) calc(var(--checker-size)/-2), calc(var(--checker-size)/-2) 0px;
+    }
+    .video-container video, .video-container img {
+        max-width: 100%; 
+        max-height: 100%; 
+        object-fit: contain;
+    }
+    .all-controls {
+        background-color: #f8f9fa;
+        padding: 20px;
+        border-radius: 8px;
+    }
+    .controls-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+        align-items: center;
+    }
+    .slider-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+    }
+    .slider-group span { font-family: monospace; }
+    input[type="range"] { width: 100%; }
+    
+    .background-controls {
+        margin-top: 20px;
+        padding-top: 20px;
+        border-top: 1px solid #ddd;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        align-items: center;
+    }
+    .bg-control-group { display: flex; align-items: center; gap: 10px; }
+    
+    .action-buttons {
+        margin-top: 30px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 15px;
+    }
+    .action-buttons button {
+        color: white; 
+        border: none; 
+        padding: 12px 20px; 
+        font-size: 16px; 
+        font-weight: bold;
+        border-radius: 8px; 
+        cursor: pointer; 
+        transition: background-color 0.3s;
+    }
+    #preview-btn { background-color: #007bff; flex-grow: 2; }
+    #save-settings-btn { background-color: #28a745; flex-grow: 2; }
+    #prev-frame-btn, #next-frame-btn {
+        background-color: #6c757d;
+        flex-grow: 1;
+    }
+
+</style>
+
+<div class="container">
+    <h1>Fine-Tune Chroma Key</h1>
+    <p>Use the frame-by-frame buttons for precise positioning, then click 'Preview Frame' to see your changes.</p>
+    
+    <div class="video-container">
+        <video id="video-preview" src="/{{ job.result_data }}" playsinline controls></video>
+        <img id="image-preview" src="" alt="Keying Preview" style="display: none; cursor: pointer;" title="Click to return to video">
+    </div>
+
+    <div class="all-controls">
+        <form action="/save-keying-settings/{{ job.id }}" method="POST" id="keying-form">
+            <h3>Keying Controls</h3>
+            <div class="controls-grid">
+                <div class="slider-group"><label>Hue Center: <span id="hue_center_val">60</span></label><input type="range" id="hue_center" name="hue_center" min="0" max="180" value="60" class="slider"></div>
+                <div class="slider-group"><label>Hue Tolerance: <span id="hue_tolerance_val">25</span></label><input type="range" id="hue_tolerance" name="hue_tolerance" min="0" max="50" value="25" class="slider"></div>
+                <div class="slider-group"><label>Saturation Min: <span id="saturation_min_val">50</span></label><input type="range" id="saturation_min" name="saturation_min" min="0" max="255" value="50" class="slider"></div>
+                <div class="slider-group"><label>Value Min: <span id="value_min_val">50</span></label><input type="range" id="value_min" name="value_min" min="0" max="255" value="50" class="slider"></div>
+                <div class="slider-group"><label>Choke/Erode: <span id="erode_val">2</span></label><input type="range" id="erode" name="erode" min="0" max="10" value="2" class="slider"></div>
+                <div class="slider-group"><label>Soften/Dilate: <span id="dilate_val">1</span></label><input type="range" id="dilate" name="dilate" min="0" max="10" value="1" class="slider"></div>
+                <div class="slider-group"><label>Edge Blur: <span id="blur_val">5</span></label><input type="range" id="blur" name="blur" min="0" max="21" value="5" step="2" class="slider"></div>
+                <div class="slider-group"><label>Spill Suppression: <span id="spill_val">2</span></label><input type="range" id="spill" name="spill" min="0" max="10" value="2" class="slider"></div>
+            </div>
+            
+            <div class="background-controls">
+                <h3 style="grid-column: 1 / -1;">Background Controls</h3>
+                <div class="bg-control-group"><label>Color 1:</label><input type="color" id="checkerColor1" value="#808080"></div>
+                <div class="bg-control-group"><label>Color 2:</label><input type="color" id="checkerColor2" value="#c0c0c0"></div>
+                <div class="bg-control-group"><label>Size (px):</label><input type="number" id="checkerSize" value="20" min="5" max="100"></div>
+            </div>
+
+            <div class="action-buttons">
+                <button type="button" id="prev-frame-btn">◄ Prev Frame</button>
+                <button type="button" id="next-frame-btn">Next Frame ►</button>
+                <button type="button" id="preview-btn">Preview Frame</button>
+                <button type="submit" id="save-settings-btn">Save Keying Settings</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const videoPreview = document.getElementById('video-preview');
+        const imagePreview = document.getElementById('image-preview');
+        const previewBtn = document.getElementById('preview-btn');
+        const sliders = document.querySelectorAll('.slider');
+        const prevFrameBtn = document.getElementById('prev-frame-btn');
+        const nextFrameBtn = document.getElementById('next-frame-btn');
+        
+        const FPS = {{ fps | default(30) }};
+        const FRAME_DURATION = 1 / FPS;
+
+        function seekVideo(direction) {
+            videoPreview.pause();
+            let newTime = videoPreview.currentTime + (FRAME_DURATION * direction);
+            videoPreview.currentTime = Math.max(0, Math.min(videoPreview.duration, newTime));
+        }
+
+        prevFrameBtn.addEventListener('click', () => seekVideo(-1));
+        nextFrameBtn.addEventListener('click', () => seekVideo(1));
+
+        sliders.forEach(slider => {
+            const display = document.getElementById(`${slider.id}_val`);
+            if (display) {
+                slider.addEventListener('input', () => { display.textContent = slider.value; });
+            }
+        });
+
+        previewBtn.addEventListener('click', async () => {
+            previewBtn.textContent = 'Processing...';
+            previewBtn.disabled = true;
+            
+            const formData = new FormData();
+            formData.append('video_path', videoPreview.getAttribute('src'));
+            formData.append('frame_time', videoPreview.currentTime);
+            document.querySelectorAll('.slider').forEach(s => formData.append(s.name, s.value));
+
+            try {
+                const response = await fetch('/api/preview-frame', { method: 'POST', body: formData });
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Preview failed (${response.status}): ${errorText}`);
+                }
+                
+                const blob = await response.blob();
+                if (imagePreview.src) URL.revokeObjectURL(imagePreview.src);
+                imagePreview.src = URL.createObjectURL(blob);
+                
+                videoPreview.style.display = 'none';
+                imagePreview.style.display = 'block';
+
+            } catch (error) {
+                console.error('Preview error:', error);
+                alert('Could not generate preview. Check console for details.');
+            } finally {
+                previewBtn.textContent = 'Preview Frame';
+                previewBtn.disabled = false;
+            }
+        });
+
+        imagePreview.addEventListener('click', () => {
+            imagePreview.style.display = 'none';
+            videoPreview.style.display = 'block';
+        });
+
+        const root = document.documentElement;
+        const checkerColor1 = document.getElementById('checkerColor1');
+        const checkerColor2 = document.getElementById('checkerColor2');
+        const checkerSize = document.getElementById('checkerSize');
+
+        checkerColor1.addEventListener('input', () => root.style.setProperty('--checker-color1', checkerColor1.value));
+        checkerColor2.addEventListener('input', () => root.style.setProperty('--checker-color2', checkerColor2.value));
+        checkerSize.addEventListener('input', () => root.style.setProperty('--checker-size', `${checkerSize.value}px`));
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AI Workflow App{% endblock %}</title>
+    <style>
+        html, body { 
+            margin: 0; 
+            padding: 0; 
+            font-family: sans-serif;
+            background-color: #f4f4f9; 
+            color: #333;
+        }
+        .main-layout {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px 40px;
+        }
+        .status-badge {
+            display: inline-flex; align-items: center; border-radius: 12px;
+            padding: 4px 10px; font-size: 12px; font-weight: 600; color: white;
+            white-space: nowrap;
+        }
+        .status-queued, .status-keying-queued { background-color: #6c757d; }
+        .status-processing, .status-keying-processing { background-color: #007bff; }
+        .status-completed { background-color: #17a2b8; }
+        .status-pending-review { background-color: #ffc107; color: #212529; }
+        .status-pending-process { background-color: #28a745; }
+        .status-failed { background-color: #dc3545; }
+        .status-waiting-for-children, .status-stitching { background-color: #fd7e14; }
+        
+        textarea:disabled {
+            background-color: #e9ecef;
+            cursor: not-allowed;
+        }
+        .unlock-prompt-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-layout">
+        {% block content %}{% endblock %}
+    </div>
+    
+    {% block scripts %}
+    <script>
+        document.body.addEventListener('submit', async function(event) {
+            if (event.target.tagName.toLowerCase() !== 'form') return;
+            // Exclude forms that have a dedicated handler
+            if (event.target.classList.contains('no-global-handler')) return;
+            
+            event.preventDefault();
+            const form = event.target;
+            const submitButton = form.querySelector('button[type="submit"]');
+            let originalButtonText = '';
+            
+            if (submitButton) {
+                originalButtonText = submitButton.innerHTML;
+                submitButton.innerHTML = 'Queuing...';
+                submitButton.disabled = true;
+            }
+
+            try {
+                const formData = new FormData(form);
+                const response = await fetch(form.action, { method: 'POST', body: formData });
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || `Server responded with status ${response.status}`);
+                }
+                
+                if (window.location.pathname.startsWith('/animate-image')) {
+                    // If we are on the animation page and uploaded a file, the server will redirect
+                    const responseUrl = new URL(response.url);
+                    if (responseUrl.pathname === '/animate-image' && responseUrl.searchParams.has('image_url')) {
+                         window.location.href = response.url; // Follow the redirect
+                    }
+                } else if (window.refreshJobLog) {
+                    await window.refreshJobLog();
+                    document.getElementById('log-section')?.scrollIntoView({ behavior: 'smooth' });
+                }
+                form.reset();
+
+            } catch (error) {
+                console.error('Form submission error:', error);
+                alert(`There was an error submitting your job: ${error.message}`);
+            } finally {
+                if (submitButton) {
+                    submitButton.innerHTML = originalButtonText;
+                    submitButton.disabled = false;
+                }
+            }
+        });
+    </script>
+    {% endblock %}
+</body>
+</html>
