@@ -52,6 +52,9 @@ This is a comprehensive Flask-based web application for AI-powered media creatio
 - RESOLVED: Process pending keys functionality - fixed job status transitions
 - Added automatic ffmpeg process cleanup to prevent hung processes
 - Enhanced UI with job cancellation and bulk cleanup features
+- RESOLVED: Style analyzer unlock checkbox - textarea now properly enables/disables for editing
+- Added startup script (start_app.sh) with environment validation and automatic setup
+- Enhanced debugging with job count logging and console feedback for troubleshooting
 
 ## Job Types & Workflow
 1. `image_generation`: Create images via AI models
@@ -93,25 +96,29 @@ This is a comprehensive Flask-based web application for AI-powered media creatio
 
 ## Environment Setup
 ```bash
-# Activate environment
+# Easy Way (Recommended) - One Command:
+./start_app.sh
+
+# Manual Way - Two Terminals:
 source venv/bin/activate
+flask run --host=0.0.0.0 --port=5001  # Terminal 1: Web server
+python3 worker.py                      # Terminal 2: Background processor (optional)
 
-# Run application (2 terminals required)
-python3 app.py      # Terminal 1: Web server
-python3 worker.py   # Terminal 2: Background processor
-
-# Access: http://127.0.0.1:5001
+# Access: http://localhost:5001
 ```
 
 ## All Features Working ✅
 ✅ **Video stitching keying**: RESOLVED - Worker routing bug fixed, stitched jobs now properly create transparent .webm files
 ✅ **Animation keying**: Works perfectly, creates proper transparent .webm files
 ✅ **Keying workflow**: Process pending keys functionality completely fixed
+✅ **Style analyzer unlock**: RESOLVED - Checkbox now properly enables/disables textarea for editing
+✅ **Job visibility**: Debug logging added, startup script ensures proper app launch
 ✅ **Job selectability**: All jobs (except actively processing) now have checkboxes
 ✅ **Stitching automation**: Boomerang loops auto-stitch without user intervention
 ✅ **Performance**: Fast stitching with timeout protection prevents hanging
 ✅ **Process management**: Automatic cleanup of stuck ffmpeg processes
 ✅ **UI enhancements**: Job cancellation, bulk cleanup, gallery support for video_stitching
+✅ **Startup automation**: One-command startup with environment validation and port handling
 
 ## Current Status
 ✅ Core functionality: Image generation, animations, boomerang automation all working
@@ -121,4 +128,4 @@ python3 worker.py   # Terminal 2: Background processor
 ✅ Error handling: Timeout protection, stuck process detection, worker auto-restart
 ✅ Complete keying workflow: Both animations and stitched videos support full keying pipeline
 
-**Status**: The application is production-ready with advanced workflow automation. All major features and workflows are fully functional.
+**Status**: The application is production-ready with advanced workflow automation. All major features and workflows are fully functional. Latest user-reported issues (style analyzer unlock & job visibility) have been resolved with enhanced debugging and startup automation.

@@ -93,20 +93,28 @@ A comprehensive Flask-based application for AI-powered image generation, animati
 
 3. **Run the Application**
    
+   **Easy Way (Recommended) - One Command:**
+   ```bash
+   ./start_app.sh
+   ```
+   This script automatically handles virtual environment, port conflicts, and provides clear instructions.
+   
+   **Manual Way - Two Terminals:**
+   
    **Terminal 1 - Web Server:**
    ```bash
    source venv/bin/activate
-   python3 app.py
+   flask run --host=0.0.0.0 --port=5001
    ```
    
-   **Terminal 2 - Background Worker:**
+   **Terminal 2 - Background Worker (Optional):**
    ```bash
    source venv/bin/activate
    python3 worker.py
    ```
 
 4. **Access Dashboard**
-   Open http://127.0.0.1:5001 in your browser
+   Open http://localhost:5001 in your browser
 
 ## 🎮 Usage Guide
 
@@ -220,6 +228,9 @@ kling_app/
 - ✅ **Video Stitching Keying**: Resolved worker routing bug - stitched videos now properly create keyed .webm files
 - ✅ **UI Library Support**: Added video_stitching job support to library gallery with keyed/original view options
 - ✅ **Process Management**: Added automatic ffmpeg cleanup to prevent stuck processes
+- ✅ **Style Analyzer Fix**: Fixed unlock checkbox functionality - textarea now properly enables/disables for editing
+- ✅ **Startup Automation**: Added start_app.sh script with environment validation and automatic port handling
+- ✅ **Debug Enhancements**: Added job count logging and console feedback for better troubleshooting
 
 ### Git Workflow
 ```bash
