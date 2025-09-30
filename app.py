@@ -260,6 +260,64 @@ def process_all_pending():
         else:
             return jsonify({"success": True, "message": "No pending videos found to process."})
 
+@app.route("/process-selected-pending", methods=["POST"])
+def process_selected_pending():
+    """Process only selected pending jobs for keying"""
+    data = request.get_json()
+    job_ids = data.get('job_ids', [])
+    
+    if not job_ids:
+        return jsonify({"success": False, "error": "No job IDs provided."}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Validate and process each job ID
+            processed_jobs = []
+            placeholders = ','.join('?' for _ in job_ids)
+            
+            # Get jobs that can be processed for keying
+            jobs_query = f"""
+                SELECT id, job_type, status, keying_settings FROM jobs 
+                WHERE id IN ({placeholders}) 
+                AND job_type IN ('animation', 'video_stitching')
+                AND status IN ('pending_review', 'completed', 'pending_process')
+            """
+            jobs_to_process = cursor.execute(jobs_query, job_ids).fetchall()
+            
+            if not jobs_to_process:
+                return jsonify({"success": False, "error": "No valid jobs found for keying processing."}), 400
+            
+            for job in jobs_to_process:
+                if job['status'] == 'pending_process' or (job['keying_settings'] and job['keying_settings'].strip()):
+                    # Job already has custom settings, just queue it
+                    cursor.execute("UPDATE jobs SET status = 'keying_queued' WHERE id = ?", (job['id'],))
+                    processed_jobs.append(f"#{job['id']} (custom settings)")
+                else:
+                    # Add default keying settings
+                    default_settings = {
+                        "hue_center": 60, "hue_tolerance": 25,
+                        "saturation_min": 50, "value_min": 50,
+                        "erode": 2, "dilate": 1, "blur": 5, "spill": 2
+                    }
+                    cursor.execute(
+                        "UPDATE jobs SET status = 'keying_queued', keying_settings = ? WHERE id = ?",
+                        (json.dumps(default_settings), job['id'])
+                    )
+                    processed_jobs.append(f"#{job['id']} (default settings)")
+            
+            conn.commit()
+            
+            message = f"Queued {len(processed_jobs)} selected job(s) for keying: {', '.join(processed_jobs)}"
+            print(f"-> {message}")
+            
+            return jsonify({"success": True, "message": message})
+            
+    except Exception as e:
+        print(f"ERROR in /process-selected-pending: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route("/animate-image")
 def animate_image_page():
     image_url = request.args.get("image_url")

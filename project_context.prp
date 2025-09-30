@@ -16,10 +16,10 @@ This is a comprehensive Flask-based web application for AI-powered media creatio
 - **Video Processing**: FFmpeg for stitching, OpenCV for frame extraction/chroma keying
 
 ## Critical Files
-- `app.py`: Main Flask application (543 lines) - routes, database, API endpoints
-- `worker.py`: Background job processor (466 lines) - AI API calls, job processing
-- `video_processor.py`: Video utilities (146 lines) - stitching, chroma keying
-- `templates/index.html`: Main UI (869 lines) - dashboard, job log, interactive features
+- `app.py`: Main Flask application (803 lines) - routes, database, API endpoints
+- `worker.py`: Background job processor (625 lines) - AI API calls, job processing
+- `video_processor.py`: Video utilities (205 lines) - stitching, chroma keying
+- `templates/index.html`: Main UI (1350 lines) - dashboard, job log, interactive features
 - `templates/fine_tune.html`: Chroma keying interface
 - `templates/animation_step.html`: Animation creation form
 
@@ -55,6 +55,17 @@ This is a comprehensive Flask-based web application for AI-powered media creatio
 - RESOLVED: Style analyzer unlock checkbox - textarea now properly enables/disables for editing
 - Added startup script (start_app.sh) with environment validation and automatic setup
 - Enhanced debugging with job count logging and console feedback for troubleshooting
+
+## Latest Session Fixes (September 30, 2025) - All Resolved
+- **Style Analyzer Integration**: Fixed HTML encoding/decoding bug in "Use This" button
+- **Auto-Refresh Intelligence**: Auto-refresh now properly resumes when job details closed
+- **File Path Consistency**: Added path normalization to fix image/video display after restart
+- **Smart Timeout Management**: Kling 2.1 timeout extended to 8min, keying to 15min
+- **Process Control Enhancement**: Dual button system for pending keys processing
+- **Intelligent Stuck Detection**: Prevents false STUCK warnings during paused refresh
+- **URL Malformation Fix**: Eliminated browser 404 errors from invalid path construction
+- **Selection State Management**: Fixed stale DOM references causing ghost button counts
+- **Local Processing Optimization**: Perfect keying workflow with smart UI state management
 
 ## Job Types & Workflow
 1. `image_generation`: Create images via AI models

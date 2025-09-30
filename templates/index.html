@@ -41,6 +41,7 @@
         box-sizing: border-box;
     }
     #process-pending-btn { background-color: #28a745; }
+    #process-selected-btn { display: none; background-color: #17a2b8; }
     #stitch-videos-btn { display: none; background-color: #6f42c1; }
     #delete-selected-btn { display: none; background-color: #dc3545; }
     .refresh-btn { background-color: #6c757d; }
@@ -215,7 +216,8 @@
         <div class="job-log-header-actions">
             <button id="delete-selected-btn" class="action-btn">🗑️ Delete Selected (0)</button>
             <button id="stitch-videos-btn" class="action-btn">🎬 Stitch Selected Videos (0)</button>
-            <button id="process-pending-btn" class="action-btn">⚙️ Process Pending Keys</button>
+            <button id="process-pending-btn" class="action-btn" style="background-color: #28a745;">⚙️ Process Pending Keys</button>
+            <button id="process-selected-btn" class="action-btn" style="display: none;">⚙️ Process Selected Keys (0)</button>
             <button id="clear-failed-btn" class="action-btn" style="background-color: #dc3545;">🧹 Clear Failed</button>
             <button id="clear-stuck-btn" class="action-btn" style="background-color: #ff6b6b;">⚠️ Clear Stuck</button>
             <button id="clear-all-btn" class="action-btn" style="background-color: #6c757d;">🗑️ Clear All Jobs</button>
@@ -254,6 +256,38 @@
         let autoRefreshInterval;
         const AUTO_REFRESH_RATE = 5000;
         
+        // Helper function to update button states based on current DOM
+        function updateButtonStates() {
+            const allSelected = document.querySelectorAll('.selection-checkbox:checked');
+            const videoCheckboxes = document.querySelectorAll('.video-stitch-checkbox:checked');
+            
+            // Count selected jobs that can be processed for keying (animations and video_stitching)
+            const pendingKeyingJobs = Array.from(allSelected).filter(cb => {
+                const jobType = cb.dataset.jobType || '';
+                return (jobType === 'animation' || jobType === 'video_stitching');
+            });
+            
+            const deleteSelectedBtn = document.getElementById('delete-selected-btn');
+            const stitchBtn = document.getElementById('stitch-videos-btn');
+            const processSelectedBtn = document.getElementById('process-selected-btn');
+            
+            if (deleteSelectedBtn) {
+                deleteSelectedBtn.textContent = `🗑️ Delete Selected (${allSelected.length})`;
+                deleteSelectedBtn.style.display = allSelected.length > 0 ? 'inline-flex' : 'none';
+            }
+            
+            if (stitchBtn) {
+                stitchBtn.textContent = `🎬 Stitch Selected Videos (${videoCheckboxes.length})`;
+                stitchBtn.style.display = videoCheckboxes.length > 0 ? 'inline-flex' : 'none';
+                stitchBtn.disabled = videoCheckboxes.length !== 2;
+            }
+            
+            if (processSelectedBtn) {
+                processSelectedBtn.textContent = `⚙️ Process Selected Keys (${pendingKeyingJobs.length})`;
+                processSelectedBtn.style.display = pendingKeyingJobs.length > 0 ? 'inline-flex' : 'none';
+            }
+        }
+
         // Main function to load and display jobs
         async function refreshJobLog() {
             if (!logBody) {
@@ -283,6 +317,9 @@
                 logBody.innerHTML = html;
                 console.log(`✅ Loaded ${jobs.length} jobs successfully`);
                 
+                // Reset button states after DOM refresh (fixes stale checkbox references)
+                updateButtonStates();
+                
             } catch (error) {
                 console.error('❌ Error loading jobs:', error);
                 logBody.innerHTML = `<p style="color: red;">Error loading jobs: ${error.message}</p>`;
@@ -305,11 +342,42 @@
             return leonardoModelNames[modelId] || modelId;
         }
         
+        // Helper function to normalize file paths for consistent display
+        function normalizeFilePath(filePath) {
+            if (!filePath || typeof filePath !== 'string') return '';
+            
+            // Skip clearly invalid paths - return empty string to avoid broken URLs
+            if (filePath.length > 200 || filePath.includes(' ') || !filePath.includes('.') || 
+                filePath.startsWith('{') || filePath.includes('{') || filePath.includes('}') ||
+                filePath.startsWith('This ') || filePath.startsWith('Error:')) {
+                console.warn('Invalid file path detected and skipped:', filePath);
+                return '';
+            }
+            
+            // Remove any leading slashes and ensure consistent format
+            let normalized = filePath.replace(/^\/+/, '');
+            // If path doesn't start with 'static/', add it
+            if (!normalized.startsWith('static/')) {
+                normalized = `static/${normalized}`;
+            }
+            return normalized;
+        }
+
         // Complete job rendering function with all features
         function createLogItemHTML(job) {
             const jobTypeDisplay = job.job_type.replace(/_/g, ' ');
             const statusClass = `status-${job.status.replace(/_/g, '-')}`;
-            const outputUrl = job.keyed_result_data || job.result_data;
+            const rawOutputUrl = job.keyed_result_data || job.result_data;
+            const outputUrl = normalizeFilePath(rawOutputUrl);
+            
+            // Parse input data safely first (needed for stuck detection)
+            let inputData;
+            try {
+                inputData = typeof job.input_data === 'string' ? JSON.parse(job.input_data || '{}') : job.input_data || {};
+            } catch (e) {
+                console.warn('Failed to parse input_data for job', job.id, e);
+                inputData = {};
+            }
             
             // Check if job is stuck (different timeouts for different job types)
             const createdAt = new Date(job.created_at);
@@ -320,19 +388,25 @@
             if (job.job_type === 'video_stitching') {
                 stuckThreshold = 0.5; // 30 seconds for stitching
             } else if (job.status === 'keying_processing') {
-                stuckThreshold = 3; // 3 minutes for keying (more intensive)
+                stuckThreshold = 15; // 15 minutes for keying (can be very time-intensive)
+            } else if (job.job_type === 'animation') {
+                // Check if using Kling model which takes longer
+                const videoModel = inputData.video_model || '';
+                if (videoModel.includes('kling')) {
+                    stuckThreshold = 8; // 8 minutes for Kling models (they take much longer)
+                } else {
+                    stuckThreshold = 5; // 5 minutes for other animation models
+                }
             }
             
-            const isStuck = ['processing', 'keying_processing', 'stitching'].includes(job.status) && minutesRunning > stuckThreshold;
+            // Safety check: don't mark as stuck if minutes calculation seems wrong
+            const isTimeValid = !isNaN(minutesRunning) && minutesRunning >= 0 && minutesRunning < 1440; // Less than 24 hours
+            const isStuck = isTimeValid && ['processing', 'keying_processing', 'stitching'].includes(job.status) && minutesRunning > stuckThreshold;
             
-            // Parse input data safely
-            let inputData;
-            try {
-                inputData = typeof job.input_data === 'string' ? JSON.parse(job.input_data || '{}') : job.input_data || {};
-            } catch (e) {
-                console.warn('Failed to parse input_data for job', job.id, e);
-                inputData = {};
-            }
+            // Don't show stuck indicator if auto-refresh is paused (user might be reviewing job details)
+            const refreshButton = document.getElementById('refresh-log-btn');
+            const isRefreshPaused = refreshButton && refreshButton.classList.contains('active');
+            const shouldShowStuck = isStuck && !isRefreshPaused;
             
             // For frame extraction, the output is always an image, not a video
             const isVideo = job.job_type !== 'frame_extraction' && 
@@ -348,17 +422,20 @@
             // Generate thumbnail for collapsed view
             let summaryThumbnailHTML = '';
             if (job.job_type.includes('analysis') && inputData.image_path) {
-                summaryThumbnailHTML = `<img src="/${inputData.image_path}" class="log-item-thumbnail" alt="Input Image">`;
+                const safePath = normalizeFilePath(inputData.image_path);
+                if (safePath) summaryThumbnailHTML = `<img src="/${safePath}" class="log-item-thumbnail" alt="Input Image">`;
             } else if (job.job_type === 'frame_extraction' && typeof outputUrl === 'string' && outputUrl) {
                 // Frame extraction always produces an image
-                summaryThumbnailHTML = `<img src="/${outputUrl}" class="log-item-thumbnail" alt="Extracted Frame">`;
+                const safeOutput = normalizeFilePath(outputUrl);
+                if (safeOutput) summaryThumbnailHTML = `<img src="/${safeOutput}" class="log-item-thumbnail" alt="Extracted Frame">`;
             } else if (typeof outputUrl === 'string' && outputUrl && 
                       (outputUrl.includes('.') || outputUrl.includes('/')) && 
                       !outputUrl.includes('This image') && outputUrl.length < 200) {
                 if (isVideo) {
                     summaryThumbnailHTML = '<span class="log-item-pills" style="padding: 4px 6px; font-size: 18px;">🎬</span>';
                 } else {
-                    summaryThumbnailHTML = `<img src="/${outputUrl}" class="log-item-thumbnail" alt="Image Thumbnail">`;
+                    const safeOutput = normalizeFilePath(outputUrl);
+                    if (safeOutput) summaryThumbnailHTML = `<img src="/${safeOutput}" class="log-item-thumbnail" alt="Image Thumbnail">`;
                 }
             }
 
@@ -372,13 +449,19 @@
                 
                 // Image-based actions
                 if (['image_generation', 'background_removal', 'frame_extraction'].includes(job.job_type)) {
-                    actionsHTML += `<a href="/animate-image?parent_job_id=${job.id}&image_url=/${outputUrl}" class="action-btn" style="background-color:#007bff;">🎬 Animate</a>`;
-                    actionsHTML += `<form action="/remove-background" method="POST" class="button-form"><input type="hidden" name="image_url" value="/${outputUrl}"><input type="hidden" name="parent_job_id" value="${job.id}"><button type="submit" class="action-btn" style="background-color:#17a2b8;">✨ Remove BG</button></form>`;
+                    const safeImageUrl = normalizeFilePath(outputUrl);
+                    if (safeImageUrl) {
+                        actionsHTML += `<a href="/animate-image?parent_job_id=${job.id}&image_url=/${safeImageUrl}" class="action-btn" style="background-color:#007bff;">🎬 Animate</a>`;
+                        actionsHTML += `<form action="/remove-background" method="POST" class="button-form"><input type="hidden" name="image_url" value="/${safeImageUrl}"><input type="hidden" name="parent_job_id" value="${job.id}"><button type="submit" class="action-btn" style="background-color:#17a2b8;">✨ Remove BG</button></form>`;
+                    }
                 }
                 
                 // Video-based actions
                 if ((job.job_type === 'animation' || job.job_type === 'video_stitching') && isVideo) {
-                    actionsHTML += `<button class="action-btn extract-frame-btn" data-job-id="${job.id}" data-video-src="/${outputUrl}" style="background-color: #17a2b8;">🖼️ Extract Frame</button>`;
+                    const safeVideoUrl = normalizeFilePath(outputUrl);
+                    if (safeVideoUrl) {
+                        actionsHTML += `<button class="action-btn extract-frame-btn" data-job-id="${job.id}" data-video-src="/${safeVideoUrl}" style="background-color: #17a2b8;">🖼️ Extract Frame</button>`;
+                    }
                 }
             }
             
@@ -472,16 +555,21 @@
             // Generate visual content (input images, output images/videos)
             let visualsHTML = '';
             if (job.job_type === 'animation' || job.job_type === 'boomerang_automation') {
-                if(inputData.image_url) visualsHTML += `<h4>Start Frame</h4><img src="${inputData.image_url}" class="thumbnail">`;
-                if(inputData.end_image_url) visualsHTML += `<h4>End Frame</h4><img src="${inputData.end_image_url}" class="thumbnail">`;
+                const startPath = normalizeFilePath(inputData.image_url);
+                const endPath = normalizeFilePath(inputData.end_image_url);
+                if(inputData.image_url && startPath) visualsHTML += `<h4>Start Frame</h4><img src="/${startPath}" class="thumbnail">`;
+                if(inputData.end_image_url && endPath) visualsHTML += `<h4>End Frame</h4><img src="/${endPath}" class="thumbnail">`;
             } else if (job.job_type === 'frame_extraction' && inputData.source_video) {
                 // For frame extraction, show the source video as input
-                visualsHTML += `<h4>Source Video</h4><video src="/${inputData.source_video}" controls class="thumbnail" style="max-width: 200px;"></video>`;
+                const videoPath = normalizeFilePath(inputData.source_video);
+                if (videoPath) visualsHTML += `<h4>Source Video</h4><video src="/${videoPath}" controls class="thumbnail" style="max-width: 200px;"></video>`;
             } else if (job.parent_id && job.parent_result_data && job.job_type !== 'frame_extraction') {
                 // Don't show parent result for frame extraction since we handle it above
-                visualsHTML += `<h4>Input <span style="font-weight:normal; color:#666;">(From Job #${job.parent_id})</span></h4><img src="/${job.parent_result_data}" alt="Parent task output" class="thumbnail">`;
+                const parentPath = normalizeFilePath(job.parent_result_data);
+                if (parentPath) visualsHTML += `<h4>Input <span style="font-weight:normal; color:#666;">(From Job #${job.parent_id})</span></h4><img src="/${parentPath}" alt="Parent task output" class="thumbnail">`;
             } else if (job.job_type.includes('analysis') && inputData.image_path) {
-                visualsHTML += `<h4>Input Image</h4><img src="/${inputData.image_path}" class="thumbnail">`;
+                const imagePath = normalizeFilePath(inputData.image_path);
+                if (imagePath) visualsHTML += `<h4>Input Image</h4><img src="/${imagePath}" class="thumbnail">`;
             }
             
             // Add output preview - only for actual file paths, not text content
@@ -489,30 +577,33 @@
                 (outputUrl.includes('.') || outputUrl.includes('/')) && 
                 !outputUrl.includes('This image') && outputUrl.length < 200) {
                 
-                visualsHTML += `<div class="detail-preview-container"><h4>Output</h4>`;
-                if (job.job_type === 'frame_extraction') {
-                    // Frame extraction always produces an image, even if detected as video path
-                    visualsHTML += `<a href="/${outputUrl}" target="_blank"><img src="/${outputUrl}" class="detail-preview-image" alt="Extracted frame"></a>`;
-                } else if (isVideo) {
-                    visualsHTML += `<video src="/${outputUrl}" controls loop autoplay muted class="detail-preview-image" data-job-id="${job.id}"></video>`;
-                } else {
-                    visualsHTML += `<a href="/${outputUrl}" target="_blank"><img src="/${outputUrl}" class="detail-preview-image" alt="Job output preview"></a>`;
+                const safeOutputUrl = normalizeFilePath(outputUrl);
+                if (safeOutputUrl) {
+                    visualsHTML += `<div class="detail-preview-container"><h4>Output</h4>`;
+                    if (job.job_type === 'frame_extraction') {
+                        // Frame extraction always produces an image, even if detected as video path
+                        visualsHTML += `<a href="/${safeOutputUrl}" target="_blank"><img src="/${safeOutputUrl}" class="detail-preview-image" alt="Extracted frame"></a>`;
+                    } else if (isVideo) {
+                        visualsHTML += `<video src="/${safeOutputUrl}" controls loop autoplay muted class="detail-preview-image" data-job-id="${job.id}"></video>`;
+                    } else {
+                        visualsHTML += `<a href="/${safeOutputUrl}" target="_blank"><img src="/${safeOutputUrl}" class="detail-preview-image" alt="Job output preview"></a>`;
+                    }
+                    visualsHTML += `</div>`;
                 }
-                visualsHTML += `</div>`;
             } else if (job.status === 'completed' && job.job_type !== 'style_analysis' && job.job_type !== 'palette_analysis') {
                 // Only show "output not found" for jobs that should produce file outputs
                 visualsHTML += `<h4>Output</h4><p style="color: #888;">No visual output available.</p>`;
             }
             
             return `
-                <div class="log-item-wrapper ${isStuck ? 'job-stuck-warning' : ''}" data-job-id="${job.id}">
+                <div class="log-item-wrapper ${shouldShowStuck ? 'job-stuck-warning' : ''}" data-job-id="${job.id}">
                     ${isSelectable ? `<input type="checkbox" class="selection-checkbox ${isVideo ? 'video-stitch-checkbox' : ''}" data-job-id="${job.id}" data-video-path="${outputUrl || ''}" data-job-type="${job.job_type}">` : ''}
                     <details class="log-item ${isSelectable ? 'has-checkbox' : ''}">
                         <summary>
                             <div class="log-item-pills">
                                 <span>#${job.id}</span>
                                 <span>${jobTypeDisplay}</span>
-                                <span class="status-badge ${statusClass}">${job.status.replace(/_/g, ' ')}${isStuck ? '<span class="stuck-indicator">STUCK</span>' : ''}</span>
+                                <span class="status-badge ${statusClass}">${job.status.replace(/_/g, ' ')}${shouldShowStuck ? '<span class="stuck-indicator">STUCK</span>' : ''}</span>
                             </div>
                             ${summaryThumbnailHTML}
                             <span class="log-item-prompt">${job.prompt || ''}</span>
@@ -622,14 +713,21 @@
                 if (useBtn) {
                     event.preventDefault();
                     const stylePromptTextarea = document.getElementById('style_prompt');
-                    let resultText = decodeURIComponent(useBtn.dataset.resultText);
+                    // Fix: Properly decode HTML entities instead of URL encoding
+                    let resultText = useBtn.dataset.resultText
+                        .replace(/&quot;/g, '"')
+                        .replace(/&apos;/g, "'")
+                        .replace(/&amp;/g, '&');
                     let styleToUse = resultText;
                     try {
                         const parsedResult = JSON.parse(resultText);
                         if (parsedResult.palette) {
                             styleToUse = parsedResult.palette.map(color => `${color.name} (${color.hex})`).join(', ') + ", vibrant color palette.";
                         }
-                    } catch (e) { /* Use raw text if not JSON */ }
+                    } catch (e) { 
+                        console.log('Using raw text for style analysis result:', resultText);
+                        // Use raw text if not JSON 
+                    }
                     
                     const existingStyle = stylePromptTextarea.value.trim();
                     stylePromptTextarea.value = existingStyle ? `${existingStyle}, ${styleToUse}` : styleToUse;
@@ -794,24 +892,10 @@
             // Handle checkbox selections for batch operations
             logBody.addEventListener('change', event => {
                 if (event.target.classList.contains('selection-checkbox')) {
-                    const allSelected = document.querySelectorAll('.selection-checkbox:checked');
-                    const videoCheckboxes = document.querySelectorAll('.video-stitch-checkbox:checked');
-                    
-                    const deleteSelectedBtn = document.getElementById('delete-selected-btn');
-                    const stitchBtn = document.getElementById('stitch-videos-btn');
-                    
-                    if (deleteSelectedBtn) {
-                        deleteSelectedBtn.textContent = `🗑️ Delete Selected (${allSelected.length})`;
-                        deleteSelectedBtn.style.display = allSelected.length > 0 ? 'inline-flex' : 'none';
-                    }
-                    
-                    if (stitchBtn) {
-                        stitchBtn.textContent = `🎬 Stitch Selected Videos (${videoCheckboxes.length})`;
-                        stitchBtn.style.display = videoCheckboxes.length > 0 ? 'inline-flex' : 'none';
-                        stitchBtn.disabled = videoCheckboxes.length !== 2;
-                    }
+                    updateButtonStates();
                     
                     // Auto-pause refresh when user selects jobs
+                    const allSelected = document.querySelectorAll('.selection-checkbox:checked');
                     if (allSelected.length > 0) {
                         console.log('🔄 Auto-pausing refresh due to job selection');
                         pauseAutoRefresh();
@@ -833,9 +917,18 @@
             
             // Alternative approach using toggle event with better targeting
             logBody.addEventListener('toggle', event => {
-                if (event.target.classList.contains('log-item') && event.target.open) {
-                    console.log('🔄 Auto-pausing refresh due to job details toggle');
-                    pauseAutoRefresh();
+                if (event.target.classList.contains('log-item')) {
+                    if (event.target.open) {
+                        console.log('🔄 Auto-pausing refresh due to job details being opened');
+                        pauseAutoRefresh();
+                    } else {
+                        // Check if any other details are still open
+                        const openDetails = logBody.querySelectorAll('details.log-item[open]');
+                        if (openDetails.length === 0) {
+                            console.log('🔄 Auto-resuming refresh - all job details closed');
+                            startAutoRefresh();
+                        }
+                    }
                 }
             }, true); // Use capture phase
 
@@ -1062,21 +1155,80 @@
             });
         }
         
-        // Process pending animations button
+        // Process all pending keys button (jobs with saved settings)
         const processPendingBtn = document.getElementById('process-pending-btn');
         if (processPendingBtn) {
             processPendingBtn.addEventListener('click', async function() {
-                if (confirm('Process all pending review animations for keying?')) {
+                if (confirm('Process all pending jobs that have keying settings saved?')) {
                     try {
+                        this.textContent = 'Processing...';
+                        this.disabled = true;
+                        
                         const response = await fetch('/process-all-pending', { method: 'POST' });
+                        
                         if (response.ok) {
-                            alert('All pending animations have been queued for processing!');
+                            const result = await response.json();
+                            alert(result.message || 'All pending jobs have been queued for keying!');
+                            // Resume auto-refresh when keying jobs start
+                            console.log('🔄 Resuming auto-refresh for keying jobs');
+                            resumeAutoRefresh();
                             await refreshJobLog();
                         } else {
-                            alert('Error processing pending animations.');
+                            const error = await response.json();
+                            alert('Error: ' + (error.error || 'Unknown error processing pending jobs.'));
                         }
                     } catch (error) {
                         alert('Network error: ' + error.message);
+                    } finally {
+                        this.textContent = '⚙️ Process Pending Keys';
+                        this.disabled = false;
+                    }
+                }
+            });
+        }
+        
+        // Process selected animations button
+        const processSelectedBtn = document.getElementById('process-selected-btn');
+        if (processSelectedBtn) {
+            processSelectedBtn.addEventListener('click', async function() {
+                const selectedCheckboxes = document.querySelectorAll('.selection-checkbox:checked');
+                const pendingKeyingJobs = Array.from(selectedCheckboxes).filter(cb => {
+                    const jobType = cb.dataset.jobType || '';
+                    return (jobType === 'animation' || jobType === 'video_stitching');
+                });
+                
+                const jobIds = pendingKeyingJobs.map(cb => cb.dataset.jobId);
+                
+                if (jobIds.length === 0) {
+                    alert('No animation or video stitching jobs selected for keying.');
+                    return;
+                }
+                
+                if (confirm(`Process ${jobIds.length} selected job(s) for keying?`)) {
+                    try {
+                        this.textContent = 'Processing...';
+                        this.disabled = true;
+                        
+                        const response = await fetch('/process-selected-pending', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ job_ids: jobIds })
+                        });
+                        
+                        if (response.ok) {
+                            const result = await response.json();
+                            alert(result.message || 'Selected jobs have been queued for keying!');
+                            await refreshJobLog();
+                        } else {
+                            const error = await response.json();
+                            alert('Error: ' + (error.error || 'Unknown error processing selected jobs.'));
+                        }
+                    } catch (error) {
+                        alert('Network error: ' + error.message);
+                    } finally {
+                        this.textContent = '⚙️ Process Selected Keys (0)';
+                        this.disabled = false;
+                        this.style.display = 'none';
                     }
                 }
             });

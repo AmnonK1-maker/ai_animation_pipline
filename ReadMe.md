@@ -232,6 +232,17 @@ kling_app/
 - ✅ **Startup Automation**: Added start_app.sh script with environment validation and automatic port handling
 - ✅ **Debug Enhancements**: Added job count logging and console feedback for better troubleshooting
 
+### Latest Stability & UX Fixes (September 30, 2025)
+- ✅ **Style Analyzer Integration**: Fixed "Use This" button properly populating image generator form
+- ✅ **Auto-Refresh Intelligence**: Fixed auto-refresh resuming when job details are closed for better UX
+- ✅ **File Path Consistency**: Resolved image/video display issues after app restarts with normalized paths
+- ✅ **Smart Timeout Management**: Extended Kling 2.1 timeout to 8 minutes, keying timeout to 15 minutes
+- ✅ **Enhanced Process Control**: Added "Process Selected Pending Keys" for targeted job processing
+- ✅ **Intelligent Stuck Detection**: Prevents false "STUCK" warnings when auto-refresh is paused during keying
+- ✅ **URL Stability**: Fixed malformed URL errors causing browser console 404s
+- ✅ **Selection State Management**: Fixed checkbox selection bug causing ghost button counts after DOM refresh
+- ✅ **Local Processing Optimization**: Perfect handling of local keying workflows with smart UI state management
+
 ### Git Workflow
 ```bash
 git status                    # Check changes
