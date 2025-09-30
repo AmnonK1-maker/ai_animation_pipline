@@ -1168,6 +1168,26 @@
             });
         }
 
+        // Style analyzer prompt unlock functionality
+        const unlockStylePromptCheckbox = document.getElementById('unlock_style_prompt');
+        const stylePromptTextarea = document.getElementById('style_system_prompt');
+        
+        if (unlockStylePromptCheckbox && stylePromptTextarea) {
+            unlockStylePromptCheckbox.addEventListener('change', function() {
+                if (this.checked) {
+                    stylePromptTextarea.disabled = false;
+                    stylePromptTextarea.style.backgroundColor = '#fff';
+                    stylePromptTextarea.style.cursor = 'text';
+                    console.log('✅ Style prompt textarea unlocked for editing');
+                } else {
+                    stylePromptTextarea.disabled = true;
+                    stylePromptTextarea.style.backgroundColor = '#e9ecef';
+                    stylePromptTextarea.style.cursor = 'not-allowed';
+                    console.log('🔒 Style prompt textarea locked');
+                }
+            });
+        }
+
         // Initialize
         console.log("🚀 Starting job log...");
         setupInteractiveHandlers();

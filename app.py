@@ -455,6 +455,10 @@ def remove_background():
 def api_jobs_log():
     try:
         with get_db_connection() as conn:
+            # Count total jobs for debugging
+            total_jobs = conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+            print(f"📊 API /api/jobs called - Total jobs in database: {total_jobs}")
+            
             query = """
                 SELECT j.*, p.id as parent_id, p.result_data as parent_result_data
                 FROM jobs j LEFT JOIN jobs p ON j.parent_job_id = p.id
