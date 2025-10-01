@@ -361,23 +361,41 @@ def handle_image_generation(job):
     else: return handle_leonardo_generation(job)
 
 def handle_openai_vision_analysis(job):
-    if not openai_client: return None, "OpenAI client is not initialized. Check API keys."
+    if not REPLICATE_API_KEY: return None, "Replicate API key is not initialized. Check API keys."
     try:
         job_type = job['job_type'].replace('_', ' ').capitalize()
-        print(f"-> Starting OpenAI Vision Analysis ({job_type}) for job {job['id']}...")
+        print(f"-> Starting Replicate GPT-4o Vision Analysis ({job_type}) for job {job['id']}...")
         input_data = json.loads(job['input_data'])
         system_prompt = input_data.get('system_prompt', 'Analyze this image.')
         image_path = os.path.join(BASE_DIR, input_data['image_path'].lstrip('/'))
         if not os.path.exists(image_path): return None, f"Image file not found at {image_path}"
-        with open(image_path, "rb") as image_file:
-            base64_image = base64.b64encode(image_file.read()).decode('utf-8')
-        response_format = "json_object" if "json" in system_prompt.lower() else "text"
-        response = openai_client.chat.completions.create(model="gpt-4-turbo", response_format={"type": response_format}, messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": [{"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64_image}"}}]}], max_tokens=500)
-        analysis_text = response.choices[0].message.content
-        print(f"   ...OpenAI analysis complete.")
+        
+        # For Replicate, we need to provide the image as a web-accessible URL
+        # Since we're running locally, we'll construct the local server URL
+        relative_path = os.path.relpath(image_path, BASE_DIR)
+        image_url = f"http://localhost:5001/{relative_path.replace(os.sep, '/')}"
+        
+        # Use Replicate's GPT-4o model
+        output = replicate.run(
+            "openai/gpt-4o",
+            input={
+                "system_prompt": system_prompt,
+                "messages": [{"role": "user", "content": "Analyze this image and provide animation ideas following the format above."}],
+                "image_input": [image_url],
+                "max_completion_tokens": 1000,
+                "temperature": 0.7
+            }
+        )
+        
+        # Replicate returns a generator, so we need to collect the output
+        analysis_text = ""
+        for item in output:
+            analysis_text += str(item)
+        
+        print(f"   ...Replicate GPT-4o analysis complete.")
         return analysis_text, None
     except Exception as e:
-        return None, f"OpenAI Vision API error: {e}"
+        return None, f"Replicate GPT-4o Vision API error: {e}"
 
 def handle_keying(job):
     try:

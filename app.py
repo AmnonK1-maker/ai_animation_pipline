@@ -132,7 +132,7 @@ def preprocess_animation_image(source_image_path, background_color_str):
         print(f"-> Pre-processing animation input: {source_image_path}")
         with Image.open(source_full_path).convert("RGBA") as fg_image:
             bg_image = Image.new("RGBA", fg_image.size, background_color)
-            new_size = (int(fg_image.width * 0.9), int(fg_image.height * 0.9))
+            new_size = (int(fg_image.width * 0.85), int(fg_image.height * 0.85))
             fg_image_resized = fg_image.resize(new_size, Image.Resampling.LANCZOS)
             paste_position = ((bg_image.width - fg_image_resized.width) // 2, (bg_image.height - fg_image_resized.height) // 2)
             bg_image.paste(fg_image_resized, paste_position, fg_image_resized)
@@ -470,8 +470,36 @@ def get_animation_idea():
     image_url = request.form.get("image_url")
     if not image_url: return jsonify({"success": False, "error": "Missing image URL."}), 400
 
-    system_prompt = "You are a creative animator. Look at the provided image. Describe a short, simple, 3-second animation for the main character or object. Be concise and focus on a single, clear action. Do not use punctuation. Your entire response should be a single phrase suitable for a text-to-video prompt."
-    user_prompt = "Generate animation idea"
+    system_prompt = """You are an Image-to-Animation Director.
+Your task is to look at the uploaded image, analyze it visually, and propose actionable animation ideas that bring its key elements to life.
+
+Rules
+Goal: Suggest animation ideas for the image's characters, objects, surfaces, textures, or patterns.
+
+Workflow:
+1. Identify Focus Elements: Note the most animation-worthy components (e.g., "character's tail," "fabric texture," "metal surface," "background foliage").
+2. Motion Potential: Suggest how each can move, morph, react, loop, or interact (e.g., idle sway, flutter, texture ripple, camera orbit, particle motion).
+3. Style Fit: Match the motion language to the visual style (e.g., snappy cartoon rig, smooth painterly drift, mechanical rotation, organic breathing motion).
+4. Loop Guidance: If animation needs to loop, describe how to make the last frame flow seamlessly back to the first.
+
+Constraints:
+- Keep the background unchanged if it is a green/blue screen intended for later keying.
+- Avoid semi-transparent or out-of-frame movements that break clean alpha edges.
+- Keep the subject fully within the frame.
+
+Output Format:
+Element Focus: (the part to animate)
+Suggested Animation: (clear description of motion)
+Loop Tip: (only if relevant)
+Style Note: (only if the visual style influences the animation approach)
+
+Exclusions:
+- Do not describe the subject's identity or give long artistic style descriptions unless it directly affects motion.
+- Do not mention colors unless essential to the animation.
+- Do not discuss camera gear, lens, or lighting.
+
+Tone: Be concise, creative, and practical — as if briefing an animation team."""
+    user_prompt = "Analyze this image and provide animation ideas following the format above."
     input_data = json.dumps({"image_path": image_url.lstrip('/'), "system_prompt": system_prompt})
     
     with get_db_connection() as conn:
@@ -502,6 +530,46 @@ def remove_background():
         conn.commit()
     return jsonify({"success": True, "message": "Background removal job queued."})
 
+@app.route("/upload-video", methods=["POST"])
+def upload_video():
+    """Handle video uploads for keying and frame extraction"""
+    if 'video' not in request.files:
+        return jsonify({"error": "No video file provided."}), 400
+    
+    video_file = request.files['video']
+    purpose = request.form.get('purpose', 'general')
+    
+    if video_file.filename == '':
+        return jsonify({"error": "No selected file."}), 400
+    
+    # Save the uploaded video
+    filename = f"upload_{uuid.uuid4()}_{os.path.basename(video_file.filename)}"
+    save_path = os.path.join(UPLOADS_FOLDER, filename)
+    video_file.save(save_path)
+    
+    video_url = os.path.join('static/uploads', filename)
+    
+    if purpose == 'keying':
+        # Create a job for video keying with uploaded video
+        prompt = f"Key uploaded video: {video_file.filename}"
+        input_data = json.dumps({"uploaded_video": video_url})
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO jobs (job_type, status, created_at, prompt, input_data, result_data) VALUES (?, ?, ?, ?, ?, ?)",
+                ('uploaded_video_keying', 'pending_review', datetime.now(), prompt, input_data, video_url)
+            )
+            job_id = cursor.lastrowid
+            conn.commit()
+        
+        return jsonify({"success": True, "video_path": video_url, "job_id": job_id})
+    
+    elif purpose == 'extract':
+        return jsonify({"success": True, "video_path": video_url})
+    
+    return jsonify({"success": True, "video_path": video_url})
+
 # --- API Endpoints ---
 # app.py - Corrected Code
 
@@ -520,7 +588,7 @@ def api_jobs_log():
             query = """
                 SELECT j.*, p.id as parent_id, p.result_data as parent_result_data
                 FROM jobs j LEFT JOIN jobs p ON j.parent_job_id = p.id
-                ORDER BY j.created_at DESC
+                ORDER BY j.id DESC
             """
             jobs_rows = conn.execute(query).fetchall()
 
@@ -541,39 +609,79 @@ def api_jobs_log():
     
 @app.route('/api/extract-frame', methods=['POST'])
 def extract_frame():
-    data = request.json
-    video_path_url = data.get('video_path')
-    frame_time = float(data.get('frame_time', 0))
-    parent_job_id = data.get('parent_job_id')
-
-    if not video_path_url: return jsonify({"error": "Missing video path"}), 400
+    frame_time = float(request.form.get('frame_time', 0))
+    parent_job_id = request.form.get('parent_job_id')
     
-    video_path = os.path.join(BASE_DIR, video_path_url.lstrip('/'))
-    if not os.path.exists(video_path): return jsonify({"error": "Video file not found"}), 404
+    # Handle both uploaded file and existing video path
+    temp_video_path = None  # Initialize to avoid NameError
+    
+    if 'video' in request.files:
+        # Handle uploaded file
+        video_file = request.files['video']
+        if video_file.filename == '':
+            return jsonify({"error": "No file selected"}), 400
         
-    cap = cv2.VideoCapture(video_path)
-    cap.set(cv2.CAP_PROP_POS_MSEC, frame_time * 1000)
-    success, frame = cap.read()
-    cap.release()
+        # Save uploaded video temporarily
+        temp_video_path = os.path.join(BASE_DIR, 'temp', f"extract_{uuid.uuid4()}_{video_file.filename}")
+        os.makedirs(os.path.dirname(temp_video_path), exist_ok=True)
+        video_file.save(temp_video_path)
+        
+        video_path = temp_video_path
+        prompt = f"Frame from uploaded video at {frame_time:.2f}s"
+        input_data = json.dumps({"uploaded_video": video_file.filename, "time": frame_time})
+        
+    elif 'video_path' in request.form:
+        # Handle existing video path
+        video_path_url = request.form.get('video_path')
+        video_path = os.path.join(BASE_DIR, video_path_url.lstrip('/'))
+        
+        if not os.path.exists(video_path):
+            return jsonify({"error": "Video file not found"}), 404
+        
+        prompt = f"Frame from {os.path.basename(video_path_url)} at {frame_time:.2f}s"
+        input_data = json.dumps({"source_video": video_path_url, "time": frame_time})
+        
+    else:
+        return jsonify({"error": "Missing video file or path"}), 400
+    
+    try:
+        cap = cv2.VideoCapture(video_path)
+        cap.set(cv2.CAP_PROP_POS_MSEC, frame_time * 1000)
+        success, frame = cap.read()
+        cap.release()
 
-    if not success: return jsonify({"error": "Could not read frame"}), 500
+        if not success:
+            return jsonify({"error": "Could not read frame"}), 500
 
-    frame_filename = f"frame_{uuid.uuid4()}.png"
-    frame_filepath = os.path.join(LIBRARY_FOLDER, frame_filename)
-    cv2.imwrite(frame_filepath, frame)
-    
-    result_path = os.path.join('static/library', frame_filename)
-    prompt = f"Frame from {os.path.basename(video_path_url)} at {frame_time:.2f}s"
-    input_data = json.dumps({"source_video": video_path_url, "time": frame_time})
-    
-    with get_db_connection() as conn:
-        conn.cursor().execute(
-            "INSERT INTO jobs (job_type, status, created_at, prompt, input_data, result_data, parent_job_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ('frame_extraction', 'completed', datetime.now(), prompt, input_data, result_path, parent_job_id)
-        )
-        conn.commit()
-    
-    return jsonify({"success": True, "path": result_path})
+        frame_filename = f"frame_{uuid.uuid4()}.png"
+        frame_filepath = os.path.join(LIBRARY_FOLDER, frame_filename)
+        cv2.imwrite(frame_filepath, frame)
+        
+        result_path = os.path.join('static/library', frame_filename)
+        
+        with get_db_connection() as conn:
+            # Insert frame extraction job at the top by using current max id + 1000 to force it to top
+            max_id_result = conn.execute("SELECT MAX(id) as max_id FROM jobs").fetchone()
+            max_id = max_id_result['max_id'] if max_id_result['max_id'] else 0
+            new_id = max_id + 1000
+            
+            conn.cursor().execute(
+                "INSERT INTO jobs (id, job_type, status, created_at, prompt, input_data, result_data, parent_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (new_id, 'frame_extraction', 'completed', datetime.now(), prompt, input_data, result_path, parent_job_id)
+            )
+            conn.commit()
+        
+        # Clean up temp file if it was uploaded
+        if temp_video_path and os.path.exists(temp_video_path):
+            try:
+                os.remove(temp_video_path)
+            except:
+                pass
+                
+        return jsonify({"success": True, "path": result_path})
+        
+    except Exception as e:
+        return jsonify({"error": f"Frame extraction failed: {str(e)}"}), 500
 
 @app.route("/api/batch-delete-items", methods=["POST"])
 def batch_delete_items():
@@ -792,6 +900,43 @@ def preview_frame():
     )
     _, img_encoded = cv2.imencode('.png', bgra_frame)
     return send_file(io.BytesIO(img_encoded.tobytes()), mimetype='image/png')
+
+@app.route("/api/jobs/<int:job_id>/regenerate", methods=["POST"])
+def regenerate_job(job_id):
+    """Regenerate a job with the same parameters"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Get the original job
+            job = cursor.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            if not job:
+                return jsonify({"success": False, "error": "Job not found"}), 404
+            
+            # Parse input data
+            input_data = json.loads(job['input_data'] or '{}')
+            
+            if job['job_type'] == 'image_generation':
+                # Regenerate image with same parameters
+                cursor.execute(
+                    "INSERT INTO jobs (job_type, status, created_at, prompt, input_data, parent_job_id) VALUES (?, ?, ?, ?, ?, ?)",
+                    ('image_generation', 'queued', datetime.now(), job['prompt'], job['input_data'], job['parent_job_id'])
+                )
+            elif job['job_type'] == 'animation':
+                # Regenerate animation with same parameters
+                cursor.execute(
+                    "INSERT INTO jobs (job_type, status, created_at, prompt, input_data, parent_job_id) VALUES (?, ?, ?, ?, ?, ?)",
+                    ('animation', 'queued', datetime.now(), job['prompt'], job['input_data'], job['parent_job_id'])
+                )
+            else:
+                return jsonify({"success": False, "error": "Job type cannot be regenerated"}), 400
+            
+            conn.commit()
+            return jsonify({"success": True, "message": "Job queued for regeneration"})
+            
+    except Exception as e:
+        print(f"ERROR in /api/jobs/{job_id}/regenerate: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 if __name__ == '__main__':

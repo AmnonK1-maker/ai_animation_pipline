@@ -2,21 +2,674 @@
 {% block title %}AI Workflow Dashboard{% endblock %}
 {% block content %}
 <style>
+    /* Resizable Split Layout */
+    .split-container { 
+        display: flex; 
+        height: 100vh; 
+        margin: -20px -40px; 
+        box-sizing: border-box; 
+    }
+    
+    /* Left Panel - Dashboard Tools */
+    .dashboard-panel { 
+        width: 350px;
+        min-width: 280px;
+        background: #fff; 
+        padding: 20px 20px 20px 55px;
+        overflow-y: auto; 
+        max-height: 100vh;
+        position: relative;
+        border-right: 2px solid #e0e0e0;
+    }
+    
+    /* Resizable Divider */
+    .divider {
+        width: 4px;
+        background: #e9ecef;
+        cursor: col-resize;
+        position: relative;
+        user-select: none;
+    }
+    
+    .divider:hover {
+        background: #007bff;
+    }
+    
+    .divider::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: -2px;
+        width: 8px;
+        height: 30px;
+        background: #007bff;
+        border-radius: 4px;
+        transform: translateY(-50%);
+        opacity: 0;
+        transition: opacity 0.2s;
+    }
+    
+    .divider:hover::after {
+        opacity: 1;
+    }
+    
+    /* Right Panel - Job Queue */
+    .queue-panel { 
+        flex: 1; 
+        background: #fff; 
+        padding: 20px;
+        overflow-y: auto; 
+        max-height: 100vh;
+        min-width: 400px;
+        resize: horizontal;
+        min-width: 300px;
+    }
+    
     .main-header { text-align: left; margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 15px; }
     .main-header h1 { font-size: 22px; margin: 0 0 5px 0; }
     .main-header p { font-size: 14px; color: #666; margin: 0; }
-    .tools-hub { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px; }
-    .tool-card { display: block; padding: 20px; border: 1px solid #ddd; border-radius: 8px; text-decoration: none; color: #333; transition: all 0.2s ease-in-out; }
-    .tool-card:hover { border-color: #007bff; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-    .tool-card h3 { font-size: 16px; margin: 0 0 5px 0; }
-    .tool-card p { font-size: 13px; color: #666; margin: 0; }
+    
     .dashboard-section { border: 1px solid #ddd; border-radius: 8px; margin-bottom: 15px; overflow: hidden; }
     .dashboard-section summary { font-size: 16px; font-weight: 600; padding: 12px 15px; cursor: pointer; background-color: #f8f9fa; color: #333; list-style: none; display: flex; align-items: center; }
     .dashboard-section summary::-webkit-details-marker { display: none; }
-    .dashboard-section summary::before { content: '▶'; font-size: 12px; transition: transform 0.2s; flex-shrink: 0; margin-right: 10px; color: #666; }
+    .dashboard-section summary::before { content: '▶'; font-size: 12px; transition: transform 0.2s; flex-shrink: 0; margin-left: 5px; margin-right: 12px; color: #666; }
     .dashboard-section[open] summary { border-bottom: 1px solid #ddd; }
     .dashboard-section[open] summary::before { transform: rotate(90deg); }
     .tool-content { padding: 20px; }
+    
+    /* Standardized Button Styles */
+    .standard-btn, button, input[type="submit"], .action-btn { 
+        min-height: 40px !important; 
+        padding: 8px 16px !important; 
+        font-size: 14px !important; 
+        font-weight: 600 !important; 
+        border-radius: 6px !important; 
+        border: none !important; 
+        cursor: pointer !important; 
+        display: inline-flex !important; 
+        align-items: center !important; 
+        justify-content: center !important; 
+        box-sizing: border-box !important; 
+        text-decoration: none !important; 
+    }
+    
+    /* Horizontal Background Options */
+    .background-options-horizontal { 
+        display: flex; 
+        gap: 15px; 
+        align-items: center; 
+        flex-wrap: wrap; 
+    }
+    
+    .background-option { 
+        display: flex; 
+        align-items: center; 
+        gap: 8px; 
+        white-space: nowrap; 
+    }
+    
+    /* Copy Button for Text Fields */
+    .text-field-container { 
+        position: relative; 
+    }
+    
+    .text-field-container textarea,
+    .text-field-container input[type="text"] { 
+        resize: both; 
+        min-height: 40px;
+        max-width: 100%;
+        min-width: 200px;
+    }
+    
+    /* Job prompt boxes should be resizable */
+    .job-prompt-box {
+        resize: both;
+        min-height: 20px;
+        max-height: none;
+        vertical-align: top;
+        align-self: flex-start;
+    }
+    
+    /* Enhanced job details layout */
+    .job-details {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .enhanced-job-actions {
+        order: 1;
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+    }
+    
+    .enhanced-job-content {
+        order: 2;
+        display: flex;
+        gap: 15px;
+        align-items: flex-start;
+    }
+    
+    .enhanced-job-media {
+        flex-shrink: 0;
+        max-width: 500px;
+    }
+    
+    /* Hide summary elements when job details are expanded */
+    .enhanced-job-item[data-expanded="true"] .enhanced-job-summary .enhanced-job-thumbnail {
+        display: none;
+    }
+    
+    .enhanced-job-item[data-expanded="true"] .enhanced-job-summary .job-prompt-box {
+        display: none;
+    }
+    
+    .enhanced-job-text {
+        flex: 1;
+        min-width: 200px;
+    }
+    
+    .enhanced-job-text .job-prompt-box {
+        width: 100%;
+        min-height: 200px;
+        max-height: 400px;
+        font-family: monospace;
+        font-size: 12px;
+        line-height: 1.4;
+        border: 2px solid #e9ecef;
+        border-radius: 6px;
+        padding: 12px;
+        resize: both;
+        vertical-align: top;
+    }
+    
+    .enhanced-job-text .job-prompt-box:focus {
+        border-color: #007bff;
+        outline: none;
+    }
+    
+    /* Image popup modal */
+    .image-modal {
+        display: none;
+        position: fixed;
+        z-index: 10000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.9);
+        animation: fadeIn 0.2s ease-in;
+    }
+    
+    .image-modal-content {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        max-width: 95%;
+        max-height: 95%;
+        border-radius: 8px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    }
+    
+    .image-modal-content img {
+        width: 100%;
+        height: auto;
+        border-radius: 8px;
+        display: block;
+    }
+    
+    .image-modal-close {
+        position: absolute;
+        top: 20px;
+        right: 30px;
+        color: white;
+        font-size: 40px;
+        font-weight: bold;
+        cursor: pointer;
+        background: rgba(0, 0, 0, 0.5);
+        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.2s;
+    }
+    
+    .image-modal-close:hover {
+        background: rgba(0, 0, 0, 0.8);
+    }
+    
+    /* Clickable images */
+    .clickable-image {
+        cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .clickable-image:hover {
+        transform: scale(1.02);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+    
+    /* Properly sized thumbnails in grouped jobs */
+    .stacked-thumbnails .stacked-thumbnail {
+        width: 80px;
+        height: 80px;
+    }
+    
+    .image-grid .image-item img {
+        width: 100px;
+        height: 100px;
+        object-fit: cover;
+        border-radius: 8px;
+    }
+    
+    .copy-btn { 
+        position: absolute; 
+        right: 5px; 
+        top: 5px; 
+        background: #6c757d !important; 
+        color: white !important; 
+        border: none; 
+        padding: 4px 8px; 
+        font-size: 12px; 
+        border-radius: 4px; 
+        cursor: pointer; 
+        z-index: 10; 
+    }
+    
+    /* Enhanced Job Queue Styles */
+    .job-queue-header { 
+        position: sticky; 
+        top: 0; 
+        background: #fff; 
+        z-index: 100; 
+        border-bottom: 1px solid #eee; 
+        padding-bottom: 15px; 
+        margin-bottom: 15px; 
+    }
+    
+    /* Header alignment with proper spacing */
+    .main-header {
+        margin-top: 10px;
+        margin-bottom: 25px;
+        margin-left: 0px;
+    }
+    
+    .main-header h1, .job-queue-header h2 {
+        margin: 15px 0 10px 0;
+        line-height: 1.2;
+        font-size: 24px;
+        font-weight: 600;
+    }
+    
+    .main-header p {
+        margin: 0 0 20px 0;
+        color: #666;
+        font-size: 14px;
+    }
+    
+    /* Always visible queue buttons - smaller size */
+    .queue-actions { 
+        display: flex; 
+        flex-wrap: wrap; 
+        gap: 6px; 
+        margin-bottom: 15px; 
+    }
+    
+    .queue-actions button { 
+        min-height: 32px !important; 
+        font-size: 12px !important; 
+        padding: 6px 12px !important; 
+        font-weight: 600 !important;
+        border-radius: 4px !important;
+        border: none !important;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.2) !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+        transition: all 0.2s !important;
+    }
+    
+    .queue-actions button:disabled { 
+        background-color: #495057 !important; 
+        color: #ffffff !important;
+        opacity: 0.7 !important; 
+        cursor: not-allowed !important;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.4) !important;
+        border: 1px solid #343a40 !important;
+    }
+    
+    .queue-actions button:enabled:hover {
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2) !important;
+    }
+    
+    /* Enhanced Job Item Styles */
+    .enhanced-job-item { 
+        border: 1px solid #e9ecef; 
+        border-radius: 8px; 
+        margin-bottom: 12px; 
+        overflow: hidden; 
+        background: #fff; 
+        position: relative;
+    }
+    
+    .enhanced-job-summary { 
+        display: flex; 
+        align-items: center; 
+        gap: 12px; 
+        padding: 12px; 
+        cursor: pointer; 
+        background-color: #f8f9fa; 
+        list-style: none;
+        min-height: 80px; /* Match thumbnail height */
+    }
+    
+    .job-selection-checkbox {
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+    }
+    
+    .job-number-badge {
+        font-weight: 600;
+        font-size: 12px;
+        color: #666;
+        flex-shrink: 0;
+        min-width: 30px;
+        padding: 2px 4px;
+        background: #f8f9fa;
+        border-radius: 4px;
+        text-align: center;
+    }
+    
+    /* Enhanced button styles for better readability */
+    .standard-btn {
+        background: #007bff !important; 
+        color: white !important; 
+        border: none !important; 
+        padding: 10px 20px !important; 
+        border-radius: 5px !important; 
+        cursor: pointer !important; 
+        font-size: 14px !important;
+        font-weight: 500 !important;
+        margin: 5px 5px 5px 0 !important;
+        transition: all 0.2s !important;
+        box-shadow: 0 2px 4px rgba(0,123,255,0.2) !important;
+        text-shadow: none !important;
+    }
+    
+    .standard-btn:hover {
+        background: #0056b3 !important;
+        box-shadow: 0 4px 8px rgba(0,123,255,0.3) !important;
+        transform: translateY(-1px) !important;
+    }
+    
+    .standard-btn:disabled {
+        background: #cccccc !important;
+        cursor: not-allowed !important;
+        box-shadow: none !important;
+        transform: none !important;
+    }
+    
+    /* Action button improvements */
+    .action-btn {
+        color: white !important;
+        font-weight: 500 !important;
+        border: none !important;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.3) !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+        transition: all 0.2s !important;
+    }
+    
+    .action-btn:hover {
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2) !important;
+    }
+    
+    .enhanced-job-thumbnail { 
+        width: 80px; 
+        height: 80px; 
+        object-fit: cover; 
+        border-radius: 6px; 
+        flex-shrink: 0; 
+        background: #f0f0f0;
+    }
+    
+    .enhanced-job-details-expanded .enhanced-job-thumbnail { 
+        width: 300px; 
+        height: 300px; 
+        max-width: 90%;
+        object-fit: contain;
+    }
+    
+    /* Expanded job details should show larger media */
+    .enhanced-job-item[data-expanded="true"] .enhanced-job-thumbnail,
+    .job-details .enhanced-job-thumbnail,
+    .job-details img,
+    .job-details video {
+        width: 100% !important;
+        max-width: 500px !important;
+        height: auto !important;
+        max-height: 400px !important;
+        object-fit: contain !important;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        margin: 10px 0;
+    }
+    
+    /* Ensure videos display properly when expanded */
+    .job-details video {
+        background: #000;
+    }
+    
+    /* Better styling for expanded images */
+    .job-details img {
+        border: 1px solid #e9ecef;
+        background: #f8f9fa;
+        display: block;
+        margin: 15px auto;
+    }
+    
+    /* Job Info Container */
+    .job-info-container {
+        flex-grow: 1;
+        min-width: 0; /* Allow text truncation */
+    }
+    
+    .job-title {
+        font-size: 14px;
+        font-weight: 600;
+        margin: 0 0 4px 0;
+        color: #333;
+    }
+    
+    /* Scrollable Prompt Box */
+    .job-prompt-box {
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 6px 8px;
+        max-height: 40px;
+        overflow-y: auto;
+        font-size: 12px;
+        line-height: 1.3;
+        color: #666;
+        resize: vertical;
+        min-height: 20px;
+    }
+    
+    .job-prompt-box:hover {
+        border-color: #007bff;
+    }
+    
+    .job-status-badges {
+        margin-top: 4px;
+        display: flex;
+        gap: 4px;
+    }
+    
+    /* Preloader Animation */
+    .content-placeholder { 
+        width: 100%; 
+        height: 200px; 
+        background: linear-gradient(-90deg, #f0f0f0 0%, #e0e0e0 50%, #f0f0f0 100%); 
+        background-size: 400% 400%; 
+        animation: shimmer 2s ease-in-out infinite; 
+        border-radius: 8px; 
+        display: flex; 
+        align-items: center; 
+        justify-content: center; 
+        color: #666; 
+        font-weight: 600; 
+    }
+    
+    @keyframes shimmer { 
+        0% { background-position: 0% 0%; } 
+        100% { background-position: -200% 0%; } 
+    }
+    
+    /* Color Sampler Tool */
+    .color-sampler { 
+        display: flex; 
+        align-items: center; 
+        gap: 10px; 
+        margin-top: 10px; 
+    }
+    
+    .color-preview { 
+        width: 40px; 
+        height: 40px; 
+        border: 2px solid #ddd; 
+        border-radius: 6px; 
+        cursor: pointer; 
+    }
+    
+    /* Upload Areas */
+    .upload-area { 
+        border: 2px dashed #ddd; 
+        border-radius: 8px; 
+        padding: 40px 20px; 
+        text-align: center; 
+        transition: all 0.3s ease; 
+        cursor: pointer; 
+        background: #fafafa; 
+    }
+    
+    .upload-area:hover, .upload-area.dragover { 
+        border-color: #007bff; 
+        background: #f0f8ff; 
+    }
+    
+    /* Job Grouping - Improved */
+    .grouped-job-container { 
+        border-left: 4px solid #007bff; 
+    }
+    
+    /* Stacked Image Thumbnails */
+    .stacked-thumbnails {
+        position: relative;
+        width: 80px;
+        height: 80px;
+        flex-shrink: 0;
+    }
+    
+    .stacked-thumbnail {
+        position: absolute;
+        width: 70px;
+        height: 70px;
+        object-fit: cover;
+        border-radius: 6px;
+        border: 2px solid #fff;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .stacked-thumbnail:nth-child(1) { top: 0; left: 0; z-index: 3; }
+    .stacked-thumbnail:nth-child(2) { top: 8px; left: 8px; z-index: 2; }
+    .stacked-thumbnail:nth-child(3) { top: 16px; left: 16px; z-index: 1; }
+    
+    /* Group Actions - Separate from images */
+    .group-actions-bar {
+        display: flex;
+        gap: 6px;
+        padding: 10px 15px;
+        background: #f0f8ff;
+        border-top: 1px solid #e9ecef;
+        flex-wrap: wrap;
+    }
+    
+    .group-actions-bar button {
+        font-size: 11px !important;
+        padding: 4px 8px !important;
+        min-height: 28px !important;
+    }
+    
+    /* Individual Images with Only Checkboxes */
+    .image-grid { 
+        display: grid; 
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); 
+        gap: 10px; 
+        margin: 15px; 
+        background: #fafafa;
+        padding: 15px;
+        border-radius: 6px;
+    }
+    
+    .image-item { 
+        position: relative; 
+        border: 2px solid #e9ecef; 
+        border-radius: 8px; 
+        overflow: hidden; 
+        transition: all 0.2s ease; 
+        background: #fff;
+    }
+    
+    
+    .image-item:hover { 
+        border-color: #007bff; 
+        transform: translateY(-2px); 
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1); 
+    }
+    
+    .image-item img { 
+        width: 100%; 
+        height: 100px; 
+        object-fit: cover; 
+    }
+    
+    /* Only checkbox for individual images */
+    .image-checkbox { 
+        position: absolute; 
+        top: 8px; 
+        left: 8px; 
+        width: 18px; 
+        height: 18px; 
+        z-index: 10; 
+        background: rgba(255,255,255,0.9);
+        border-radius: 3px;
+    }
+    
+    /* Processing placeholder for images */
+    .image-processing-placeholder {
+        width: 100%;
+        height: 100px;
+        background: linear-gradient(-90deg, #f0f0f0 0%, #e0e0e0 50%, #f0f0f0 100%);
+        background-size: 400% 400%;
+        animation: shimmer 2s ease-in-out infinite;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        color: #666;
+        font-weight: 600;
+    }
     .job-log-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; margin-bottom: 15px; }
     .job-log-header h2 { margin: 0; padding-bottom: 10px; border-bottom: none; font-size: 18px; }
     
@@ -116,16 +769,12 @@
     }
 </style>
 
+<div class="split-container">
+    <!-- Left Panel - Dashboard Tools -->
+    <div class="dashboard-panel">
 <div class="main-header">
     <h1>AI Workflow Dashboard</h1>
-    <p>Start a new task or review your project history in the Job Log below.</p>
-</div>
-
-<div class="tools-hub">
-    <a href="#analyzer-section" class="tool-card"><h3>Analyze Style & Palette</h3><p>Upload an image to extract its artistic style or color palette.</p></a>
-    <a href="#generator-section" class="tool-card"><h3>Generate Image</h3><p>Create new images from a text prompt using multiple AI models.</p></a>
-    <a href="/animate-image" class="tool-card"><h3>Create Animation</h3><p>Upload an image or select one from the log to animate.</p></a>
-    <a href="#stitcher-section" class="tool-card"><h3>Stitch Videos</h3><p>Combine two videos from your library into one.</p></a>
+            <p>All your tools in one place - results appear in the queue on the right.</p>
 </div>
 
 <details class="dashboard-section" id="analyzer-section">
@@ -138,19 +787,64 @@
                     <input type="file" id="image" name="image" accept="image/*" required>
                     <div style="margin-top: 15px;">
                         <label for="style_system_prompt">System Prompt:</label>
-                        <textarea id="style_system_prompt" name="system_prompt" disabled>You are an art director. Describe the artistic style of this image in a maximum of 3 sentences. Focus only on the most important and defining visual characteristics, such as the medium, texture, and mood. Do not mention the subject matter.</textarea>
+                        <div class="text-field-container">
+                        <textarea id="style_system_prompt" name="system_prompt" disabled>You are an Art Style Forensics analyzer.
+Your description must be ≤ 1200 characters – be concise and omit any redundant words.
+
+Describe only the artistic style, technique, and visual language so an AI image model can replicate it.
+
+Never mention subject matter, color names, camera/lens/lighting.
+
+Always stay factual and brief about style, surfaces, forms, treatment.
+
+Avoid full sentences when not needed; use short phrases separated by semicolons.
+
+Branching:
+
+If drawing/painting/print → give Line & Stroke (weight_min/max %, variability, spacing %, edge quality, terminals, curvature); then note medium, textures, composition, tone, mood, negatives.
+
+If photo → say "no line work; object style analysis applied instead"; then note movement/genre, form language, surfaces/materials, geometry, tone, mood, negatives.
+
+If 3D render → say "no line work; 3D render style analysis applied instead"; then note shading style, surface treatment, geometry, visual finish, tone, mood, negatives.
+
+Output order:
+Medium → Technique/Process → Line / Object / 3D analysis → Textures & Surface → Composition & Shapes → Palette/Tone → Mood/Atmosphere → Negative Cues.
+
+Keep each section to short declarative fragments to stay under limit.</textarea>
+                            <button type="button" class="copy-btn" onclick="copyToClipboard('style_system_prompt')">⎘</button>
+                        </div>
                         <div class="unlock-prompt-container">
                             <input type="checkbox" id="unlock_style_prompt"><label for="unlock_style_prompt" style="font-weight: normal; font-size: 12px;">Unlock to edit</label>
                         </div>
                     </div>
-                    <button type="submit">Analyze Style</button>
+                    <button type="submit" class="standard-btn">Analyze Style</button>
+                    
+                    <!-- Style Analysis Output -->
+                    <div id="style-output-section" style="margin-top: 20px; display: none;">
+                        <label>Style Analysis Result:</label>
+                        <div class="text-field-container">
+                            <textarea id="style-analysis-result" readonly style="min-height: 120px; resize: both;"></textarea>
+                            <button type="button" class="copy-btn" onclick="copyToClipboard('style-analysis-result')">⎘</button>
+                        </div>
+                        <button type="button" class="standard-btn" style="margin-top: 10px;" onclick="useStyleAnalysis()">Use This Style</button>
+                    </div>
                 </form>
             </div>
             <div style="padding-left: 15px;">
                 <form action="/palette-tool" method="post" enctype="multipart/form-data">
                     <label for="palette_image">Upload for Palette Analysis:</label>
                     <input type="file" id="palette_image" name="image" accept="image/*" required>
-                    <button type="submit">Analyze Palette</button>
+                    <button type="submit" class="standard-btn">Analyze Palette</button>
+                    
+                    <!-- Palette Analysis Output -->
+                    <div id="palette-output-section" style="margin-top: 20px; display: none;">
+                        <label>Palette Analysis Result:</label>
+                        <div class="text-field-container">
+                            <textarea id="palette-analysis-result" readonly style="min-height: 80px; resize: both;"></textarea>
+                            <button type="button" class="copy-btn" onclick="copyToClipboard('palette-analysis-result')">⎘</button>
+                        </div>
+                        <button type="button" class="standard-btn" style="margin-top: 10px;" onclick="usePaletteAnalysis()">Use This Palette</button>
+                    </div>
                 </form>
             </div>
         </div>
@@ -163,8 +857,20 @@
         <form action="/image-tool" method="post" id="image-generator-form">
             <input type="hidden" name="parent_job_id" id="image-parent-job-id">
             <div class="form-grid">
-                <div><label for="object_prompt">Object to Create:</label><input type="text" id="object_prompt" name="object_prompt" placeholder="e.g., a vintage armchair" required></div>
-                <div><label for="style_prompt">Style Description:</label><textarea id="style_prompt" name="style_prompt" required></textarea></div>
+                <div>
+                    <label for="object_prompt">Object to Create:</label>
+                    <div class="text-field-container">
+                        <input type="text" id="object_prompt" name="object_prompt" placeholder="e.g., a vintage armchair" required>
+                        <button type="button" class="copy-btn" onclick="copyToClipboard('object_prompt')">⎘</button>
+                    </div>
+                </div>
+                <div>
+                    <label for="style_prompt">Style Description:</label>
+                    <div class="text-field-container">
+                        <textarea id="style_prompt" name="style_prompt" required></textarea>
+                        <button type="button" class="copy-btn" onclick="copyToClipboard('style_prompt')">⎘</button>
+                    </div>
+                </div>
                 <div>
                     <label class="form-section-label">Generation Models:</label>
                     <div class="model-checkbox-grid">
@@ -198,33 +904,215 @@
                     </div>
                 </div>
             </div>
-            <button type="submit">Generate Images</button>
+            <button type="submit" class="standard-btn">Generate Images</button>
         </form>
+    </div>
+</details>
+
+<details class="dashboard-section" id="animation-section">
+    <summary>Create Animation</summary>
+    <div class="tool-content">
+        <div class="upload-area" onclick="document.getElementById('animation-image-upload').click()" style="padding: 15px; min-height: 60px;">
+            <h4 style="margin: 0 0 5px 0; font-size: 14px;">📷 Upload Start Frame</h4>
+            <p style="margin: 0; font-size: 12px; color: #666;">Click here or drag an image</p>
+            <input type="file" id="animation-image-upload" accept="image/*" style="display: none;" onchange="handleAnimationImageUpload(this)">
+        </div>
+        <div id="animation-form-container" style="display: none;">
+            <form action="/generate-animation" method="post" id="animation-form">
+                <input type="hidden" name="image_url" id="animation_image_url">
+                <input type="hidden" name="end_image_url" id="animation_end_image_url">
+                <input type="hidden" name="parent_job_id" id="animation_parent_job_id">
+                
+                <div class="image-preview-section" style="margin: 20px 0;">
+                    <!-- Start Frame -->
+                    <div id="start-frame-display" style="display: none; margin-bottom: 15px;">
+                        <label style="font-weight: 600; display: block; margin-bottom: 5px;">Start Frame:</label>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <img id="animation-preview" style="max-width: 120px; max-height: 90px; border-radius: 8px;">
+                            <button type="button" onclick="removeStartFrame()" class="action-btn" style="background: #dc3545; font-size: 11px; padding: 4px 8px;">❌ Remove</button>
+                        </div>
+                    </div>
+                    
+                    <!-- End Frame Controls -->
+                    <div id="end-frame-controls" style="display: none; margin-bottom: 15px;">
+                        <label style="font-weight: 600; display: block; margin-bottom: 5px;">End Frame (Optional):</label>
+                        <div style="display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
+                            <button type="button" onclick="openLibraryModal('animation-end')" class="standard-btn">📚 Library</button>
+                            <button type="button" onclick="openJobSelectModal('animation-end')" class="standard-btn">📋 From Jobs</button>
+                            <div class="upload-area" onclick="document.getElementById('end-frame-upload').click()" style="display: inline-flex; padding: 6px 10px; margin: 0; cursor: pointer;">
+                                <span>📷 Upload</span>
+                                <input type="file" id="end-frame-upload" accept="image/*" style="display: none;" onchange="handleEndFrameUpload(this)">
+                            </div>
+                        </div>
+                        <div id="end-frame-display" style="display: none;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <img id="animation-end-preview" style="max-width: 120px; max-height: 90px; border-radius: 8px;">
+                                <button type="button" onclick="removeEndFrame()" class="action-btn" style="background: #dc3545; font-size: 11px; padding: 4px 8px;">❌ Remove</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 15px;">
+                    <label for="animation_prompt">Animation Prompt:</label>
+                    <div class="text-field-container">
+                        <textarea id="animation_prompt" name="prompt" required placeholder="Describe the animation..."></textarea>
+                        <button type="button" class="copy-btn" onclick="copyToClipboard('animation_prompt')">⎘</button>
+                        <button type="button" id="get-animation-idea-btn" class="standard-btn" onclick="getAnimationIdea()" style="position: absolute; top: 5px; right: 50px;">💡 Get Idea</button>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 15px;">
+                    <label>Background:</label>
+                    <div class="background-options-horizontal">
+                        <div class="background-option">
+                            <input type="radio" name="background" value="default" checked id="bg-default">
+                            <label for="bg-default">As is</label>
+                        </div>
+                        <div class="background-option">
+                            <input type="radio" name="background" value="green" id="bg-green">
+                            <label for="bg-green">Green Screen</label>
+                        </div>
+                        <div class="background-option">
+                            <input type="radio" name="background" value="blue" id="bg-blue">
+                            <label for="bg-blue">Blue Screen</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 15px;">
+                    <label for="animation_negative_prompt">Negative Prompt:</label>
+                    <div class="text-field-container">
+                        <input type="text" name="negative_prompt" id="animation_negative_prompt" placeholder="blurry, watermark, text, deformed">
+                        <button type="button" class="copy-btn" onclick="copyToClipboard('animation_negative_prompt')">⎘</button>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 15px;">
+                    <label>Video Models:</label>
+                    <div class="model-checkbox-grid">
+                        <label><input type="checkbox" name="video_model" value="kwaivgi/kling-v2.1" checked> Kling v2.1</label>
+                        <label><input type="checkbox" name="video_model" value="bytedance/seedance-1-pro"> Seedance-1 Pro</label>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 15px; display: flex; align-items: center;">
+                    <input type="checkbox" name="seamless_loop" value="true" id="seamless_loop" style="margin-right: 8px;">
+                    <label for="seamless_loop">Seamless Loop</label>
+                </div>
+
+                <button type="submit" class="standard-btn">Generate Animation</button>
+            </form>
+        </div>
+    </div>
+</details>
+
+<details class="dashboard-section" id="video-upload-section">
+    <summary>Upload Video for Processing</summary>
+    <div class="tool-content">
+        <div class="form-row">
+            <div style="border-right: 1px solid #eee; padding-right: 15px;">
+                <h4>Green/Blue Screen Keying</h4>
+                <div class="upload-area" onclick="document.getElementById('keying-video-upload').click()">
+                    <h3>🎬 Upload Video</h3>
+                    <p>Upload a video with green or blue screen for keying</p>
+                    <input type="file" id="keying-video-upload" accept="video/*" style="display: none;" onchange="handleKeyingVideoUpload(this)">
+                </div>
+                
+                <div class="color-sampler" style="margin-top: 15px;">
+                    <label>Sample Color from Video:</label>
+                    <div class="color-preview" id="sampled-color" style="background-color: #00ff00;"></div>
+                    <button type="button" class="standard-btn" onclick="openColorSampler()">🎯 Sample</button>
+                    <input type="color" id="manual-color-picker" value="#00ff00" style="width: 50px;">
+                </div>
+            </div>
+            <div style="padding-left: 15px;">
+                <h4>Frame Extraction</h4>
+                <div class="upload-area" onclick="document.getElementById('extract-video-upload').click()">
+                    <h3>📹 Upload Video</h3>
+                    <p>Upload a video to extract specific frames</p>
+                    <input type="file" id="extract-video-upload" accept="video/*" style="display: none;" onchange="handleExtractVideoUpload(this)">
+                </div>
+            </div>
+        </div>
+    </div>
+</details>
+
+<details class="dashboard-section" id="extract-frame-section">
+    <summary>Extract Frame from Video</summary>
+    <div class="tool-content">
+        <div class="upload-area" id="extract-upload-area" onclick="document.getElementById('extract-video-upload').click()">
+            <h3>🎬 Upload Video</h3>
+            <p>Click here or drag a video to extract frames from it</p>
+            <input type="file" id="extract-video-upload" accept="video/*" style="display: none;" onchange="handleExtractVideoUpload(this)">
+        </div>
+        <div id="extract-preview-container" style="display: none;">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                <button onclick="clearExtractVideo()" class="action-btn" style="background: #6c757d; font-size: 11px; padding: 4px 8px;">🗑️ Clear</button>
+                <button onclick="document.getElementById('extract-video-upload').click()" class="action-btn" style="background: #17a2b8; font-size: 11px; padding: 4px 8px;">📁 Change Video</button>
+            </div>
+            <video id="extract-preview-video" style="width: 100%; max-height: 350px; border-radius: 8px; background: #000;" controls></video>
+            <div style="margin-top: 15px;">
+                <label style="font-weight: 600; margin-bottom: 8px; display: block;">Frame Time (seconds):</label>
+                <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
+                    <input type="range" id="extract-frame-time" min="0" max="10" step="0.033" value="0" oninput="updateExtractPreview()" style="flex: 1;">
+                    <input type="number" id="extract-frame-time-input" min="0" step="0.033" value="0" style="width: 80px;" onchange="updateExtractPreview()">
+                </div>
+                <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                    <button onclick="stepFrame(-0.033)" class="action-btn" style="background: #6c757d; font-size: 11px; padding: 4px 8px;">◀ -1 Frame</button>
+                    <button onclick="stepFrame(0.033)" class="action-btn" style="background: #6c757d; font-size: 11px; padding: 4px 8px;">+1 Frame ▶</button>
+                    <button onclick="stepFrame(-1)" class="action-btn" style="background: #6c757d; font-size: 11px; padding: 4px 8px;">◀◀ -1s</button>
+                    <button onclick="stepFrame(1)" class="action-btn" style="background: #6c757d; font-size: 11px; padding: 4px 8px;">+1s ▶▶</button>
+                </div>
+            </div>
+            <button onclick="extractCurrentFrame()" class="action-btn" style="background: #007bff; margin-top: 10px; width: 100%;">🖼️ Extract This Frame</button>
+        </div>
     </div>
 </details>
 
 <details class="dashboard-section" id="stitcher-section">
     <summary>Video Stitcher</summary>
     <div class="tool-content">
-        <p>Select two videos from the Job Log below by checking their boxes, then click the "Stitch Selected Videos" button that appears in the log header.</p>
+        <p>Select two videos from the Job Queue on the right by checking their boxes, then use the "Stitch Selected Videos" button.</p>
     </div>
 </details>
 
-<div class="job-log-container" id="log-section">
-    <div class="job-log-header">
-        <h2>Job Log</h2>
-        <div class="job-log-header-actions">
-            <button id="delete-selected-btn" class="action-btn">🗑️ Delete Selected (0)</button>
-            <button id="stitch-videos-btn" class="action-btn">🎬 Stitch Selected Videos (0)</button>
-            <button id="process-pending-btn" class="action-btn" style="background-color: #28a745;">⚙️ Process Pending Keys</button>
+    </div>
+    
+    <!-- Resizable Divider -->
+    <div class="divider" id="resizer"></div>
+    
+    <!-- Right Panel - Job Queue -->
+    <div class="queue-panel">
+        <div class="job-queue-header">
+            <h2>Job Queue</h2>
+            <div class="queue-actions">
+                <button id="delete-selected-btn" class="action-btn" disabled>🗑️ Delete Selected (0)</button>
+                <button id="stitch-videos-btn" class="action-btn" disabled>🎬 Stitch Selected Videos (0)</button>
+                <button id="process-pending-btn" class="action-btn">⚙️ Process Pending Keys</button>
             <button id="process-selected-btn" class="action-btn" style="display: none;">⚙️ Process Selected Keys (0)</button>
-            <button id="clear-failed-btn" class="action-btn" style="background-color: #dc3545;">🧹 Clear Failed</button>
-            <button id="clear-stuck-btn" class="action-btn" style="background-color: #ff6b6b;">⚠️ Clear Stuck</button>
-            <button id="clear-all-btn" class="action-btn" style="background-color: #6c757d;">🗑️ Clear All Jobs</button>
+                <button id="clear-failed-btn" class="action-btn">🧹 Clear Failed</button>
+                <button id="clear-stuck-btn" class="action-btn">⚠️ Clear Stuck</button>
+                <button id="clear-all-btn" class="action-btn">🗑️ Clear All Jobs</button>
             <button id="refresh-log-btn" class="refresh-btn active">⏸️ Pause Auto-Refresh</button>
         </div>
     </div>
     <div id="job-log-body"><p>Loading job history...</p></div>
+    </div>
+</div>
+
+<!-- Color Sampler Modal -->
+<div id="color-sampler-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Color Sampler</h2>
+            <span class="close-button" onclick="closeColorSampler()">&times;</span>
+        </div>
+        <div id="color-sampler-video-container"></div>
+        <div>
+            <button onclick="selectSampledColor()" class="standard-btn">Use This Color</button>
+        </div>
+    </div>
 </div>
 
 <div id="extract-frame-modal" class="modal">
@@ -243,28 +1131,1279 @@
     </div>
 </div>
 
+<!-- Image popup modal -->
+<div id="imageModal" class="image-modal">
+    <span class="image-modal-close" onclick="closeImageModal()">&times;</span>
+    <div class="image-modal-content">
+        <img id="modalImage" src="" alt="Enlarged view">
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
 {{ super() }}
 <script>
+    // Copy to clipboard function
+    function copyToClipboard(elementId) {
+        const element = document.getElementById(elementId);
+        if (element) {
+            element.select();
+            document.execCommand('copy');
+            
+            // Visual feedback
+            const copyBtn = element.parentNode.querySelector('.copy-btn');
+            const originalText = copyBtn.textContent;
+            copyBtn.textContent = '✓';
+            setTimeout(() => {
+                copyBtn.textContent = originalText;
+            }, 1000);
+        }
+    }
+    
+    // Image modal functions
+    function openImageModal(imageSrc) {
+        const modal = document.getElementById('imageModal');
+        const modalImage = document.getElementById('modalImage');
+        
+        modalImage.src = imageSrc;
+        modal.style.display = 'block';
+        
+        // Close modal on background click
+        modal.onclick = function(event) {
+            if (event.target === modal) {
+                closeImageModal();
+            }
+        };
+        
+        // Close modal on ESC key
+        document.addEventListener('keydown', function escHandler(e) {
+            if (e.key === 'Escape') {
+                closeImageModal();
+                document.removeEventListener('keydown', escHandler);
+            }
+        });
+    }
+    
+    function closeImageModal() {
+        const modal = document.getElementById('imageModal');
+        modal.style.display = 'none';
+    }
+    
+    // Make images clickable for popup viewing
+    function makeImageClickable(imgElement) {
+        if (!imgElement) return;
+        imgElement.classList.add('clickable-image');
+        imgElement.onclick = function(e) {
+            e.stopPropagation(); // Prevent event bubbling
+            openImageModal(this.src);
+        };
+    }
+    
+    // Copy job prompt function
+    function copyJobPrompt(elementId) {
+        const element = document.getElementById(elementId);
+        if (element) {
+            element.select();
+            document.execCommand('copy');
+            
+            // Visual feedback
+            const copyBtn = element.parentNode.querySelector('.copy-btn');
+            if (copyBtn) {
+                const originalText = copyBtn.textContent;
+                copyBtn.textContent = '✓';
+                copyBtn.style.color = '#28a745';
+                setTimeout(() => {
+                    copyBtn.textContent = originalText;
+                    copyBtn.style.color = '';
+                }, 1000);
+            }
+        }
+    }
+    
+    // Style and Palette Analysis Functions
+    function showStyleOutput(result) {
+        document.getElementById('style-analysis-result').value = result;
+        document.getElementById('style-output-section').style.display = 'block';
+    }
+    
+    function showPaletteOutput(result) {
+        document.getElementById('palette-analysis-result').value = result;
+        document.getElementById('palette-output-section').style.display = 'block';
+    }
+    
+    function useStyleAnalysis() {
+        const result = document.getElementById('style-analysis-result').value;
+        document.getElementById('style_prompt').value = result;
+        alert('Style description copied to Image Generator!');
+    }
+    
+    function usePaletteAnalysis() {
+        const result = document.getElementById('palette-analysis-result').value;
+        // Could be used to set color palette or added to style prompt
+        const currentStyle = document.getElementById('style_prompt').value;
+        const newStyle = currentStyle ? currentStyle + ' ' + result : result;
+        document.getElementById('style_prompt').value = newStyle;
+        alert('Palette description added to Image Generator!');
+    }
+    
+    // Animation image upload handler
+    function handleAnimationImageUpload(input) {
+        if (input.files && input.files[0]) {
+            const file = input.files[0];
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                document.getElementById('animation-preview').src = e.target.result;
+                document.getElementById('start-frame-display').style.display = 'block';
+                document.getElementById('end-frame-controls').style.display = 'block';
+                document.getElementById('animation-form-container').style.display = 'block';
+                
+                // Upload the file to the server
+                uploadImageFile(file, 'animation_image_url');
+            };
+            
+            reader.readAsDataURL(file);
+        }
+    }
+    
+    function handleEndFrameUpload(input) {
+        if (input.files && input.files[0]) {
+            const file = input.files[0];
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                document.getElementById('animation-end-preview').src = e.target.result;
+                document.getElementById('end-frame-display').style.display = 'block';
+                
+                // Upload the file to the server  
+                uploadImageFile(file, 'animation_end_image_url');
+            };
+            
+            reader.readAsDataURL(file);
+        }
+    }
+    
+    function removeStartFrame() {
+        document.getElementById('start-frame-display').style.display = 'none';
+        document.getElementById('end-frame-controls').style.display = 'none';
+        document.getElementById('animation-form-container').style.display = 'none';
+        document.getElementById('animation_image_url').value = '';
+        document.getElementById('animation_parent_job_id').value = '';
+        
+        // Reset the file input
+        document.getElementById('animation-image-upload').value = '';
+    }
+    
+    function removeEndFrame() {
+        document.getElementById('end-frame-display').style.display = 'none';
+        document.getElementById('animation_end_image_url').value = '';
+        
+        // Reset the file input
+        document.getElementById('end-frame-upload').value = '';
+    }
+    
+    function openJobSelectModal(target) {
+        // This would open a modal to select from job results
+        alert('Job Selection: This feature will allow you to select an image from your completed jobs as an end frame.');
+    }
+    
+    // Video upload handlers
+    function handleKeyingVideoUpload(input) {
+        if (input.files && input.files[0]) {
+            uploadVideoFile(input.files[0], 'keying');
+        }
+    }
+    
+    function handleExtractVideoUpload(input) {
+        if (input.files && input.files[0]) {
+            uploadVideoFile(input.files[0], 'extract');
+        }
+    }
+    
+    // File upload utility
+    function uploadImageFile(file, targetInputId) {
+        const formData = new FormData();
+        formData.append('image', file);
+        
+        fetch('/upload-for-animation', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.text())
+        .then(data => {
+            // Extract URL from redirect response
+            const urlMatch = data.match(/image_url=([^"&]+)/);
+            if (urlMatch) {
+                document.getElementById(targetInputId).value = decodeURIComponent(urlMatch[1]);
+            }
+        })
+        .catch(error => console.error('Upload error:', error));
+    }
+    
+    function uploadVideoFile(file, purpose) {
+        const formData = new FormData();
+        formData.append('video', file);
+        formData.append('purpose', purpose);
+        
+        // Create a placeholder job to show upload progress
+        showPlaceholder(`Uploading video for ${purpose}...`);
+        
+        fetch('/upload-video', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                if (purpose === 'keying') {
+                    openKeyingInterface(data.video_path);
+                } else if (purpose === 'extract') {
+                    openExtractFrameModal(data.video_path);
+                }
+            } else {
+                alert('Upload failed: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Upload error:', error);
+            alert('Upload failed: ' + error.message);
+        });
+    }
+    
+    // Color sampler functionality
+    let currentSamplerVideo = null;
+    let sampledColor = '#00ff00';
+    
+    function openColorSampler() {
+        const modal = document.getElementById('color-sampler-modal');
+        modal.style.display = 'block';
+        
+        // If there's a video uploaded for keying, use it for sampling
+        // Otherwise, show upload option
+        const container = document.getElementById('color-sampler-video-container');
+        container.innerHTML = '<p>Upload a video in the keying section first, then use this tool to sample colors.</p>';
+    }
+    
+    function closeColorSampler() {
+        document.getElementById('color-sampler-modal').style.display = 'none';
+    }
+    
+    function selectSampledColor() {
+        document.getElementById('sampled-color').style.backgroundColor = sampledColor;
+        document.getElementById('manual-color-picker').value = sampledColor;
+        closeColorSampler();
+    }
+    
+    // Placeholder animation
+    function showPlaceholder(message) {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'content-placeholder';
+        placeholder.textContent = message;
+        
+        // Add to job queue
+        const logBody = document.getElementById('job-log-body');
+        if (logBody) {
+            logBody.insertBefore(placeholder, logBody.firstChild);
+            
+            // Remove after a few seconds
+            setTimeout(() => {
+                if (placeholder.parentNode) {
+                    placeholder.parentNode.removeChild(placeholder);
+                }
+            }, 5000);
+        }
+    }
+    
+    // Keep frame extraction modal open
+    let keepExtractModalOpen = false;
+    
+    // Enhanced job rendering with grouping
+    function renderGroupedJobs(jobs) {
+        const grouped = {};
+        
+        // Group jobs by prompt for image generation
+        jobs.forEach(job => {
+            if (job.job_type === 'image_generation') {
+                const key = job.prompt || 'unknown';
+                if (!grouped[key]) {
+                    grouped[key] = [];
+                }
+                grouped[key].push(job);
+            }
+        });
+        
+        // Render grouped jobs
+                let html = '';
+        Object.keys(grouped).forEach(promptKey => {
+            const jobGroup = grouped[promptKey];
+            if (jobGroup.length > 1) {
+                html += renderJobGroup(jobGroup);
+            } else {
+                html += renderSingleJob(jobGroup[0]);
+            }
+        });
+        
+        // Render non-image generation jobs normally
+                jobs.forEach(job => {
+            if (job.job_type !== 'image_generation') {
+                html += renderSingleJob(job);
+            }
+        });
+        
+        return html;
+    }
+    
+    function renderJobGroup(jobs) {
+        const firstJob = jobs[0];
+        const allCompleted = jobs.every(job => job.status === 'completed');
+        const completedJobs = jobs.filter(job => job.status === 'completed' && job.result_data);
+        
+        // Create stacked thumbnails for completed jobs
+        let stackedThumbnailsHTML = '<div class="stacked-thumbnails">';
+        completedJobs.slice(0, 3).forEach((job, index) => {
+            stackedThumbnailsHTML += `<img src="/${job.result_data}" class="stacked-thumbnail clickable-image" alt="Generated Image" onclick="event.stopPropagation(); openImageModal('/${job.result_data}')">`;
+        });
+        stackedThumbnailsHTML += '</div>';
+        
+        let html = `
+            <div class="enhanced-job-item grouped-job-container">
+                <div class="enhanced-job-summary" onclick="toggleJobDetails(this)">
+                    <input type="checkbox" class="job-selection-checkbox selection-checkbox" data-group-ids="${jobs.map(j => j.id).join(',')}" onclick="event.stopPropagation()">
+                    <div class="job-number-badge">Group</div>
+                    ${completedJobs.length > 0 ? stackedThumbnailsHTML : '<div class="enhanced-job-thumbnail content-placeholder">Processing...</div>'}
+                    <div class="job-info-container">
+                        <h4 class="job-title">Image Generation (${jobs.length} models)</h4>
+                        <div class="job-prompt-box">${firstJob.prompt}</div>
+                        <div class="job-status-badges">
+        `;
+        
+        jobs.forEach(job => {
+            html += `<span class="status-badge status-${job.status}">${job.status}</span>`;
+        });
+        
+        html += `
+                        </div>
+                    </div>
+                </div>
+                <div class="job-details" style="display: none; padding: 15px; border-top: 1px solid #e9ecef;">
+                    <!-- Group Actions Bar -->
+                    <div class="group-actions-bar">
+                        <button class="action-btn" onclick="animateGroupImages([${completedJobs.map(j => j.id).join(',')}])" style="background: #007bff;">🎬 Animate Selected</button>
+                        <button class="action-btn" onclick="removeBgGroup([${completedJobs.map(j => j.id).join(',')}])" style="background: #17a2b8;">✨ Remove BG Selected</button>
+                        <button class="action-btn" onclick="regenerateGroup([${jobs.map(j => j.id).join(',')}])" style="background: #6f42c1;">🔄 Regenerate Group</button>
+                        <button class="action-btn" onclick="deleteGroup([${jobs.map(j => j.id).join(',')}])" style="background: #dc3545;">🗑️ Delete Group</button>
+                    </div>
+                    
+                    <!-- Group Details -->
+                    <div class="enhanced-job-content" style="margin: 15px 0;">
+                        <div class="enhanced-job-text">
+                            <label style="font-weight: 600; margin-bottom: 8px; display: block;">Prompt:</label>
+                            <div style="position: relative;">
+                                <textarea class="job-prompt-box" readonly id="group-prompt-${firstJob.id}">${firstJob.prompt || 'No prompt available'}</textarea>
+                                <button class="copy-btn" onclick="copyJobPrompt('group-prompt-${firstJob.id}')" title="Copy prompt">⎘</button>
+                            </div>
+                            <div style="margin-top: 15px; font-size: 12px; color: #666;">
+                                <p><strong>Created:</strong> ${new Date(firstJob.created_at).toLocaleString()}</p>
+                                <p><strong>Models:</strong> ${jobs.length} different models</p>
+                                <p><strong>Completed:</strong> ${completedJobs.length} / ${jobs.length}</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Individual Images Grid -->
+                    <div class="image-grid">
+        `;
+        
+        jobs.forEach(job => {
+            if (job.status === 'completed' && job.result_data) {
+                html += `
+                    <div class="image-item">
+                        <input type="checkbox" class="image-checkbox selection-checkbox" data-job-id="${job.id}">
+                        <img src="/${job.result_data}" alt="Generated Image" class="clickable-image" onclick="event.stopPropagation(); openImageModal('/${job.result_data}')">
+                    </div>
+                `;
+                } else {
+                html += `
+                    <div class="image-item">
+                        <div class="image-processing-placeholder">${job.status}</div>
+                    </div>
+                `;
+            }
+        });
+        
+        html += `
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        return html;
+    }
+    
+    function renderSingleJob(job) {
+        // Enhanced single job rendering with proper video support
+        const isExpanded = false; 
+        const thumbnailClass = isExpanded ? 'enhanced-job-details-expanded' : '';
+        
+        let thumbnailHTML = '';
+        if (job.result_data && job.status === 'completed') {
+            // Check if it's a video file
+            const isVideoJob = job.job_type === 'animation' || job.job_type === 'video_stitching';
+            const hasVideoExtension = job.result_data.match(/\.(mp4|webm|mov)$/i);
+            
+            if (isVideoJob || hasVideoExtension) {
+                thumbnailHTML = `<video src="/${job.result_data}" class="enhanced-job-thumbnail ${thumbnailClass}" muted loop autoplay controls></video>`;
+            } else {
+                thumbnailHTML = `<img src="/${job.result_data}" class="enhanced-job-thumbnail ${thumbnailClass} clickable-image" alt="Result" onclick="event.stopPropagation(); openImageModal('/${job.result_data}')">`;
+            }
+        } else if (job.status === 'processing' || job.status === 'keying_processing') {
+            thumbnailHTML = `<div class="content-placeholder enhanced-job-thumbnail ${thumbnailClass}">Processing...</div>`;
+        } else if (job.status === 'failed') {
+            thumbnailHTML = `<div class="enhanced-job-thumbnail ${thumbnailClass}" style="background: #f8d7da; color: #721c24; display: flex; align-items: center; justify-content: center; font-weight: bold;">Failed</div>`;
+        } else {
+            thumbnailHTML = `<div class="enhanced-job-thumbnail ${thumbnailClass}" style="background: #e9ecef; display: flex; align-items: center; justify-content: center; font-size: 11px;">${job.status}</div>`;
+        }
+        
+        // Generate action buttons
+        let actionButtons = '';
+        if (job.status === 'completed' && job.result_data) {
+            if (job.job_type.includes('image') || job.job_type === 'frame_extraction') {
+                actionButtons += `<button class="action-btn" onclick="console.log('🎬 Animate button clicked!', '${job.result_data}', ${job.id}); animateImage('${job.result_data}', ${job.id})" style="background: #007bff; font-size: 11px; padding: 4px 8px;">🎬 Animate</button>`;
+                actionButtons += `<button class="action-btn" onclick="removeBg('${job.result_data}', ${job.id})" style="background: #17a2b8; font-size: 11px; padding: 4px 8px;">✨ Remove BG</button>`;
+            }
+            if (job.job_type === 'image_generation' || job.job_type === 'animation') {
+                actionButtons += `<button class="action-btn" onclick="regenerateJob(${job.id})" style="background: #6f42c1; font-size: 11px; padding: 4px 8px;">🔄 Regenerate</button>`;
+            }
+            if (job.job_type === 'animation' || job.job_type === 'video_stitching') {
+                const keyText = job.keyed_result_data ? 'Re-Key' : 'Key Video';
+                actionButtons += `<button class="action-btn" onclick="openKeyingInterface(${job.id})" style="background: #28a745; font-size: 11px; padding: 4px 8px;">⚙️ ${keyText}</button>`;
+                actionButtons += `<button class="action-btn" onclick="openExtractFrameModal('${job.result_data}', ${job.id})" style="background: #17a2b8; font-size: 11px; padding: 4px 8px;">🖼️ Extract Frame</button>`;
+            }
+        }
+        actionButtons += `<button class="action-btn" onclick="deleteJob(${job.id})" style="background: #dc3545; font-size: 11px; padding: 4px 8px;">🗑️ Delete</button>`;
+        
+            const isSelectable = job.status !== 'processing' && job.status !== 'keying_processing';
+            
+        return `
+            <div class="enhanced-job-item">
+                <div class="enhanced-job-summary" onclick="toggleJobDetails(this)">
+                    ${isSelectable ? `<input type="checkbox" class="job-selection-checkbox selection-checkbox" data-job-id="${job.id}" onclick="event.stopPropagation()">` : ''}
+                    <div class="job-number-badge">#${job.id}</div>
+                    ${thumbnailHTML}
+                    <div class="job-info-container">
+                        <h4 class="job-title">${job.job_type.replace(/_/g, ' ')}</h4>
+                        <div class="job-prompt-box">${job.prompt || 'No prompt'}</div>
+                        <div class="job-status-badges">
+                            <span class="status-badge status-${job.status}">${job.status.replace(/_/g, ' ')}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="job-details" style="display: none; padding: 15px; border-top: 1px solid #e9ecef;">
+                    <div class="enhanced-job-actions">
+                        ${actionButtons}
+                    </div>
+                    <div class="enhanced-job-content">
+                        <div class="enhanced-job-media">
+                            ${job.result_data && job.status === 'completed' ? 
+                                (job.job_type === 'animation' || job.job_type === 'video_stitching' || job.result_data.match(/\.(mp4|webm|mov)$/i) ?
+                                    `<video src="/${job.result_data}" style="max-width: 500px; width: 100%; border-radius: 8px;" muted loop autoplay controls></video>` :
+                                    `<img src="/${job.result_data}" style="max-width: 500px; width: 100%; border-radius: 8px;" class="clickable-image" alt="Result" onclick="event.stopPropagation(); openImageModal('/${job.result_data}')">`
+                                ) : ''
+                            }
+                        </div>
+                        <div class="enhanced-job-text">
+                            <label style="font-weight: 600; margin-bottom: 8px; display: block;">Prompt:</label>
+                            <div style="position: relative;">
+                                <textarea class="job-prompt-box" readonly id="job-prompt-${job.id}">${job.prompt || 'No prompt available'}</textarea>
+                                <button class="copy-btn" onclick="copyJobPrompt('job-prompt-${job.id}')" title="Copy prompt">⎘</button>
+                            </div>
+                            <div style="margin-top: 15px; font-size: 12px; color: #666;">
+                                <p><strong>Created:</strong> ${new Date(job.created_at).toLocaleString()}</p>
+                                <p><strong>Status:</strong> ${job.status.replace(/_/g, ' ')}</p>
+                                ${job.error_message ? `<p><strong>Error:</strong> ${job.error_message}</p>` : ''}
+                                ${job.result_data ? `<p><strong>Output:</strong> ${job.result_data}</p>` : ''}
+                                ${job.keyed_result_data ? `<p><strong>Keyed Output:</strong> ${job.keyed_result_data}</p>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    function toggleJobDetails(element) {
+        const details = element.nextElementSibling;
+        const jobItem = element.closest('.enhanced-job-item');
+        const isVisible = details.style.display !== 'none';
+        
+        details.style.display = isVisible ? 'none' : 'block';
+        
+        // Update thumbnail size and job state
+        const thumbnail = element.querySelector('.enhanced-job-thumbnail');
+        if (thumbnail) {
+            thumbnail.classList.toggle('enhanced-job-details-expanded', !isVisible);
+        }
+        
+        // Add data attribute for better CSS targeting
+        if (jobItem) {
+            jobItem.setAttribute('data-expanded', !isVisible);
+        }
+        
+        // Smart auto-refresh control - pause when opening, resume when all closed
+        updateAutoRefreshBasedOnOpenJobs();
+    }
+    
+    function updateAutoRefreshBasedOnOpenJobs() {
+        // Count open job details
+        const openJobDetails = document.querySelectorAll('.enhanced-job-item[data-expanded="true"]');
+        const selectedJobs = document.querySelectorAll('.selection-checkbox:checked');
+        
+        const hasOpenJobs = openJobDetails.length > 0;
+        const hasSelections = selectedJobs.length > 0;
+        
+        console.log('🔄 Auto-refresh check:');
+        console.log('  - Open job details:', openJobDetails.length);
+        console.log('  - Selected jobs:', selectedJobs.length);
+        console.log('  - Should pause refresh:', hasOpenJobs || hasSelections);
+        console.log('  - Auto refresh currently active:', !!window.autoRefreshInterval);
+        
+        if (hasOpenJobs || hasSelections) {
+            if (window.autoRefreshInterval) {
+                console.log('🔄 Pausing auto-refresh (jobs open or selected)');
+                pauseAutoRefresh();
+            }
+                } else {
+            if (!window.autoRefreshInterval) {
+                console.log('🔄 Resuming auto-refresh (no open jobs, no selections)');
+                startAutoRefresh();
+            }
+        }
+    }
+    
+    // Action functions for enhanced job rendering - Make globally accessible
+    window.animateImage = function(imagePath, parentJobId) {
+        console.log('🎬 Animating image:', imagePath, 'Parent Job ID:', parentJobId);
+        
+        try {
+            // Check if required elements exist
+            const requiredElements = ['animation_image_url', 'animation_parent_job_id', 'animation-preview', 'start-frame-display', 'end-frame-controls', 'animation-form-container', 'animation-section'];
+            for (let elementId of requiredElements) {
+                if (!document.getElementById(elementId)) {
+                    console.error(`❌ Required element not found: ${elementId}`);
+                    alert(`Error: Animation form element ${elementId} not found. Please refresh the page.`);
+                    return;
+                }
+            }
+            
+            // Populate animation form with the image
+            document.getElementById('animation_image_url').value = imagePath;
+            document.getElementById('animation_parent_job_id').value = parentJobId;
+            
+            // Set up the preview image
+            const previewImg = document.getElementById('animation-preview');
+            previewImg.src = '/' + imagePath.replace(/^\//, '');
+            previewImg.onload = function() {
+                console.log('✅ Animation preview image loaded successfully');
+            };
+            previewImg.onerror = function() {
+                console.error('❌ Failed to load preview image:', imagePath);
+            };
+            
+            // Show the animation form sections
+            document.getElementById('start-frame-display').style.display = 'block';
+            document.getElementById('end-frame-controls').style.display = 'block';
+            document.getElementById('animation-form-container').style.display = 'block';
+            
+            // Open and scroll to animation section
+            const animationSection = document.getElementById('animation-section');
+            animationSection.setAttribute('open', '');
+            animationSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            
+            // Show success message
+            setTimeout(() => {
+                alert('✅ Image loaded in Animation Creator! You can now create an animation.');
+            }, 500);
+            
+            console.log('✅ Animation form populated successfully');
+            
+        } catch (error) {
+            console.error('❌ Error populating animation form:', error);
+            alert('Error loading image in animation tool: ' + error.message);
+        }
+    };
+    
+    window.removeBg = function(imagePath, parentJobId) {
+        if (confirm('Remove background from this image?')) {
+            const formData = new FormData();
+            formData.append('image_url', '/' + imagePath);
+            formData.append('parent_job_id', parentJobId);
+            
+            showPlaceholder('Removing background...');
+            
+            fetch('/remove-background', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    refreshJobLog();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Remove BG error:', error);
+                alert('Error: ' + error.message);
+            });
+        }
+    };
+    
+    window.regenerateJob = function(jobId) {
+        if (confirm('Regenerate this job with the same parameters?')) {
+            // This would need to fetch the job details and resubmit
+            showPlaceholder('Regenerating job...');
+            
+            fetch(`/api/jobs/${jobId}/regenerate`, {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    refreshJobLog();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Regenerate error:', error);
+                alert('Error: ' + error.message);
+            });
+        }
+    };
+    
+    window.deleteJob = function(jobId) {
+        if (confirm('Delete this job permanently?')) {
+            fetch('/api/batch-delete-items', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ job_ids: [jobId] })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    refreshJobLog();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Delete error:', error);
+                alert('Error: ' + error.message);
+            });
+        }
+    };
+    
+    window.openKeyingInterface = function(jobId) {
+        // Open the fine-tune page for this job
+        window.open(`/fine-tune/${jobId}`, '_blank');
+    };
+    
+    // Enhanced animation idea generator with image analysis
+    window.getAnimationIdea = function() {
+        console.log('💡 Getting contextual animation idea...');
+        
+        const promptTextarea = document.getElementById('animation_prompt');
+        if (!promptTextarea) {
+            console.error('❌ Animation prompt textarea not found');
+            alert('Error: Could not find animation prompt field.');
+            return;
+        }
+        
+        // Try to get context from the current image and existing prompt
+        const currentImageSrc = document.getElementById('animation-preview')?.src || '';
+        const existingPrompt = promptTextarea.value.toLowerCase();
+        
+        // Analyze context clues from existing content
+        let contextualIdeas = [];
+        
+        // Check for context clues in existing prompt
+        if (existingPrompt.includes('portrait') || existingPrompt.includes('face') || existingPrompt.includes('person')) {
+            contextualIdeas = [
+                "Gentle breathing motion - chest rising and falling subtly",
+                "Eyes blinking naturally with warm, lifelike expression",
+                "Hair flowing softly as if in a gentle breeze",
+                "Clothing fabric swaying naturally",
+                "Soft lighting changes creating mood transitions"
+            ];
+        } else if (existingPrompt.includes('nature') || existingPrompt.includes('tree') || existingPrompt.includes('forest')) {
+            contextualIdeas = [
+                "Leaves rustling and swaying in natural wind patterns",
+                "Sunlight filtering through moving branches",
+                "Flower petals falling gracefully",
+                "Grass or foliage gently swaying",
+                "Birds flying in the distance"
+            ];
+        } else if (existingPrompt.includes('water') || existingPrompt.includes('ocean') || existingPrompt.includes('lake')) {
+            contextualIdeas = [
+                "Water ripples expanding naturally across the surface",
+                "Waves lapping gently against the shore",
+                "Reflections shimmering on the water surface",
+                "Mist rising softly from the water",
+                "Underwater bubbles floating upward"
+            ];
+        } else if (existingPrompt.includes('city') || existingPrompt.includes('building') || existingPrompt.includes('urban')) {
+            contextualIdeas = [
+                "Window lights flickering on and off naturally",
+                "Traffic lights changing in sequence",
+                "Curtains or flags billowing in urban wind",
+                "Steam rising from manholes or vents",
+                "Neon signs flickering with electric energy"
+            ];
+        } else if (existingPrompt.includes('sky') || existingPrompt.includes('cloud')) {
+            contextualIdeas = [
+                "Clouds drifting slowly across the sky",
+                "Stars twinkling in the night sky",
+                "Sun rays breaking through moving clouds",
+                "Lightning flickering in storm clouds",
+                "Aurora-like effects dancing in the atmosphere"
+            ];
+        }
+        
+        // Fallback to general ideas if no specific context
+        if (contextualIdeas.length === 0) {
+            contextualIdeas = [
+                "Camera slowly zooms in while maintaining perfect focus",
+                "Soft particles like dust motes or fireflies floating gently",
+                "Subtle lighting changes creating atmospheric mood",
+                "Gentle perspective shifts as if breathing",
+                "Magical sparkles or energy flowing around the subject",
+                "Smooth color gradations transitioning naturally",
+                "Elements in the background moving independently",
+                "Gentle rotation or parallax effect revealing depth"
+            ];
+        }
+        
+        const selectedIdea = contextualIdeas[Math.floor(Math.random() * contextualIdeas.length)];
+        
+        // Add contextual prefix based on current content
+        let ideaPrefix = "Add natural movement: ";
+        if (existingPrompt.includes('painting') || existingPrompt.includes('art')) {
+            ideaPrefix = "Bring the artwork to life with: ";
+        } else if (existingPrompt.includes('photo')) {
+            ideaPrefix = "Make the photo cinematic with: ";
+        }
+        
+        const fullIdea = ideaPrefix + selectedIdea;
+        
+        // Smart insertion logic
+        if (promptTextarea.value.trim() === '') {
+            promptTextarea.value = fullIdea;
+        } else {
+            // Check if we should append or suggest replacement
+            if (promptTextarea.value.length > 200) {
+                const addMore = confirm('Your prompt is getting long. Would you like to:\n\nOK = Add this idea to your existing prompt\nCancel = Replace with just this idea');
+                if (addMore) {
+                    promptTextarea.value = promptTextarea.value + '\n\n' + fullIdea;
+                } else {
+                    promptTextarea.value = fullIdea;
+                }
+            } else {
+                promptTextarea.value = promptTextarea.value + ' ' + fullIdea;
+            }
+        }
+        
+        promptTextarea.focus();
+        
+        // Success feedback
+        setTimeout(() => {
+            alert('💡 Smart animation idea added based on your content! Feel free to customize further.');
+        }, 100);
+    };
+    
+    // Library and Job Selection Modal Functions
+    window.openLibraryModal = function(targetType) {
+        console.log('📚 Opening library modal for:', targetType);
+        
+        // Fetch library items
+        fetch('/api/jobs')
+            .then(response => response.json())
+            .then(data => {
+                // Handle both array and object response formats
+                const jobs = Array.isArray(data) ? data : (data.jobs || []);
+                const completedImageJobs = jobs.filter(job => 
+                    job.status === 'completed' && 
+                    (job.job_type.includes('image') || job.job_type === 'frame_extraction') &&
+                    job.result_data
+                );
+                
+                if (completedImageJobs.length === 0) {
+                    alert('No images found in library. Generate some images first!');
+                    return;
+                }
+                
+                showImageSelectionModal(completedImageJobs, 'Select Image from Library', (selectedJob) => {
+                    if (targetType === 'animation-end') {
+                        setEndFrameImage(selectedJob.result_data, selectedJob.id);
+                    }
+                });
+            })
+            .catch(error => {
+                console.error('Error loading library:', error);
+                alert('Error loading library images.');
+            });
+    };
+    
+    window.openJobSelectModal = function(targetType) {
+        console.log('📋 Opening job selection modal for:', targetType);
+        
+        // Fetch recent completed jobs
+        fetch('/api/jobs')
+            .then(response => response.json())
+            .then(data => {
+                // Handle both array and object response formats
+                const jobs = Array.isArray(data) ? data : (data.jobs || []);
+                const recentImageJobs = jobs
+                    .filter(job => 
+                        job.status === 'completed' && 
+                        (job.job_type.includes('image') || job.job_type === 'frame_extraction') &&
+                        job.result_data
+                    )
+                    .slice(0, 20); // Show last 20 completed image jobs
+                
+                if (recentImageJobs.length === 0) {
+                    alert('No recent image jobs found.');
+                    return;
+                }
+                
+                showImageSelectionModal(recentImageJobs, 'Select from Recent Jobs', (selectedJob) => {
+                    if (targetType === 'animation-end') {
+                        setEndFrameImage(selectedJob.result_data, selectedJob.id);
+                    }
+                });
+            })
+            .catch(error => {
+                console.error('Error loading jobs:', error);
+                alert('Error loading recent jobs.');
+            });
+    };
+    
+    function showImageSelectionModal(jobs, title, onSelect) {
+        // Create modal HTML
+        const modalHTML = `
+            <div id="imageSelectionModal" style="
+                position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+                background: rgba(0,0,0,0.8); z-index: 1000; display: flex; 
+                align-items: center; justify-content: center;
+            ">
+                <div style="
+                    background: white; border-radius: 12px; max-width: 80%; max-height: 80%; 
+                    overflow-y: auto; padding: 20px;
+                ">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h3 style="margin: 0;">${title}</h3>
+                        <button onclick="closeImageSelectionModal()" style="
+                            background: #dc3545; color: white; border: none; border-radius: 4px; 
+                            padding: 8px 12px; cursor: pointer;
+                        ">✕ Close</button>
+                    </div>
+                    <div id="imageGrid" style="
+                        display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); 
+                        gap: 15px; max-height: 400px; overflow-y: auto;
+                    ">
+                        ${jobs.map(job => `
+                            <div style="
+                                border: 2px solid #e9ecef; border-radius: 8px; overflow: hidden; 
+                                cursor: pointer; transition: all 0.2s ease;
+                            " onclick="selectImageFromModal(${job.id}, '${job.result_data}')">
+                                <img src="/${job.result_data.replace(/^\/+/, '')}" alt="Job ${job.id}" style="
+                                    width: 100%; height: 120px; object-fit: cover;
+                                ">
+                                <div style="padding: 8px; font-size: 12px; background: #f8f9fa;">
+                                    <strong>Job #${job.id}</strong><br>
+                                    ${job.job_type}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Add modal to page
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        
+        // Store the callback function globally for selectImageFromModal to use
+        window.currentModalCallback = onSelect;
+    }
+    
+    window.closeImageSelectionModal = function() {
+        const modal = document.getElementById('imageSelectionModal');
+        if (modal) {
+            modal.remove();
+        }
+        window.currentModalCallback = null;
+    };
+    
+    window.selectImageFromModal = function(jobId, imagePath) {
+        if (window.currentModalCallback) {
+            window.currentModalCallback({ id: jobId, result_data: imagePath });
+        }
+        closeImageSelectionModal();
+    };
+    
+    function setEndFrameImage(imagePath, jobId) {
+        console.log('🖼️ Setting end frame:', imagePath, jobId);
+        
+        // Set the hidden input value - try both possible IDs
+        const endImageInput = document.getElementById('end_image_url_input') || document.getElementById('animation_end_image_url');
+        if (endImageInput) {
+            endImageInput.value = imagePath;
+        }
+        
+        // Show the end frame preview - try both possible IDs
+        const endFramePreview = document.getElementById('end-frame-preview') || document.getElementById('animation-end-preview');
+        const endFrameDisplay = document.getElementById('end-frame-display');
+        
+        if (endFramePreview) {
+            // Ensure the path starts with / and doesn't have double slashes
+            const cleanPath = '/' + imagePath.replace(/^\/+/, '');
+            endFramePreview.src = cleanPath;
+            if (endFrameDisplay) {
+                endFrameDisplay.style.display = 'block';
+            }
+        }
+        
+        alert('✅ End frame image selected! This will create an ABA-style animation.');
+    }
+    
+    // Group action functions
+    window.animateGroupImages = function(jobIds) {
+        const selectedIds = getSelectedImagesFromGroup();
+        if (selectedIds.length === 0) {
+            alert('Please select images to animate by checking their boxes.');
+            return;
+        }
+        
+        // Get the first selected image data for animation
+        const firstSelectedId = selectedIds[0];
+        
+        // Find the job data for the first selected image
+        fetch('/api/jobs')
+            .then(response => response.json())
+            .then(data => {
+                // Handle both array and object response formats
+                const jobs = Array.isArray(data) ? data : (data.jobs || []);
+                const selectedJob = jobs.find(job => job.id === firstSelectedId);
+                if (selectedJob && selectedJob.result_data) {
+                    // Use the existing animateImage function for the first selected image
+                    animateImage(selectedJob.result_data, selectedJob.id);
+                    
+                    if (selectedIds.length > 1) {
+                        alert(`Animation tool loaded with first selected image. ${selectedIds.length - 1} other images selected for batch processing.`);
+                    }
+                    } else {
+                    alert('Could not find image data for selected item.');
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching job data:', error);
+                alert('Error loading selected image for animation.');
+            });
+    };
+    
+    function removeBgGroup(jobIds) {
+        const selectedIds = getSelectedImagesFromGroup();
+        if (selectedIds.length === 0) {
+            alert('Please select images for background removal by checking their boxes.');
+            return;
+        }
+        if (confirm(`Remove background from ${selectedIds.length} selected images?`)) {
+            showPlaceholder(`Removing backgrounds from ${selectedIds.length} images...`);
+            // Process each selected image
+            selectedIds.forEach(jobId => removeBg('', jobId));
+        }
+    }
+    
+    function regenerateGroup(jobIds) {
+        if (confirm(`Regenerate all ${jobIds.length} images in this group?`)) {
+            showPlaceholder(`Regenerating ${jobIds.length} images...`);
+            jobIds.forEach(jobId => {
+                fetch(`/api/jobs/${jobId}/regenerate`, { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (!data.success) console.error('Regenerate failed for job', jobId);
+                    });
+            });
+            setTimeout(() => refreshJobLog(), 1000);
+        }
+    }
+    
+    function deleteGroup(jobIds) {
+        if (confirm(`Delete all ${jobIds.length} jobs in this group permanently?`)) {
+            fetch('/api/batch-delete-items', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ job_ids: jobIds })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    refreshJobLog();
+                    } else {
+                    alert('Error: ' + data.error);
+                }
+            });
+        }
+    }
+    
+    function getSelectedImagesFromGroup() {
+        const selected = Array.from(document.querySelectorAll('.image-checkbox:checked'))
+                   .map(cb => parseInt(cb.dataset.jobId))
+                   .filter(id => id && !isNaN(id));
+        
+        console.log('🔍 Selected image IDs from group:', selected);
+        return selected;
+    }
+    
+    // Extract Frame functionality
+    function handleExtractVideoUpload(input) {
+        const file = input.files[0];
+        if (!file) return;
+        
+        const video = document.getElementById('extract-preview-video');
+        const container = document.getElementById('extract-preview-container');
+        const uploadArea = document.getElementById('extract-upload-area');
+        const timeSlider = document.getElementById('extract-frame-time');
+        const timeInput = document.getElementById('extract-frame-time-input');
+        
+        video.src = URL.createObjectURL(file);
+        container.style.display = 'block';
+        uploadArea.style.display = 'none'; // Hide upload area when video loaded
+        
+        video.addEventListener('loadedmetadata', function() {
+            timeSlider.max = video.duration;
+            timeInput.max = video.duration;
+            timeSlider.value = 0;
+            timeInput.value = 0;
+            
+            // Update step size for frame-perfect seeking (assuming 30fps)
+            const frameTime = 1/30;
+            timeSlider.step = frameTime;
+            timeInput.step = frameTime;
+        });
+        
+        // Store file for extraction
+        window.currentExtractFile = file;
+    }
+    
+    function clearExtractVideo() {
+        const video = document.getElementById('extract-preview-video');
+        const container = document.getElementById('extract-preview-container');
+        const uploadArea = document.getElementById('extract-upload-area');
+        const fileInput = document.getElementById('extract-video-upload');
+        
+        video.src = '';
+        container.style.display = 'none';
+        uploadArea.style.display = 'block';
+        fileInput.value = '';
+        
+        window.currentExtractFile = null;
+        window.currentVideoPath = null;
+        window.currentVideoJobId = null;
+    }
+    
+    function stepFrame(stepValue) {
+        const video = document.getElementById('extract-preview-video');
+        const timeSlider = document.getElementById('extract-frame-time');
+        const timeInput = document.getElementById('extract-frame-time-input');
+        
+        const currentTime = parseFloat(timeSlider.value);
+        const newTime = Math.max(0, Math.min(video.duration, currentTime + stepValue));
+        
+        timeSlider.value = newTime;
+        timeInput.value = newTime.toFixed(3);
+        video.currentTime = newTime;
+    }
+    
+    function updateExtractPreview() {
+        const video = document.getElementById('extract-preview-video');
+        const timeSlider = document.getElementById('extract-frame-time');
+        const timeInput = document.getElementById('extract-frame-time-input');
+        
+        const time = parseFloat(timeSlider.value || timeInput.value);
+        video.currentTime = time;
+        
+        // Sync both inputs
+        timeSlider.value = time;
+        timeInput.value = time;
+    }
+    
+    function extractCurrentFrame() {
+        const video = document.getElementById('extract-preview-video');
+        const time = parseFloat(document.getElementById('extract-frame-time').value);
+        
+        if (!video.src) {
+            alert('Please upload or select a video first');
+            return;
+        }
+        
+        const formData = new FormData();
+        
+        // Check if we have an uploaded file or a job video path
+        if (window.currentExtractFile) {
+            // Use uploaded file
+            formData.append('video', window.currentExtractFile);
+        } else if (window.currentVideoPath) {
+            // Use job video path
+            formData.append('video_path', window.currentVideoPath);
+            if (window.currentVideoJobId) {
+                formData.append('parent_job_id', window.currentVideoJobId);
+            }
+        } else {
+            alert('No video source available for extraction');
+            return;
+        }
+        
+        formData.append('frame_time', time);
+        
+        showPlaceholder('Extracting frame...');
+        
+        fetch('/api/extract-frame', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                refreshJobLog();
+                // Don't close the modal - user might want to extract another frame
+                alert('Frame extracted successfully!');
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(error => {
+            alert('Error: ' + error.message);
+        });
+    }
+    
+    function openExtractFrameModal(videoPath, jobId) {
+        // Automatically load the video into the extract frame tool
+        const extractSection = document.getElementById('extract-frame-section');
+        const video = document.getElementById('extract-preview-video');
+        const container = document.getElementById('extract-preview-container');
+        const uploadArea = document.getElementById('extract-upload-area');
+        const timeSlider = document.getElementById('extract-frame-time');
+        const timeInput = document.getElementById('extract-frame-time-input');
+        
+        // Open the extract section if it's closed
+        if (!extractSection.hasAttribute('open')) {
+            extractSection.setAttribute('open', '');
+        }
+        
+        // Load the video and hide upload area
+        video.src = '/' + videoPath.replace(/^\//, '');
+        container.style.display = 'block';
+        uploadArea.style.display = 'none';
+        
+        video.addEventListener('loadedmetadata', function() {
+            timeSlider.max = video.duration;
+            timeInput.max = video.duration;
+            timeSlider.value = 0;
+            timeInput.value = 0;
+            
+            // Update step size for frame-perfect seeking
+            const frameTime = 1/30;
+            timeSlider.step = frameTime;
+            timeInput.step = frameTime;
+        });
+        
+        // Store the job info for potential use
+        window.currentVideoJobId = jobId;
+        window.currentVideoPath = videoPath;
+        window.currentExtractFile = null; // Clear uploaded file
+        
+        // Scroll to the extract tool
+        extractSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        
+        // Show success message
+        setTimeout(() => {
+            alert('Video loaded in Extract Frame tool! Use the controls to select the exact frame to extract.');
+        }, 500);
+    }
+    
+    // Resizable divider functionality
+    function initResizable() {
+        const divider = document.getElementById('resizer');
+        const leftPanel = document.querySelector('.dashboard-panel');
+        const rightPanel = document.querySelector('.queue-panel');
+        let isResizing = false;
+        
+        divider.addEventListener('mousedown', function(e) {
+            isResizing = true;
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+        });
+        
+        document.addEventListener('mousemove', function(e) {
+            if (!isResizing) return;
+            
+            const containerRect = document.querySelector('.split-container').getBoundingClientRect();
+            const newLeftWidth = e.clientX - containerRect.left;
+            
+            // Set minimum and maximum widths - allow user full control
+            const minLeftWidth = 280;
+            const maxLeftWidth = Math.max(1200, containerRect.width - 200);
+            
+            if (newLeftWidth >= minLeftWidth && newLeftWidth <= maxLeftWidth) {
+                leftPanel.style.width = newLeftWidth + 'px';
+            }
+        });
+        
+        document.addEventListener('mouseup', function() {
+            if (isResizing) {
+                isResizing = false;
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+            }
+        });
+    }
+
+    // Global variables for auto-refresh
+    window.autoRefreshInterval = null;
+    const AUTO_REFRESH_RATE = 5000;
+
     document.addEventListener('DOMContentLoaded', function() {
-        console.log("✅ Job log initializing...");
+        console.log("✅ Enhanced dashboard initializing...");
         
         const refreshBtn = document.getElementById('refresh-log-btn');
         const logBody = document.getElementById('job-log-body');
-        let autoRefreshInterval;
-        const AUTO_REFRESH_RATE = 5000;
         
-        // Helper function to update button states based on current DOM
+        console.log("🔍 Found refresh button:", !!refreshBtn);
+        console.log("🔍 Found log body:", !!logBody);
+        
+        // Helper function to update button states based on current DOM  
         function updateButtonStates() {
-            const allSelected = document.querySelectorAll('.selection-checkbox:checked');
-            const videoCheckboxes = document.querySelectorAll('.video-stitch-checkbox:checked');
+            const allSelected = document.querySelectorAll('.selection-checkbox:checked, .job-selection-checkbox:checked');
             
-            // Count selected jobs that can be processed for keying (animations and video_stitching)
-            const pendingKeyingJobs = Array.from(allSelected).filter(cb => {
-                const jobType = cb.dataset.jobType || '';
-                return (jobType === 'animation' || jobType === 'video_stitching');
+            // Count video jobs for stitching
+            const videoJobs = Array.from(allSelected).filter(cb => {
+                const jobId = cb.dataset.jobId;
+                if (jobId) {
+                    // Find the job in the DOM to check if it's a video
+                    const jobElement = cb.closest('.enhanced-job-item');
+                    const hasVideo = jobElement && jobElement.querySelector('video');
+                    return hasVideo;
+                }
+                return false;
+            });
+            
+            // Count jobs that can be processed for keying 
+            const keyingJobs = Array.from(allSelected).filter(cb => {
+                const jobId = cb.dataset.jobId;
+                return jobId; // For now, any job with an ID can potentially be processed
             });
             
             const deleteSelectedBtn = document.getElementById('delete-selected-btn');
@@ -273,22 +2412,21 @@
             
             if (deleteSelectedBtn) {
                 deleteSelectedBtn.textContent = `🗑️ Delete Selected (${allSelected.length})`;
-                deleteSelectedBtn.style.display = allSelected.length > 0 ? 'inline-flex' : 'none';
+                deleteSelectedBtn.disabled = allSelected.length === 0;
             }
             
             if (stitchBtn) {
-                stitchBtn.textContent = `🎬 Stitch Selected Videos (${videoCheckboxes.length})`;
-                stitchBtn.style.display = videoCheckboxes.length > 0 ? 'inline-flex' : 'none';
-                stitchBtn.disabled = videoCheckboxes.length !== 2;
+                stitchBtn.textContent = `🎬 Stitch Selected Videos (${videoJobs.length})`;
+                stitchBtn.disabled = videoJobs.length !== 2;
             }
             
             if (processSelectedBtn) {
-                processSelectedBtn.textContent = `⚙️ Process Selected Keys (${pendingKeyingJobs.length})`;
-                processSelectedBtn.style.display = pendingKeyingJobs.length > 0 ? 'inline-flex' : 'none';
+                processSelectedBtn.textContent = `⚙️ Process Selected Keys (${keyingJobs.length})`;
+                processSelectedBtn.disabled = keyingJobs.length === 0;
             }
         }
 
-        // Main function to load and display jobs
+        // Main function to load and display jobs with enhanced rendering
         async function refreshJobLog() {
             if (!logBody) {
                 console.error("❌ job-log-body element not found");
@@ -296,29 +2434,42 @@
             }
             
             try {
+                console.log("🔄 Fetching jobs...");
                 const response = await fetch('/api/jobs');
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                
+                if (!response.ok) {
+                    console.error(`HTTP Error: ${response.status} ${response.statusText}`);
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    console.error('Response is not JSON:', contentType);
+                    const text = await response.text();
+                    console.error('Response text:', text.substring(0, 200));
+                    throw new Error('Server returned non-JSON response');
+                }
+                
                 const jobs = await response.json();
+                console.log(`📊 Retrieved ${jobs.length} jobs`);
                 
                 if (jobs.length === 0) {
-                    logBody.innerHTML = '<p>The job log is empty.</p>';
+                    logBody.innerHTML = '<p>The job queue is empty.</p>';
                     return;
                 }
                 
-                let html = '';
-                jobs.forEach(job => {
-                    try {
-                        html += createLogItemHTML(job);
-                    } catch (error) {
-                        console.error('Error rendering job', job.id, error);
-                        html += `<div style="color:red; padding:10px;">Error rendering job #${job.id}</div>`;
-                    }
-                });
+                // Use enhanced rendering with grouping
+                const html = renderGroupedJobs(jobs);
                 logBody.innerHTML = html;
                 console.log(`✅ Loaded ${jobs.length} jobs successfully`);
                 
                 // Reset button states after DOM refresh (fixes stale checkbox references)
                 updateButtonStates();
+                
+                // After refresh, check if we should pause auto-refresh based on current state
+                setTimeout(() => {
+                    updateAutoRefreshBasedOnOpenJobs();
+                }, 100);
                 
             } catch (error) {
                 console.error('❌ Error loading jobs:', error);
@@ -363,297 +2514,58 @@
             return normalized;
         }
 
-        // Complete job rendering function with all features
-        function createLogItemHTML(job) {
-            const jobTypeDisplay = job.job_type.replace(/_/g, ' ');
-            const statusClass = `status-${job.status.replace(/_/g, '-')}`;
-            const rawOutputUrl = job.keyed_result_data || job.result_data;
-            const outputUrl = normalizeFilePath(rawOutputUrl);
-            
-            // Parse input data safely first (needed for stuck detection)
-            let inputData;
-            try {
-                inputData = typeof job.input_data === 'string' ? JSON.parse(job.input_data || '{}') : job.input_data || {};
-            } catch (e) {
-                console.warn('Failed to parse input_data for job', job.id, e);
-                inputData = {};
-            }
-            
-            // Check if job is stuck (different timeouts for different job types)
-            const createdAt = new Date(job.created_at);
-            const now = new Date();
-            const minutesRunning = (now - createdAt) / (1000 * 60);
-            
-            let stuckThreshold = 2; // Default 2 minutes
-            if (job.job_type === 'video_stitching') {
-                stuckThreshold = 0.5; // 30 seconds for stitching
-            } else if (job.status === 'keying_processing') {
-                stuckThreshold = 15; // 15 minutes for keying (can be very time-intensive)
-            } else if (job.job_type === 'animation') {
-                // Check if using Kling model which takes longer
-                const videoModel = inputData.video_model || '';
-                if (videoModel.includes('kling')) {
-                    stuckThreshold = 8; // 8 minutes for Kling models (they take much longer)
-                } else {
-                    stuckThreshold = 5; // 5 minutes for other animation models
-                }
-            }
-            
-            // Safety check: don't mark as stuck if minutes calculation seems wrong
-            const isTimeValid = !isNaN(minutesRunning) && minutesRunning >= 0 && minutesRunning < 1440; // Less than 24 hours
-            const isStuck = isTimeValid && ['processing', 'keying_processing', 'stitching'].includes(job.status) && minutesRunning > stuckThreshold;
-            
-            // Don't show stuck indicator if auto-refresh is paused (user might be reviewing job details)
-            const refreshButton = document.getElementById('refresh-log-btn');
-            const isRefreshPaused = refreshButton && refreshButton.classList.contains('active');
-            const shouldShowStuck = isStuck && !isRefreshPaused;
-            
-            // For frame extraction, the output is always an image, not a video
-            const isVideo = job.job_type !== 'frame_extraction' && 
-                           typeof outputUrl === 'string' && outputUrl.length > 0 && 
-                           !outputUrl.includes('This image') && 
-                           (outputUrl.endsWith('.mp4') || outputUrl.endsWith('.webm') || outputUrl.includes('/animations/'));
-            // Make all jobs selectable except those actively processing
-            const isSelectable = job.status !== 'processing' && job.status !== 'keying_processing';
-            
-            const encodedInputData = JSON.stringify(inputData).replace(/'/g, "&apos;").replace(/"/g, "&quot;");
-            const encodedResultData = (typeof job.result_data === 'string' ? job.result_data : JSON.stringify(job.result_data || '{}')).replace(/'/g, "&apos;").replace(/"/g, "&quot;");
-
-            // Generate thumbnail for collapsed view
-            let summaryThumbnailHTML = '';
-            if (job.job_type.includes('analysis') && inputData.image_path) {
-                const safePath = normalizeFilePath(inputData.image_path);
-                if (safePath) summaryThumbnailHTML = `<img src="/${safePath}" class="log-item-thumbnail" alt="Input Image">`;
-            } else if (job.job_type === 'frame_extraction' && typeof outputUrl === 'string' && outputUrl) {
-                // Frame extraction always produces an image
-                const safeOutput = normalizeFilePath(outputUrl);
-                if (safeOutput) summaryThumbnailHTML = `<img src="/${safeOutput}" class="log-item-thumbnail" alt="Extracted Frame">`;
-            } else if (typeof outputUrl === 'string' && outputUrl && 
-                      (outputUrl.includes('.') || outputUrl.includes('/')) && 
-                      !outputUrl.includes('This image') && outputUrl.length < 200) {
-                if (isVideo) {
-                    summaryThumbnailHTML = '<span class="log-item-pills" style="padding: 4px 6px; font-size: 18px;">🎬</span>';
-                } else {
-                    const safeOutput = normalizeFilePath(outputUrl);
-                    if (safeOutput) summaryThumbnailHTML = `<img src="/${safeOutput}" class="log-item-thumbnail" alt="Image Thumbnail">`;
-                }
-            }
-
-            // Generate action buttons based on job type and status
-            let actionsHTML = '';
-            
-            // Actions for jobs with file outputs
-            if (typeof outputUrl === 'string' && outputUrl && 
-                (outputUrl.includes('.') || outputUrl.includes('/')) && 
-                !outputUrl.includes('This image') && outputUrl.length < 200) {
-                
-                // Image-based actions
-                if (['image_generation', 'background_removal', 'frame_extraction'].includes(job.job_type)) {
-                    const safeImageUrl = normalizeFilePath(outputUrl);
-                    if (safeImageUrl) {
-                        actionsHTML += `<a href="/animate-image?parent_job_id=${job.id}&image_url=/${safeImageUrl}" class="action-btn" style="background-color:#007bff;">🎬 Animate</a>`;
-                        actionsHTML += `<form action="/remove-background" method="POST" class="button-form"><input type="hidden" name="image_url" value="/${safeImageUrl}"><input type="hidden" name="parent_job_id" value="${job.id}"><button type="submit" class="action-btn" style="background-color:#17a2b8;">✨ Remove BG</button></form>`;
-                    }
-                }
-                
-                // Video-based actions
-                if ((job.job_type === 'animation' || job.job_type === 'video_stitching') && isVideo) {
-                    const safeVideoUrl = normalizeFilePath(outputUrl);
-                    if (safeVideoUrl) {
-                        actionsHTML += `<button class="action-btn extract-frame-btn" data-job-id="${job.id}" data-video-src="/${safeVideoUrl}" style="background-color: #17a2b8;">🖼️ Extract Frame</button>`;
-                    }
-                }
-            }
-            
-            // Cancel button for processing jobs
-            if (['processing', 'keying_processing', 'stitching', 'queued', 'keying_queued'].includes(job.status)) {
-                actionsHTML += `<button class="action-btn cancel-job-btn" data-job-id="${job.id}" style="background-color: #ff6b6b;">❌ Cancel</button>`;
-            }
-            
-            // Status-based actions
-            if (job.status === 'completed') {
-                // Analysis results
-                if (job.job_type === 'style_analysis' || job.job_type === 'palette_analysis') {
-                    actionsHTML += `<button class="action-btn use-result-btn" data-job-id="${job.id}" data-result-text='${encodedResultData}' style="background-color:#fd7e14;">➡️ Use Result</button>`;
-                }
-                
-                // Regeneration options
-                if (job.job_type === 'image_generation') {
-                    actionsHTML += `<button class="action-btn regenerate-btn" style="background-color: #6f42c1;" data-input='${encodedInputData}'>🔄 Regenerate</button>`;
-                }
-                
-                // Keying options
-                if (job.job_type === 'animation' || job.job_type === 'video_stitching') {
-                    if (job.keyed_result_data) {
-                        actionsHTML += `<a href="/fine-tune/${job.id}" class="action-btn" style="background-color: #6c757d;">🔄 Re-Key</a>`;
-                    } else {
-                        actionsHTML += `<a href="/fine-tune/${job.id}" class="action-btn" style="background-color: #28a745;">⚙️ Key Video</a>`;
-                    }
-                }
-                
-                // Re-stitching for completed stitching jobs
-                if (job.job_type === 'video_stitching') {
-                    actionsHTML += `<button class="action-btn re-stitch-btn" data-job-id="${job.id}" style="background-color: #e83e8c;">🔄 Re-Stitch</button>`;
-                }
-                
-            } else if (job.status === 'pending_review' || job.status === 'pending_process') {
-                actionsHTML += `<a href="/fine-tune/${job.id}" class="action-btn" style="background-color: #28a2b8;">🔬 Key Video</a>`;
-                
-            } else if (job.status === 'failed') {
-                // Retry options for failed jobs
-                if (job.job_type === 'video_stitching') {
-                    actionsHTML += `<button class="action-btn retry-stitch-btn" data-job-id="${job.id}" style="background-color: #dc3545;">🔄 Retry Stitch</button>`;
-                }
-                if (job.job_type === 'animation') {
-                    actionsHTML += `<button class="action-btn retry-key-btn" data-job-id="${job.id}" style="background-color: #dc3545;">🔄 Retry Key</button>`;
-                }
-            }
-            
-            // Boomerang automation specific actions
-            if (job.job_type === 'boomerang_automation') {
-                if (job.status === 'stitching' || job.status === 'completed') {
-                    actionsHTML += `<button class="action-btn view-children-btn" data-job-id="${job.id}" style="background-color: #20c997;">👁️ View Parts</button>`;
-                }
-            }
-            
-            let deleteActionHTML = `<button class="action-btn delete-item-btn" data-job-id="${job.id}" style="background-color:#dc3545;">🗑️ Delete</button>`;
-
-            // Generate error display
-            const errorHTML = (job.status === 'failed' && job.error_message) 
-                ? `<h4>Error Details</h4><div class="error-message">${job.error_message}</div>` 
-                : '';
-
-            // Generate result display for analysis jobs
-            let resultDisplayHTML = '';
-            if (job.status === 'completed' && job.result_data) {
-                try {
-                    const parsedResult = JSON.parse(job.result_data);
-                    if (job.job_type === 'palette_analysis' && parsedResult.palette) {
-                        resultDisplayHTML += '<h4>Color Palette</h4><div class="palette-swatch-container">';
-                        parsedResult.palette.forEach(color => {
-                            resultDisplayHTML += `<div class="palette-swatch" title="${color.name}: ${color.hex}"><div class="color-box" style="background-color: ${color.hex};"></div><span class="color-label">${color.hex}</span></div>`;
-                        });
-                        resultDisplayHTML += '</div>';
-                    } else if (job.job_type.includes('analysis')) {
-                        resultDisplayHTML = `<h4>Analysis</h4><pre>${job.result_data}</pre>`;
-                    }
-                } catch (e) {
-                    if (job.job_type.includes('analysis')) {
-                        resultDisplayHTML = `<h4>Analysis</h4><pre>${job.result_data}</pre>`;
-                    }
-                }
-            }
-            
-            // Display model information
-            let modelDisplayHTML = '';
-            const modelId = inputData.modelId || inputData.video_model;
-            if (modelId) {
-                const modelName = getModelDisplayName(modelId);
-                modelDisplayHTML = `<h4>Model</h4><pre>${modelName}</pre>`;
-            }
-
-            // Generate visual content (input images, output images/videos)
-            let visualsHTML = '';
-            if (job.job_type === 'animation' || job.job_type === 'boomerang_automation') {
-                const startPath = normalizeFilePath(inputData.image_url);
-                const endPath = normalizeFilePath(inputData.end_image_url);
-                if(inputData.image_url && startPath) visualsHTML += `<h4>Start Frame</h4><img src="/${startPath}" class="thumbnail">`;
-                if(inputData.end_image_url && endPath) visualsHTML += `<h4>End Frame</h4><img src="/${endPath}" class="thumbnail">`;
-            } else if (job.job_type === 'frame_extraction' && inputData.source_video) {
-                // For frame extraction, show the source video as input
-                const videoPath = normalizeFilePath(inputData.source_video);
-                if (videoPath) visualsHTML += `<h4>Source Video</h4><video src="/${videoPath}" controls class="thumbnail" style="max-width: 200px;"></video>`;
-            } else if (job.parent_id && job.parent_result_data && job.job_type !== 'frame_extraction') {
-                // Don't show parent result for frame extraction since we handle it above
-                const parentPath = normalizeFilePath(job.parent_result_data);
-                if (parentPath) visualsHTML += `<h4>Input <span style="font-weight:normal; color:#666;">(From Job #${job.parent_id})</span></h4><img src="/${parentPath}" alt="Parent task output" class="thumbnail">`;
-            } else if (job.job_type.includes('analysis') && inputData.image_path) {
-                const imagePath = normalizeFilePath(inputData.image_path);
-                if (imagePath) visualsHTML += `<h4>Input Image</h4><img src="/${imagePath}" class="thumbnail">`;
-            }
-            
-            // Add output preview - only for actual file paths, not text content
-            if (typeof outputUrl === 'string' && outputUrl && 
-                (outputUrl.includes('.') || outputUrl.includes('/')) && 
-                !outputUrl.includes('This image') && outputUrl.length < 200) {
-                
-                const safeOutputUrl = normalizeFilePath(outputUrl);
-                if (safeOutputUrl) {
-                    visualsHTML += `<div class="detail-preview-container"><h4>Output</h4>`;
-                    if (job.job_type === 'frame_extraction') {
-                        // Frame extraction always produces an image, even if detected as video path
-                        visualsHTML += `<a href="/${safeOutputUrl}" target="_blank"><img src="/${safeOutputUrl}" class="detail-preview-image" alt="Extracted frame"></a>`;
-                    } else if (isVideo) {
-                        visualsHTML += `<video src="/${safeOutputUrl}" controls loop autoplay muted class="detail-preview-image" data-job-id="${job.id}"></video>`;
-                    } else {
-                        visualsHTML += `<a href="/${safeOutputUrl}" target="_blank"><img src="/${safeOutputUrl}" class="detail-preview-image" alt="Job output preview"></a>`;
-                    }
-                    visualsHTML += `</div>`;
-                }
-            } else if (job.status === 'completed' && job.job_type !== 'style_analysis' && job.job_type !== 'palette_analysis') {
-                // Only show "output not found" for jobs that should produce file outputs
-                visualsHTML += `<h4>Output</h4><p style="color: #888;">No visual output available.</p>`;
-            }
-            
-            return `
-                <div class="log-item-wrapper ${shouldShowStuck ? 'job-stuck-warning' : ''}" data-job-id="${job.id}">
-                    ${isSelectable ? `<input type="checkbox" class="selection-checkbox ${isVideo ? 'video-stitch-checkbox' : ''}" data-job-id="${job.id}" data-video-path="${outputUrl || ''}" data-job-type="${job.job_type}">` : ''}
-                    <details class="log-item ${isSelectable ? 'has-checkbox' : ''}">
-                        <summary>
-                            <div class="log-item-pills">
-                                <span>#${job.id}</span>
-                                <span>${jobTypeDisplay}</span>
-                                <span class="status-badge ${statusClass}">${job.status.replace(/_/g, ' ')}${shouldShowStuck ? '<span class="stuck-indicator">STUCK</span>' : ''}</span>
-                            </div>
-                            ${summaryThumbnailHTML}
-                            <span class="log-item-prompt">${job.prompt || ''}</span>
-                        </summary>
-                        <div class="log-item-details">
-                            <div class="log-details-visuals">${visualsHTML}</div>
-                            <div class="log-details-info">
-                                <h4>Prompt</h4>
-                                <pre>${job.prompt || 'N/A'}</pre>
-                                ${modelDisplayHTML}
-                                ${errorHTML}
-                                ${resultDisplayHTML}
-                                <div class="log-actions">${actionsHTML}${deleteActionHTML}</div>
-                            </div>
-                        </div>
-                    </details>
-                </div>`;
-        }
+        // Legacy function removed - now using enhanced rendering functions
         
         // Auto-refresh functionality
         function startAutoRefresh() {
-            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
-            autoRefreshInterval = setInterval(refreshJobLog, AUTO_REFRESH_RATE);
-            if (refreshBtn) {
-                refreshBtn.textContent = '⏸️ Pause Auto-Refresh';
-                refreshBtn.classList.add('active');
-                refreshBtn.classList.remove('paused');
+            if (window.autoRefreshInterval) clearInterval(window.autoRefreshInterval);
+            window.autoRefreshInterval = setInterval(window.refreshJobLog, AUTO_REFRESH_RATE);
+            console.log('✅ Auto-refresh started, interval ID:', window.autoRefreshInterval);
+            const currentRefreshBtn = window.refreshBtn || document.getElementById('refresh-log-btn');
+            if (currentRefreshBtn) {
+                currentRefreshBtn.textContent = '⏸️ Pause Auto-Refresh';
+                currentRefreshBtn.classList.add('active');
+                currentRefreshBtn.classList.remove('paused');
             }
         }
         
         function pauseAutoRefresh() {
-            clearInterval(autoRefreshInterval);
-            if (refreshBtn) {
-                refreshBtn.textContent = '▶️ Resume Auto-Refresh';
-                refreshBtn.classList.remove('active');
-                refreshBtn.classList.add('paused');
+            if (window.autoRefreshInterval) {
+                clearInterval(window.autoRefreshInterval);
+                window.autoRefreshInterval = null;
+            }
+            console.log('⏸️ Auto-refresh paused');
+            const currentRefreshBtn = window.refreshBtn || document.getElementById('refresh-log-btn');
+            if (currentRefreshBtn) {
+                currentRefreshBtn.textContent = '▶️ Resume Auto-Refresh';
+                currentRefreshBtn.classList.remove('active');
+                currentRefreshBtn.classList.add('paused');
             }
         }
         
-        // Refresh button functionality
+        // Refresh button functionality - Fixed version
+        function setupRefreshButton() {
+            console.log("Setting up refresh button, element found:", !!refreshBtn);
         if (refreshBtn) {
-            refreshBtn.addEventListener('click', function() {
-                console.log("Refresh button clicked");
-                if (refreshBtn.classList.contains('active')) {
+                refreshBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    console.log("🔄 Refresh button clicked!");
+                    console.log("🔄 Button has active class:", refreshBtn.classList.contains('active'));
+                    console.log("🔄 Auto refresh interval exists:", !!window.autoRefreshInterval);
+                    
+                    if (window.autoRefreshInterval) {
+                        console.log("🔄 Pausing auto-refresh");
                     pauseAutoRefresh();
                 } else {
+                        console.log("🔄 Starting auto-refresh");
                     startAutoRefresh();
-                    refreshJobLog();
                 }
             });
+                
+                console.log("✅ Refresh button setup complete");
+            } else {
+                console.error("❌ Refresh button not found!");
+            }
         }
         
         // Add all interactive event handlers
@@ -894,43 +2806,12 @@
                 if (event.target.classList.contains('selection-checkbox')) {
                     updateButtonStates();
                     
-                    // Auto-pause refresh when user selects jobs
-                    const allSelected = document.querySelectorAll('.selection-checkbox:checked');
-                    if (allSelected.length > 0) {
-                        console.log('🔄 Auto-pausing refresh due to job selection');
-                        pauseAutoRefresh();
-                    }
+                    // Smart auto-refresh control based on selections and open jobs
+                    updateAutoRefreshBasedOnOpenJobs();
                 }
             });
 
-            // Auto-pause refresh when user opens job details (using event delegation)
-            logBody.addEventListener('click', event => {
-                const detailsElement = event.target.closest('details');
-                if (detailsElement && event.target.tagName === 'SUMMARY') {
-                    // Check if details is being opened (currently closed)
-                    if (!detailsElement.open) {
-                        console.log('🔄 Auto-pausing refresh due to job details being opened');
-                        pauseAutoRefresh();
-                    }
-                }
-            });
-            
-            // Alternative approach using toggle event with better targeting
-            logBody.addEventListener('toggle', event => {
-                if (event.target.classList.contains('log-item')) {
-                    if (event.target.open) {
-                        console.log('🔄 Auto-pausing refresh due to job details being opened');
-                        pauseAutoRefresh();
-                    } else {
-                        // Check if any other details are still open
-                        const openDetails = logBody.querySelectorAll('details.log-item[open]');
-                        if (openDetails.length === 0) {
-                            console.log('🔄 Auto-resuming refresh - all job details closed');
-                            startAutoRefresh();
-                        }
-                    }
-                }
-            }, true); // Use capture phase
+            // Note: Auto-pause refresh logic moved to toggleJobDetails() and updateAutoRefreshBasedOnOpenJobs()
 
             // Handle form submissions within job log
             logBody.addEventListener('submit', async function(event) {
@@ -1007,7 +2888,7 @@
             }
         });
         
-        // Save frame button
+        // Save frame button - Updated to stay open
         document.getElementById('modal-save-frame-btn').addEventListener('click', async function() {
             if (!currentVideo) {
                 alert('No video loaded');
@@ -1048,8 +2929,9 @@
                 
                 if (response.ok) {
                     const result = await response.json();
-                    alert('Frame extracted successfully!');
-                    extractFrameModal.style.display = 'none';
+                    // Show success message but keep modal open
+                    alert('Frame extracted successfully! You can extract more frames or close this window.');
+                    // Don't close the modal - let user extract more frames
                     await refreshJobLog();
                 } else {
                     const error = await response.json();
@@ -1340,8 +3222,42 @@
             });
         }
 
+        // Initialize resizable divider
+        initResizable();
+        
+        // Enhanced event listeners for new UI
+        document.addEventListener('change', function(event) {
+            if (event.target.classList.contains('selection-checkbox') || 
+                event.target.classList.contains('job-selection-checkbox') ||
+                event.target.classList.contains('image-checkbox')) {
+                
+                console.log('🔄 Checkbox change detected');
+                updateButtonStates();
+                
+                // Auto-pause refresh when user selects items
+                const anySelected = document.querySelectorAll('.selection-checkbox:checked, .job-selection-checkbox:checked, .image-checkbox:checked');
+                console.log('📊 Selected items:', anySelected.length);
+                console.log('📊 Auto-refresh interval exists:', !!window.autoRefreshInterval);
+                
+                if (anySelected.length > 0 && window.autoRefreshInterval) {
+                    console.log('🔄 Auto-pausing refresh due to selection');
+                    window.pauseAutoRefresh();
+                } else if (anySelected.length === 0 && !window.autoRefreshInterval) {
+                    console.log('🔄 Auto-resuming refresh - no selections');
+                    window.startAutoRefresh();
+                }
+            }
+        });
+        
+        // Make functions globally available
+        window.updateButtonStates = updateButtonStates;
+        window.refreshJobLog = refreshJobLog;
+        window.startAutoRefresh = startAutoRefresh;
+        window.pauseAutoRefresh = pauseAutoRefresh;
+
         // Initialize
-        console.log("🚀 Starting job log...");
+        console.log("🚀 Enhanced dashboard starting...");
+        setupRefreshButton();
         setupInteractiveHandlers();
         refreshJobLog();
         startAutoRefresh();

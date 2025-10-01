@@ -19,9 +19,14 @@
     
     .prompt-container { position: relative; }
     #get-animation-idea-btn {
-        position: absolute; top: 0; right: 0; background-color: #fd7e14;
+        position: absolute; top: 25px; right: 5px; background-color: #fd7e14;
         color: white; border: none; padding: 5px 10px; font-size: 12px;
         font-weight: bold; border-radius: 5px; cursor: pointer; transition: background-color 0.3s;
+        z-index: 10;
+    }
+    .form-group textarea { 
+        min-height: 120px; 
+        padding-right: 120px; /* Make room for the button */
     }
     #get-animation-idea-btn:disabled { background-color: #6c757d; cursor: not-allowed; }
 
@@ -60,7 +65,11 @@
             <div class="image-preview-box" id="end-frame-container">
                 <h3>End Frame (Optional)</h3>
                 <img src="https://placehold.co/400x400/f0f0f0/ccc?text=None" alt="End Frame Preview" id="end-frame-preview">
-                <button type="button" id="select-end-frame-btn">Select from Library</button>
+                <div style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;">
+                    <button type="button" id="select-end-frame-btn">📚 Library</button>
+                    <button type="button" id="upload-end-frame-btn">📷 Upload</button>
+                    <input type="file" id="end-frame-file-input" accept="image/*" style="display: none;">
+                </div>
             </div>
         </div>
 
@@ -91,11 +100,18 @@
             </div>
 
             <div class="form-group">
-                <label>Video Models (select one or more):</label>
-                <div class="video-model-checkbox-grid">
-                    <label><input type="checkbox" name="video_model" value="kwaivgi/kling-v2.1" data-options="options-kling" checked> Kling v2.1</label>
-                    <label><input type="checkbox" name="video_model" value="bytedance/seedance-1-pro" data-options="options-seedance"> Seedance-1 Pro</label>
-                    <label style="opacity: 0.5;"><input type="checkbox" name="video_model" value="pixverse/pixverse-v4.5" data-options="options-pixverse" disabled> Pixverse v4.5 (Currently Unavailable)</label>
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 20px;">
+                    <div style="flex: 1;">
+                        <label>Video Models (select one or more):</label>
+                        <div class="video-model-checkbox-grid">
+                            <label><input type="checkbox" name="video_model" value="kwaivgi/kling-v2.1" data-options="options-kling" checked> Kling v2.1</label>
+                            <label><input type="checkbox" name="video_model" value="bytedance/seedance-1-pro" data-options="options-seedance"> Seedance-1 Pro</label>
+                            <label style="opacity: 0.5;"><input type="checkbox" name="video_model" value="pixverse/pixverse-v4.5" data-options="options-pixverse" disabled> Pixverse v4.5 (Currently Unavailable)</label>
+                        </div>
+                    </div>
+                    <div style="flex-shrink: 0; margin-top: 25px;">
+                        <label><input type="checkbox" id="seamless_loop" name="seamless_loop" value="true" style="width: auto; margin-right: 8px;">Seamless Loop</label>
+                    </div>
                 </div>
             </div>
 
@@ -127,9 +143,6 @@
                 <label><input type="checkbox" id="boomerang_automation" name="boomerang_automation" value="true" style="width: auto; margin-right: 8px;">Create A-B-A Loop (Generates 2 videos & stitches them)</label>
             </div>
             
-            <div class="form-group">
-                <label><input type="checkbox" id="seamless_loop" name="seamless_loop" value="true" style="width: auto; margin-right: 8px;">Seamless Loop (uses start image as end image)</label>
-            </div>
             
             <button type="submit">Generate Animation(s)</button>
         </form>
@@ -282,6 +295,46 @@ document.addEventListener('DOMContentLoaded', function() {
         window.addEventListener('click', (event) => {
             if (event.target == modal) {
                 modal.style.display = 'none';
+            }
+        });
+    }
+
+    // Handle end frame upload
+    const uploadEndFrameBtn = document.getElementById('upload-end-frame-btn');
+    const endFrameFileInput = document.getElementById('end-frame-file-input');
+    
+    if (uploadEndFrameBtn && endFrameFileInput) {
+        uploadEndFrameBtn.addEventListener('click', () => {
+            endFrameFileInput.click();
+        });
+        
+        endFrameFileInput.addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const formData = new FormData();
+            formData.append('image', file);
+            
+            try {
+                const response = await fetch('/upload-for-animation', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (response.ok) {
+                    const url = new URL(response.url);
+                    const imageUrl = url.searchParams.get('image_url');
+                    if (imageUrl) {
+                        endFramePreview.src = imageUrl;
+                        endImageUrlInput.value = imageUrl;
+                        checkEndFrame();
+                    }
+                } else {
+                    alert('Error uploading image. Please try again.');
+                }
+            } catch (error) {
+                console.error('Upload error:', error);
+                alert('Error uploading image. Please try again.');
             }
         });
     }
