@@ -17,16 +17,14 @@
     .form-group textarea { min-height: 120px; }
     .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
     
-    .prompt-container { position: relative; }
     #get-animation-idea-btn {
-        position: absolute; top: 25px; right: 5px; background-color: #fd7e14;
-        color: white; border: none; padding: 5px 10px; font-size: 12px;
-        font-weight: bold; border-radius: 5px; cursor: pointer; transition: background-color 0.3s;
-        z-index: 10;
+        background-color: #fd7e14; color: white; border: none; 
+        padding: 6px 12px; font-size: 12px; font-weight: bold; 
+        border-radius: 5px; cursor: pointer; transition: background-color 0.3s;
+        white-space: nowrap;
     }
     .form-group textarea { 
         min-height: 120px; 
-        padding-right: 120px; /* Make room for the button */
     }
     #get-animation-idea-btn:disabled { background-color: #6c757d; cursor: not-allowed; }
 
@@ -78,10 +76,11 @@
             <input type="hidden" name="end_image_url" id="end_image_url_input" value="">
             <input type="hidden" name="parent_job_id" value="{{ parent_job_id }}">
             
-            <div class="form-group prompt-container">
-                <label for="prompt">Animation Prompt:
+            <div class="form-group">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <label for="prompt" style="margin: 0;">Animation Prompt:</label>
                     <button type="button" id="get-animation-idea-btn">💡 Get Idea</button>
-                </label>
+                </div>
                 <textarea id="prompt" name="prompt" required></textarea>
             </div>
 

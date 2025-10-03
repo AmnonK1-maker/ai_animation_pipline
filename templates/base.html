@@ -13,9 +13,11 @@
             color: #333;
         }
         .main-layout {
-            max-width: 1200px;
+            width: 95%;
+            height: 100vh;
             margin: 0 auto;
-            padding: 20px 40px;
+            padding: 0;
+            overflow: hidden;
         }
         .status-badge {
             display: inline-flex; align-items: center; border-radius: 12px;
@@ -24,7 +26,7 @@
         }
         .status-queued, .status-keying-queued { background-color: #6c757d; }
         .status-processing, .status-keying-processing { background-color: #007bff; }
-        .status-completed { background-color: #17a2b8; }
+        .status-completed { background-color: #17a2b8 !important; color: #000 !important; }
         .status-pending-review { background-color: #ffc107; color: #212529; }
         .status-pending-process { background-color: #28a745; }
         .status-failed { background-color: #dc3545; }
@@ -81,9 +83,10 @@
                     }
                 } else if (window.refreshJobLog) {
                     await window.refreshJobLog();
-                    document.getElementById('log-section')?.scrollIntoView({ behavior: 'smooth' });
+                    document.getElementById('job-log-body')?.scrollIntoView({ behavior: 'smooth' });
                 }
-                form.reset();
+                // Don't reset form - keep user inputs for convenience
+                // form.reset();
 
             } catch (error) {
                 console.error('Form submission error:', error);

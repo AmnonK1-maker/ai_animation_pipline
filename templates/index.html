@@ -12,8 +12,8 @@
     
     /* Left Panel - Dashboard Tools */
     .dashboard-panel { 
-        width: 350px;
-        min-width: 280px;
+        width: 40%;
+        min-width: 350px;
         background: #fff; 
         padding: 20px 20px 20px 55px;
         overflow-y: auto; 
@@ -155,6 +155,14 @@
     .enhanced-job-media {
         flex-shrink: 0;
         max-width: 500px;
+        width: 100%;
+    }
+    
+    /* Allow analysis jobs to use full width */
+    .enhanced-job-item[data-job-type="style_analysis"] .enhanced-job-media,
+    .enhanced-job-item[data-job-type="palette_analysis"] .enhanced-job-media,
+    .enhanced-job-item[data-job-type="animation_prompting"] .enhanced-job-media {
+        max-width: none;
     }
     
     /* Hide summary elements when job details are expanded */
@@ -274,16 +282,21 @@
     
     .copy-btn { 
         position: absolute; 
-        right: 5px; 
-        top: 5px; 
-        background: #6c757d !important; 
+        right: 8px; 
+        top: 8px; 
+        background: rgba(108, 117, 125, 0.8) !important; 
         color: white !important; 
         border: none; 
-        padding: 4px 8px; 
-        font-size: 12px; 
-        border-radius: 4px; 
+        padding: 4px 6px; 
+        font-size: 11px; 
+        border-radius: 3px; 
         cursor: pointer; 
-        z-index: 10; 
+        z-index: 10;
+        transition: background-color 0.2s;
+    }
+    
+    .copy-btn:hover {
+        background: rgba(108, 117, 125, 1) !important;
     }
     
     /* Enhanced Job Queue Styles */
@@ -332,8 +345,8 @@
         font-weight: 600 !important;
         border-radius: 4px !important;
         border: none !important;
-        text-shadow: 0 1px 2px rgba(0,0,0,0.2) !important;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+        text-shadow: none !important;
+        box-shadow: none !important;
         transition: all 0.2s !important;
     }
     
@@ -347,8 +360,8 @@
     }
     
     .queue-actions button:enabled:hover {
-        transform: translateY(-1px) !important;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.2) !important;
+        transform: none !important;
+        box-shadow: none !important;
     }
     
     /* Enhanced Job Item Styles */
@@ -362,10 +375,10 @@
     }
     
     .enhanced-job-summary { 
-        display: flex; 
+        display: flex;
         align-items: center; 
-        gap: 12px; 
-        padding: 12px; 
+        gap: 15px; 
+        padding: 15px; 
         cursor: pointer; 
         background-color: #f8f9fa; 
         list-style: none;
@@ -380,14 +393,15 @@
     
     .job-number-badge {
         font-weight: 600;
-        font-size: 12px;
+        font-size: 11px;
         color: #666;
         flex-shrink: 0;
-        min-width: 30px;
-        padding: 2px 4px;
+        min-width: 40px;
+        padding: 4px 6px;
         background: #f8f9fa;
         border-radius: 4px;
         text-align: center;
+        margin-right: 8px;
     }
     
     /* Enhanced button styles for better readability */
@@ -782,7 +796,7 @@
     <div class="tool-content">
         <div class="form-row">
             <div style="border-right: 1px solid #eee; padding-right: 15px;">
-                <form action="/style-tool" method="post" enctype="multipart/form-data">
+                <form action="/style-tool" method="post" enctype="multipart/form-data" onsubmit="enableStylePromptBeforeSubmit(this)">
                     <label for="image">Upload for Style Analysis:</label>
                     <input type="file" id="image" name="image" accept="image/*" required>
                     <div style="margin-top: 15px;">
@@ -831,9 +845,19 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                 </form>
             </div>
             <div style="padding-left: 15px;">
-                <form action="/palette-tool" method="post" enctype="multipart/form-data">
+                <form action="/palette-tool" method="post" enctype="multipart/form-data" onsubmit="enablePalettePromptBeforeSubmit(this)">
                     <label for="palette_image">Upload for Palette Analysis:</label>
                     <input type="file" id="palette_image" name="image" accept="image/*" required>
+                    <div style="margin-top: 15px;">
+                        <label for="palette_system_prompt">System Prompt:</label>
+                        <div class="text-field-container">
+                        <textarea id="palette_system_prompt" name="system_prompt" disabled>Analyze the provided image and identify the 5 most prominent colors. For each color, provide its hexadecimal code and a simple, descriptive name (e.g., 'dark slate blue', 'light coral'). Return the response as a valid JSON object with a single key "palette" which is an array of objects. Each object in the array should have two keys: "hex" and "name". Example: {"palette": [{"hex": "#2F4F4F", "name": "dark slate grey"}, ...]}</textarea>
+                            <button type="button" class="copy-btn" onclick="copyToClipboard('palette_system_prompt')">⎘</button>
+                        </div>
+                        <div class="unlock-prompt-container">
+                            <input type="checkbox" id="unlock_palette_prompt"><label for="unlock_palette_prompt" style="font-weight: normal; font-size: 12px;">Unlock to edit</label>
+                        </div>
+                    </div>
                     <button type="submit" class="standard-btn">Analyze Palette</button>
                     
                     <!-- Palette Analysis Output -->
@@ -954,11 +978,13 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                 </div>
 
                 <div style="margin-bottom: 15px;">
-                    <label for="animation_prompt">Animation Prompt:</label>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label for="animation_prompt" style="margin: 0;">Animation Prompt:</label>
+                        <button type="button" id="get-animation-idea-btn" class="standard-btn" onclick="getAnimationIdea()" style="padding: 6px 12px; font-size: 12px;">💡 Get Idea</button>
+                    </div>
                     <div class="text-field-container">
                         <textarea id="animation_prompt" name="prompt" required placeholder="Describe the animation..."></textarea>
                         <button type="button" class="copy-btn" onclick="copyToClipboard('animation_prompt')">⎘</button>
-                        <button type="button" id="get-animation-idea-btn" class="standard-btn" onclick="getAnimationIdea()" style="position: absolute; top: 5px; right: 50px;">💡 Get Idea</button>
                     </div>
                 </div>
 
@@ -997,8 +1023,8 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                 </div>
 
                 <div style="margin-bottom: 15px; display: flex; align-items: center;">
-                    <input type="checkbox" name="seamless_loop" value="true" id="seamless_loop" style="margin-right: 8px;">
-                    <label for="seamless_loop">Seamless Loop</label>
+                    <input type="checkbox" name="seamless_loop" value="true" id="seamless_loop" style="margin-right: 8px; width: auto;">
+                    <label for="seamless_loop" style="margin: 0;">Seamless Loop</label>
                 </div>
 
                 <button type="submit" class="standard-btn">Generate Animation</button>
@@ -1144,6 +1170,47 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
 {% block scripts %}
 {{ super() }}
 <script>
+    // Debug mode - set to false for production
+    window.DEBUG_MODE = true;
+    
+    // Enhanced error handling system
+    function showUserFriendlyError(message, details = null, type = 'error') {
+        if (type === 'error') {
+            console.error('Application Error:', details || message);
+        } else {
+            console.log('Application Message:', message);
+        }
+        
+        // Create a more user-friendly notification
+        const notification = document.createElement('div');
+        const isSuccess = type === 'success';
+        const bgColor = isSuccess ? '#28a745' : '#dc3545';
+        const icon = isSuccess ? '✅' : '⚠️';
+        const title = isSuccess ? 'Success' : 'Error';
+        
+        notification.style.cssText = `
+            position: fixed; top: 20px; right: 20px; z-index: 10000;
+            background: ${bgColor}; color: white; padding: 15px 20px;
+            border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            max-width: 400px; font-size: 14px; line-height: 1.4;
+        `;
+        notification.innerHTML = `
+            <strong>${icon} ${title}:</strong> ${message}
+            <button onclick="this.parentElement.remove()" style="
+                float: right; background: none; border: none; color: white;
+                font-size: 18px; cursor: pointer; margin-left: 10px;
+            ">&times;</button>
+        `;
+        document.body.appendChild(notification);
+        
+        // Auto-remove after 8 seconds
+        setTimeout(() => {
+            if (notification.parentElement) {
+                notification.remove();
+            }
+        }, 8000);
+    }
+
     // Copy to clipboard function
     function copyToClipboard(elementId) {
         const element = document.getElementById(elementId);
@@ -1159,6 +1226,82 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                 copyBtn.textContent = originalText;
             }, 1000);
         }
+    }
+
+    // Use analysis result function
+    function useAnalysisResult(jobId) {
+        // Find the result text directly from the DOM
+        const button = event.target;
+        const resultContainer = button.closest('.enhanced-job-media');
+        const resultDiv = resultContainer?.querySelector('div[style*="white-space: pre-wrap"]');
+        
+        if (!resultDiv || !resultDiv.textContent.trim()) {
+            showUserFriendlyError('Analysis result not found in the display');
+            return;
+        }
+
+        const resultText = resultDiv.textContent.trim();
+
+        // Find the style prompt field in image generation section
+        const styleField = document.getElementById('style_prompt');
+        if (!styleField) {
+            showUserFriendlyError('Style prompt field not found. Please make sure the Image Generation section is visible.');
+            return;
+        }
+
+        // Determine job type from the button's parent elements
+        const jobCard = button.closest('.enhanced-job-item');
+        const jobTitle = jobCard?.querySelector('.job-title')?.textContent || '';
+        const isPaletteAnalysis = jobTitle.includes('palette');
+        
+        // For palette analysis, append to existing text; for style analysis, replace
+        let actionMessage = '';
+        if (isPaletteAnalysis && styleField.value.trim()) {
+            // Append palette analysis to existing style description
+            styleField.value = styleField.value.trim() + '\n\n' + resultText;
+            actionMessage = 'Palette analysis appended to style prompt field!';
+        } else {
+            // Replace for style analysis or if field is empty
+            styleField.value = resultText;
+            actionMessage = 'Analysis result copied to style prompt field!';
+        }
+        
+        // Visual feedback
+        const originalText = button.textContent;
+        button.textContent = isPaletteAnalysis && styleField.value.includes(resultText) ? '✓ Appended!' : '✓ Copied!';
+        button.style.background = '#198754';
+        
+        setTimeout(() => {
+            button.textContent = originalText;
+            button.style.background = '#28a745';
+        }, 2000);
+
+        // Scroll to the image generation section
+        const imageGenSection = document.querySelector('#generator-section') || document.querySelector('[data-section="image-generation"]');
+        if (imageGenSection) {
+            imageGenSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        
+        // Show success message
+        showUserFriendlyError(actionMessage, null, 'success');
+    }
+
+    // Enable style prompt before form submission
+    function enableStylePromptBeforeSubmit(form) {
+        const stylePromptTextarea = form.querySelector('#style_system_prompt');
+        if (stylePromptTextarea && stylePromptTextarea.disabled) {
+            stylePromptTextarea.disabled = false;
+        }
+        return true; // Allow form submission to continue
+    }
+
+    // Enable palette prompt before form submission
+    function enablePalettePromptBeforeSubmit(form) {
+        const palettePromptTextarea = form.querySelector('#palette_system_prompt');
+        if (palettePromptTextarea && palettePromptTextarea.disabled) {
+            palettePromptTextarea.disabled = false;
+        }
+        return true; // Allow form submission to continue
     }
     
     // Image modal functions
@@ -1366,8 +1509,7 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
             }
         })
         .catch(error => {
-            console.error('Upload error:', error);
-            alert('Upload failed: ' + error.message);
+            showUserFriendlyError('Upload failed. Please try again.', error);
         });
     }
     
@@ -1547,13 +1689,48 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
         const thumbnailClass = isExpanded ? 'enhanced-job-details-expanded' : '';
         
         let thumbnailHTML = '';
-        if (job.result_data && job.status === 'completed') {
+        
+        // Handle analysis jobs differently - they show the input image and analysis result
+        if (job.job_type === 'style_analysis' || job.job_type === 'palette_analysis' || job.job_type === 'animation_prompting') {
+            // For analysis jobs, always try to show the input image as thumbnail
+            try {
+                const inputData = JSON.parse(job.input_data || '{}');
+                const imagePath = inputData.image_path;
+                if (imagePath) {
+                    thumbnailHTML = `<img src="/${imagePath}" class="enhanced-job-thumbnail ${thumbnailClass} clickable-image" alt="Analysis Input" onclick="event.stopPropagation(); openImageModal('/${imagePath}')">`;
+                } else if (job.result_data && job.result_data.includes('static/uploads/')) {
+                    // Fallback: for old jobs where result_data contains the image path
+                    thumbnailHTML = `<img src="/${job.result_data}" class="enhanced-job-thumbnail ${thumbnailClass} clickable-image" alt="Analysis Input" onclick="event.stopPropagation(); openImageModal('/${job.result_data}')">`;
+                } else if (job.status === 'completed') {
+                    thumbnailHTML = `<div class="enhanced-job-thumbnail ${thumbnailClass}" style="background: #d4edda; color: #155724; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 11px;">Analysis Complete</div>`;
+                }
+            } catch (e) {
+                // If parsing fails, try to use result_data as image path for old jobs
+                if (job.result_data && job.result_data.includes('static/uploads/')) {
+                    thumbnailHTML = `<img src="/${job.result_data}" class="enhanced-job-thumbnail ${thumbnailClass} clickable-image" alt="Analysis Input" onclick="event.stopPropagation(); openImageModal('/${job.result_data}')">`;
+                } else if (job.status === 'completed') {
+                    thumbnailHTML = `<div class="enhanced-job-thumbnail ${thumbnailClass}" style="background: #d4edda; color: #155724; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 11px;">Analysis Complete</div>`;
+                }
+            }
+            
+            if (!thumbnailHTML) {
+                if (job.status === 'processing' || job.status === 'keying_processing') {
+                    thumbnailHTML = `<div class="content-placeholder enhanced-job-thumbnail ${thumbnailClass}">Analyzing...</div>`;
+                } else if (job.status === 'failed') {
+                    thumbnailHTML = `<div class="enhanced-job-thumbnail ${thumbnailClass}" style="background: #f8d7da; color: #721c24; display: flex; align-items: center; justify-content: center; font-weight: bold;">Failed</div>`;
+                } else {
+                    thumbnailHTML = `<div class="enhanced-job-thumbnail ${thumbnailClass}" style="background: #e9ecef; display: flex; align-items: center; justify-content: center; font-size: 11px;">${job.status}</div>`;
+                }
+            }
+        } else if (job.result_data && job.status === 'completed') {
             // Check if it's a video file
             const isVideoJob = job.job_type === 'animation' || job.job_type === 'video_stitching';
             const hasVideoExtension = job.result_data.match(/\.(mp4|webm|mov)$/i);
             
             if (isVideoJob || hasVideoExtension) {
-                thumbnailHTML = `<video src="/${job.result_data}" class="enhanced-job-thumbnail ${thumbnailClass}" muted loop autoplay controls></video>`;
+                // Ensure proper path formatting for videos
+                const videoPath = job.result_data.startsWith('/') ? job.result_data : '/' + job.result_data;
+                thumbnailHTML = `<video src="${videoPath}" class="enhanced-job-thumbnail ${thumbnailClass}" muted loop autoplay preload="metadata" style="object-fit: cover;"></video>`;
             } else {
                 thumbnailHTML = `<img src="/${job.result_data}" class="enhanced-job-thumbnail ${thumbnailClass} clickable-image" alt="Result" onclick="event.stopPropagation(); openImageModal('/${job.result_data}')">`;
             }
@@ -1586,14 +1763,19 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
             const isSelectable = job.status !== 'processing' && job.status !== 'keying_processing';
             
         return `
-            <div class="enhanced-job-item">
+            <div class="enhanced-job-item" data-job-type="${job.job_type}">
                 <div class="enhanced-job-summary" onclick="toggleJobDetails(this)">
                     ${isSelectable ? `<input type="checkbox" class="job-selection-checkbox selection-checkbox" data-job-id="${job.id}" onclick="event.stopPropagation()">` : ''}
                     <div class="job-number-badge">#${job.id}</div>
                     ${thumbnailHTML}
                     <div class="job-info-container">
                         <h4 class="job-title">${job.job_type.replace(/_/g, ' ')}</h4>
-                        <div class="job-prompt-box">${job.prompt || 'No prompt'}</div>
+                        <div class="job-prompt-box">${
+                            // Show analysis result for completed analysis jobs
+                            (job.job_type === 'style_analysis' || job.job_type === 'palette_analysis' || job.job_type === 'animation_prompting') && job.status === 'completed' && job.result_data
+                                ? job.result_data.substring(0, 150) + (job.result_data.length > 150 ? '...' : '')
+                                : (job.prompt || 'No prompt')
+                        }</div>
                         <div class="job-status-badges">
                             <span class="status-badge status-${job.status}">${job.status.replace(/_/g, ' ')}</span>
                         </div>
@@ -1605,26 +1787,117 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                     </div>
                     <div class="enhanced-job-content">
                         <div class="enhanced-job-media">
-                            ${job.result_data && job.status === 'completed' ? 
-                                (job.job_type === 'animation' || job.job_type === 'video_stitching' || job.result_data.match(/\.(mp4|webm|mov)$/i) ?
-                                    `<video src="/${job.result_data}" style="max-width: 500px; width: 100%; border-radius: 8px;" muted loop autoplay controls></video>` :
-                                    `<img src="/${job.result_data}" style="max-width: 500px; width: 100%; border-radius: 8px;" class="clickable-image" alt="Result" onclick="event.stopPropagation(); openImageModal('/${job.result_data}')">`
-                                ) : ''
+                            ${job.job_type === 'style_analysis' || job.job_type === 'palette_analysis' || job.job_type === 'animation_prompting' ? 
+                                // For analysis jobs, show input image and analysis result
+                                (() => {
+                                    let html = '';
+                                    let inputData = {};
+                                    let imagePath = '';
+                                    
+                                    // Parse input data safely
+                                    try {
+                                        inputData = JSON.parse(job.input_data || '{}');
+                                        imagePath = inputData.image_path || '';
+                                    } catch (e) {
+                                        console.error('Error parsing input_data for job', job.id, e);
+                                    }
+                                    
+                                    // Always show the layout if we have an image or result
+                                    if (imagePath || job.result_data) {
+                                        html += `<div style="display: flex; gap: 15px; align-items: flex-start;">`;
+                                        
+                                        // Small image column with job info below (if we have an image)
+                                        if (imagePath) {
+                                            html += `<div style="flex: 0 0 150px;">
+                                                <img src="/${imagePath}" style="width: 100%; border-radius: 8px;" class="clickable-image" alt="Analysis Input" onclick="event.stopPropagation(); openImageModal('/${imagePath}')">
+                                                <div style="text-align: center; font-size: 11px; color: #666; margin-top: 5px;">Input Image</div>
+                                                <div style="margin-top: 10px; padding: 8px; background: #f8f9fa; border-radius: 4px; font-size: 11px;">
+                                                    <div style="margin-bottom: 4px;"><strong>Created:</strong><br>${new Date(job.created_at).toLocaleString()}</div>
+                                                    <div><strong>Status:</strong><br><span style="color: #28a745;">${job.status.replace(/_/g, ' ')}</span></div>
+                                                </div>
+                                            </div>`;
+                                        }
+                                        
+                                        // Result column (takes remaining space)
+                                        html += `<div style="flex: 1; min-width: 0;">`;
+                                        
+                                        if (job.result_data && job.status === 'completed') {
+                                            // Show the analysis result
+                                            html += `<div style="background: #f8f9fa; padding: 20px; border-radius: 8px; border-left: 4px solid #007bff; margin-bottom: 15px;">
+                                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                                    <h4 style="margin: 0; color: #007bff;">Analysis Result:</h4>
+                                                    <button onclick="useAnalysisResult('${job.id}')" style="background: #28a745; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;">📋 Use This</button>
+                                                </div>
+                                                <div style="font-size: 14px; line-height: 1.6; white-space: pre-wrap;">${job.result_data}</div>
+                                            </div>`;
+                                        } else if (job.status === 'processing') {
+                                            html += `<div style="background: #fff3cd; padding: 20px; border-radius: 8px; border-left: 4px solid #ffc107; margin-bottom: 15px;">
+                                                <h4 style="margin: 0; color: #856404;">Processing...</h4>
+                                                <p style="margin: 10px 0 0 0; color: #856404;">Analysis in progress, please wait.</p>
+                                            </div>`;
+                                        } else if (job.status === 'failed') {
+                                            html += `<div style="background: #f8d7da; padding: 20px; border-radius: 8px; border-left: 4px solid #dc3545; margin-bottom: 15px;">
+                                                <h4 style="margin: 0; color: #721c24;">Analysis Failed</h4>
+                                                <p style="margin: 10px 0 0 0; color: #721c24;">${job.error_message || 'Unknown error occurred'}</p>
+                                            </div>`;
+                                        } else {
+                                            html += `<div style="background: #e2e3e5; padding: 20px; border-radius: 8px; border-left: 4px solid #6c757d; margin-bottom: 15px;">
+                                                <h4 style="margin: 0; color: #495057;">No Result Available</h4>
+                                                <p style="margin: 10px 0 0 0; color: #495057;">Status: ${job.status}</p>
+                                            </div>`;
+                                        }
+                                        
+                                        html += `</div></div>`; // Close result column and flex container
+                                        
+                                        // System prompt in separate box below (full width) - only if we have a result
+                                        if (job.result_data && job.status === 'completed') {
+                                            let systemPromptUsed = 'Default prompt';
+                                            try {
+                                                systemPromptUsed = inputData.system_prompt || 'Default prompt';
+                                                if (systemPromptUsed === 'Default prompt') {
+                                                    systemPromptUsed = 'This job was created with the default system prompt. Newer analysis jobs will show the detailed prompt used.';
+                                                }
+                                            } catch (e) {
+                                                systemPromptUsed = 'Error parsing system prompt data';
+                                            }
+                                            
+                                            html += `<div style="margin-top: 15px;">
+                                                <div style="background: #ffffff; padding: 15px; border-radius: 8px; border: 1px solid #dee2e6;">
+                                                    <h5 style="margin: 0 0 10px 0; color: #6c757d; font-size: 13px;">System Prompt Used:</h5>
+                                                    <div style="background: #f8f9fa; padding: 12px; border-radius: 4px; font-size: 12px; line-height: 1.4; color: #495057; max-height: 150px; overflow-y: auto;">${systemPromptUsed}</div>
+                                                </div>
+                                            </div>`;
+                                        }
+                                    }
+                                    return html;
+                                })() :
+                                // For other jobs, show result media
+                                (job.result_data && job.status === 'completed' ? 
+                                    (job.job_type === 'animation' || job.job_type === 'video_stitching' || job.result_data.match(/\.(mp4|webm|mov)$/i) ?
+                                        `<video src="${job.result_data.startsWith('/') ? job.result_data : '/' + job.result_data}" style="max-width: 500px; width: 100%; border-radius: 8px;" muted loop autoplay controls></video>` :
+                                        `<img src="/${job.result_data}" style="max-width: 500px; width: 100%; border-radius: 8px;" class="clickable-image" alt="Result" onclick="event.stopPropagation(); openImageModal('/${job.result_data}')">`
+                                    ) : ''
+                                )
                             }
                         </div>
                         <div class="enhanced-job-text">
-                            <label style="font-weight: 600; margin-bottom: 8px; display: block;">Prompt:</label>
-                            <div style="position: relative;">
-                                <textarea class="job-prompt-box" readonly id="job-prompt-${job.id}">${job.prompt || 'No prompt available'}</textarea>
-                                <button class="copy-btn" onclick="copyJobPrompt('job-prompt-${job.id}')" title="Copy prompt">⎘</button>
-                            </div>
-                            <div style="margin-top: 15px; font-size: 12px; color: #666;">
-                                <p><strong>Created:</strong> ${new Date(job.created_at).toLocaleString()}</p>
-                                <p><strong>Status:</strong> ${job.status.replace(/_/g, ' ')}</p>
-                                ${job.error_message ? `<p><strong>Error:</strong> ${job.error_message}</p>` : ''}
-                                ${job.result_data ? `<p><strong>Output:</strong> ${job.result_data}</p>` : ''}
-                                ${job.keyed_result_data ? `<p><strong>Keyed Output:</strong> ${job.keyed_result_data}</p>` : ''}
-                            </div>
+                            ${job.job_type === 'style_analysis' || job.job_type === 'palette_analysis' || job.job_type === 'animation_prompting' ? 
+                                // For analysis jobs, job info is shown in left column with image
+                                '' :
+                                // For other jobs, show regular prompt and info
+                                `<label style="font-weight: 600; margin-bottom: 8px; display: block;">Prompt:</label>
+                                <div style="position: relative;">
+                                    <textarea class="job-prompt-box" readonly id="job-prompt-${job.id}">${job.prompt || 'No prompt available'}</textarea>
+                                    <button class="copy-btn" onclick="copyJobPrompt('job-prompt-${job.id}')" title="Copy prompt" style="background: none; border: none; color: #666; font-size: 16px; cursor: pointer; padding: 4px;">⎘</button>
+                                </div>
+                                <div style="margin-top: 15px; font-size: 12px; color: #666;">
+                                    <p><strong>Created:</strong> ${new Date(job.created_at).toLocaleString()}</p>
+                                    <p><strong>Status:</strong> ${job.status.replace(/_/g, ' ')}</p>
+                                    ${job.error_message ? `<p><strong>Error:</strong> ${job.error_message}</p>` : ''}
+                                    ${job.result_data ? `<p><strong>Output:</strong> ${job.result_data}</p>` : ''}
+                                    ${job.keyed_result_data ? `<p><strong>Keyed Output:</strong> ${job.keyed_result_data}</p>` : ''}
+                                </div>`
+                            }
                         </div>
                     </div>
                 </div>
@@ -1662,11 +1935,15 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
         const hasOpenJobs = openJobDetails.length > 0;
         const hasSelections = selectedJobs.length > 0;
         
-        console.log('🔄 Auto-refresh check:');
-        console.log('  - Open job details:', openJobDetails.length);
-        console.log('  - Selected jobs:', selectedJobs.length);
-        console.log('  - Should pause refresh:', hasOpenJobs || hasSelections);
-        console.log('  - Auto refresh currently active:', !!window.autoRefreshInterval);
+        // Debug logging (can be removed in production)
+        if (window.DEBUG_MODE) {
+            console.log('🔄 Auto-refresh check:', {
+                openJobs: openJobDetails.length,
+                selectedJobs: selectedJobs.length,
+                shouldPause: hasOpenJobs || hasSelections,
+                autoRefreshActive: !!window.autoRefreshInterval
+            });
+        }
         
         if (hasOpenJobs || hasSelections) {
             if (window.autoRefreshInterval) {
@@ -3218,6 +3495,26 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                     stylePromptTextarea.style.backgroundColor = '#e9ecef';
                     stylePromptTextarea.style.cursor = 'not-allowed';
                     console.log('🔒 Style prompt textarea locked');
+                }
+            });
+        }
+
+        // Palette analyzer prompt unlock functionality
+        const unlockPalettePromptCheckbox = document.getElementById('unlock_palette_prompt');
+        const palettePromptTextarea = document.getElementById('palette_system_prompt');
+        
+        if (unlockPalettePromptCheckbox && palettePromptTextarea) {
+            unlockPalettePromptCheckbox.addEventListener('change', function() {
+                if (this.checked) {
+                    palettePromptTextarea.disabled = false;
+                    palettePromptTextarea.style.backgroundColor = '#fff';
+                    palettePromptTextarea.style.cursor = 'text';
+                    console.log('✅ Palette prompt textarea unlocked for editing');
+                } else {
+                    palettePromptTextarea.disabled = true;
+                    palettePromptTextarea.style.backgroundColor = '#e9ecef';
+                    palettePromptTextarea.style.cursor = 'not-allowed';
+                    console.log('🔒 Palette prompt textarea locked');
                 }
             });
         }

@@ -24,7 +24,13 @@ load_dotenv()
 LEONARDO_API_KEY = os.environ.get("LEONARDO_API_KEY")
 REPLICATE_API_KEY = os.environ.get("REPLICATE_API_KEY")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-os.environ["REPLICATE_API_TOKEN"] = REPLICATE_API_KEY
+
+# Set REPLICATE_API_TOKEN for the replicate library
+if REPLICATE_API_KEY:
+    os.environ["REPLICATE_API_TOKEN"] = REPLICATE_API_KEY
+    print(f"Worker: Replicate API key loaded: {REPLICATE_API_KEY[:10]}...")
+else:
+    print("Worker: No Replicate API key found in environment")
 
 try:
     openai_client = OpenAI(
@@ -88,10 +94,15 @@ def preprocess_animation_image_for_boomerang(source_image_path, background_color
 # --- DATABASE HELPER ---
 def get_db_connection():
     """Creates a database connection with WAL mode enabled for high concurrency."""
-    conn = sqlite3.connect(DATABASE_PATH, timeout=10)
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        conn = sqlite3.connect(DATABASE_PATH, timeout=10)
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA busy_timeout=30000;")  # 30 second timeout for busy database
+        conn.row_factory = sqlite3.Row
+        return conn
+    except sqlite3.Error as e:
+        print(f"Database connection error: {e}")
+        raise
 
 # --- JOB HANDLERS ---
 def handle_boomerang_automation(job, conn):
@@ -138,7 +149,13 @@ def handle_boomerang_automation(job, conn):
         conn.commit()
         return "waiting_for_children", None
     except Exception as e:
+        print(f"Error in boomerang automation setup: {e}")
         traceback.print_exc()
+        # Try to rollback the transaction
+        try:
+            conn.rollback()
+        except Exception as rollback_error:
+            print(f"Could not rollback transaction: {rollback_error}")
         return None, f"A-B-A Loop Automation setup failed: {e}"
 
 def handle_animation(job):
@@ -361,41 +378,71 @@ def handle_image_generation(job):
     else: return handle_leonardo_generation(job)
 
 def handle_openai_vision_analysis(job):
-    if not REPLICATE_API_KEY: return None, "Replicate API key is not initialized. Check API keys."
+    if not OPENAI_API_KEY: return None, "OpenAI API key is not initialized. Check API keys."
     try:
         job_type = job['job_type'].replace('_', ' ').capitalize()
-        print(f"-> Starting Replicate GPT-4o Vision Analysis ({job_type}) for job {job['id']}...")
+        print(f"-> Starting OpenAI GPT-4o Vision Analysis ({job_type}) for job {job['id']}...")
         input_data = json.loads(job['input_data'])
         system_prompt = input_data.get('system_prompt', 'Analyze this image.')
         image_path = os.path.join(BASE_DIR, input_data['image_path'].lstrip('/'))
         if not os.path.exists(image_path): return None, f"Image file not found at {image_path}"
         
-        # For Replicate, we need to provide the image as a web-accessible URL
-        # Since we're running locally, we'll construct the local server URL
-        relative_path = os.path.relpath(image_path, BASE_DIR)
-        image_url = f"http://localhost:5001/{relative_path.replace(os.sep, '/')}"
+        # Determine the appropriate user message based on job type
+        if job['job_type'] == 'style_analysis':
+            user_message = "Analyze the style of this image in detail. Describe the artistic style, techniques, colors, composition, and any notable visual elements."
+        elif job['job_type'] == 'palette_analysis':
+            user_message = "Analyze the color palette of this image. Identify the dominant colors and provide their descriptions."
+        else:  # animation_prompting
+            user_message = "Analyze this image and provide animation ideas following the format above."
         
-        # Use Replicate's GPT-4o model
-        output = replicate.run(
-            "openai/gpt-4o",
-            input={
-                "system_prompt": system_prompt,
-                "messages": [{"role": "user", "content": "Analyze this image and provide animation ideas following the format above."}],
-                "image_input": [image_url],
-                "max_completion_tokens": 1000,
-                "temperature": 0.7
-            }
+        print(f"   ...calling OpenAI GPT-4o Vision API")
+        print(f"   ...system prompt: {system_prompt[:100]}...")
+        print(f"   ...user message: {user_message[:100]}...")
+        
+        # Encode image to base64
+        import base64
+        with open(image_path, "rb") as image_file:
+            base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+        
+        # Use OpenAI's GPT-4o Vision model directly
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": user_message
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{base64_image}"
+                            }
+                        }
+                    ]
+                }
+            ],
+            max_tokens=1000,
+            temperature=0.7
         )
         
-        # Replicate returns a generator, so we need to collect the output
-        analysis_text = ""
-        for item in output:
-            analysis_text += str(item)
+        analysis_text = response.choices[0].message.content
         
-        print(f"   ...Replicate GPT-4o analysis complete.")
-        return analysis_text, None
+        print(f"   ...OpenAI GPT-4o analysis complete. Result length: {len(analysis_text) if analysis_text else 0}")
+        if analysis_text:
+            print(f"   ...Result preview: {analysis_text[:100]}...")
+        else:
+            print("   ...WARNING: Empty result from OpenAI!")
+            
+        return analysis_text if analysis_text else None, None if analysis_text else "Empty response from OpenAI GPT-4o"
     except Exception as e:
-        return None, f"Replicate GPT-4o Vision API error: {e}"
+        return None, f"OpenAI GPT-4o Vision API error: {e}"
 
 def handle_keying(job):
     try:
@@ -585,43 +632,53 @@ def main():
                     traceback.print_exc()
                     error_message = f"Unhandled worker exception: {e}"
 
-                with get_db_connection() as conn:
-                    cursor = conn.cursor()
-                    if error_message is not None:
-                        new_status = 'failed'
-                        cursor.execute("UPDATE jobs SET status = ?, error_message = ? WHERE id = ?", (new_status, str(error_message), job['id']))
-                    elif job['job_type'] == 'boomerang_automation':
-                        new_status = result_data # This should be 'waiting_for_children'
-                        cursor.execute("UPDATE jobs SET status = ? WHERE id = ?", (new_status, job['id']))
-                    elif job['status'] in ['keying_queued', 'keying_processing']:
-                        new_status = 'completed'
-                        cursor.execute("UPDATE jobs SET status = ?, keyed_result_data = ? WHERE id = ?", (new_status, result_data, job['id']))
-                    elif job['status'] in ['queued', 'processing']:
-                        # For animations that are part of boomerang automation, complete them automatically
-                        if job['job_type'] == 'animation' and job['parent_job_id']:
-                            try:
-                                parent_job = cursor.execute("SELECT job_type FROM jobs WHERE id = ?", (job['parent_job_id'],)).fetchone()
-                                if parent_job and parent_job['job_type'] == 'boomerang_automation':
-                                    new_status = 'completed'  # Complete without keying for boomerang automation
-                                    print(f"   ...auto-completing animation job {job['id']} (part of boomerang automation #{job['parent_job_id']})")
+                try:
+                    with get_db_connection() as conn:
+                        cursor = conn.cursor()
+                        if error_message is not None:
+                            new_status = 'failed'
+                            cursor.execute("UPDATE jobs SET status = ?, error_message = ? WHERE id = ?", (new_status, str(error_message), job['id']))
+                        elif job['job_type'] == 'boomerang_automation':
+                            new_status = result_data # This should be 'waiting_for_children'
+                            cursor.execute("UPDATE jobs SET status = ? WHERE id = ?", (new_status, job['id']))
+                        elif job['status'] in ['keying_queued', 'keying_processing']:
+                            new_status = 'completed'
+                            cursor.execute("UPDATE jobs SET status = ?, keyed_result_data = ? WHERE id = ?", (new_status, result_data, job['id']))
+                        elif job['status'] in ['queued', 'processing']:
+                            # For animations that are part of boomerang automation, complete them automatically
+                            if job['job_type'] == 'animation' and job['parent_job_id']:
+                                try:
+                                    parent_job = cursor.execute("SELECT job_type FROM jobs WHERE id = ?", (job['parent_job_id'],)).fetchone()
+                                    if parent_job and parent_job['job_type'] == 'boomerang_automation':
+                                        new_status = 'completed'  # Complete without keying for boomerang automation
+                                        print(f"   ...auto-completing animation job {job['id']} (part of boomerang automation #{job['parent_job_id']})")
+                                        cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job['id']))
+                                    else:
+                                        new_status = 'pending_review'  # Regular workflow needs review
+                                        print(f"   ...setting animation job {job['id']} to pending_review (parent type: {parent_job['job_type'] if parent_job else 'None'})")
+                                        cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job['id']))
+                                except Exception as e:
+                                    print(f"   ...error checking parent job for {job['id']}: {e}, defaulting to completed")
+                                    new_status = 'completed'  # Safe default for boomerang children
                                     cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job['id']))
-                                else:
-                                    new_status = 'pending_review'  # Regular workflow needs review
-                                    print(f"   ...setting animation job {job['id']} to pending_review (parent type: {parent_job['job_type'] if parent_job else 'None'})")
-                                    cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job['id']))
-                            except Exception as e:
-                                print(f"   ...error checking parent job for {job['id']}: {e}, defaulting to completed")
-                                new_status = 'completed'  # Safe default for boomerang children
+                            else:
+                                new_status = 'pending_review' if job['job_type'] in ['animation', 'video_stitching'] else 'completed'
                                 cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job['id']))
-                        else:
-                            new_status = 'pending_review' if job['job_type'] in ['animation', 'video_stitching'] else 'completed'
+                        else: # Default case for completion
+                            new_status = 'completed'
                             cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job['id']))
-                    else: # Default case for completion
-                        new_status = 'completed'
-                        cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job['id']))
 
-                    conn.commit()
-                    print(f"Job {job['id']} finished.")
+                        conn.commit()
+                        print(f"Job {job['id']} finished.")
+                except Exception as db_error:
+                    print(f"Database error updating job {job['id']}: {db_error}")
+                    # Try to at least mark the job as failed if we can't update it properly
+                    try:
+                        with get_db_connection() as conn:
+                            conn.cursor().execute("UPDATE jobs SET status = 'failed', error_message = ? WHERE id = ?", (f"Database update error: {db_error}", job['id']))
+                            conn.commit()
+                    except Exception as final_error:
+                        print(f"Could not even mark job {job['id']} as failed: {final_error}")
             else:
                 print("No jobs found. Waiting...", end='\r')
                 time.sleep(5)

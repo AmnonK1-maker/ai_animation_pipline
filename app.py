@@ -14,11 +14,21 @@ from PIL import Image
 from video_processor import process_single_frame
 
 app = Flask(__name__)
-# Disable template caching for development
-app.config['TEMPLATES_AUTO_RELOAD'] = True
-app.jinja_env.auto_reload = True
-app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+
+# Load environment variables
 load_dotenv()
+
+# Production mode check
+PRODUCTION_MODE = os.getenv('PRODUCTION_MODE', 'false').lower() == 'true'
+
+if not PRODUCTION_MODE:
+    # Disable template caching for development
+    app.config['TEMPLATES_AUTO_RELOAD'] = True
+    app.jinja_env.auto_reload = True
+    app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+    print("🔧 Running in DEVELOPMENT mode")
+else:
+    print("🚀 Running in PRODUCTION mode")
 
 # --- CONFIGURATION & FOLDER PATHS ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -370,8 +380,8 @@ def style_tool():
     input_data = json.dumps({"image_path": os.path.join('static/uploads', filename), "system_prompt": system_prompt})
     with get_db_connection() as conn:
         conn.cursor().execute(
-            "INSERT INTO jobs (job_type, status, created_at, prompt, input_data, result_data) VALUES (?, ?, ?, ?, ?, ?)",
-            ('style_analysis', 'queued', datetime.now(), user_prompt, input_data, os.path.join('static/uploads', filename))
+            "INSERT INTO jobs (job_type, status, created_at, prompt, input_data) VALUES (?, ?, ?, ?, ?)",
+            ('style_analysis', 'queued', datetime.now(), user_prompt, input_data)
         )
         conn.commit()
     return jsonify({"success": True})
@@ -388,8 +398,8 @@ def palette_tool():
     input_data = json.dumps({"image_path": os.path.join('static/uploads', filename), "system_prompt": system_prompt})
     with get_db_connection() as conn:
         conn.cursor().execute(
-            "INSERT INTO jobs (job_type, status, created_at, prompt, input_data, result_data) VALUES (?, ?, ?, ?, ?, ?)",
-            ('palette_analysis', 'queued', datetime.now(), user_prompt, input_data, os.path.join('static/uploads', filename))
+            "INSERT INTO jobs (job_type, status, created_at, prompt, input_data) VALUES (?, ?, ?, ?, ?)",
+            ('palette_analysis', 'queued', datetime.now(), user_prompt, input_data)
         )
         conn.commit()
     return jsonify({"success": True})
