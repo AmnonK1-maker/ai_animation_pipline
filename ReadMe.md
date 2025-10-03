@@ -70,12 +70,23 @@ A comprehensive Flask-based application for AI-powered image generation, animati
 **For New Team Members**: See [SETUP.md](SETUP.md) for detailed setup guide.
 
 **One-Click Setup:**
+
+**macOS/Linux:**
 ```bash
 git clone https://github.com/AmnonK1-maker/ai_animation_pipline.git
 cd ai_animation_pipline
 ./setup.sh          # Installs everything
 # Edit .env with your API keys
 ./start_app.sh      # Starts the application
+```
+
+**Windows:**
+```cmd
+git clone https://github.com/AmnonK1-maker/ai_animation_pipline.git
+cd ai_animation_pipline
+setup.bat           # Installs everything
+REM Edit .env with your API keys
+start_app.bat       # Starts the application
 ```
 
 Open http://localhost:5001 in your browser. Done! 🎉

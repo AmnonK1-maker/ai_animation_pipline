@@ -24,15 +24,28 @@ Before starting, make sure you have:
 
 ### Step 1: Clone the Repository
 
+**macOS/Linux:**
 ```bash
+git clone https://github.com/AmnonK1-maker/ai_animation_pipline.git
+cd ai_animation_pipline
+```
+
+**Windows (Command Prompt or PowerShell):**
+```cmd
 git clone https://github.com/AmnonK1-maker/ai_animation_pipline.git
 cd ai_animation_pipline
 ```
 
 ### Step 2: Run Setup Script
 
+**macOS/Linux:**
 ```bash
 ./setup.sh
+```
+
+**Windows:**
+```cmd
+setup.bat
 ```
 
 This script will:
@@ -63,8 +76,14 @@ OPENAI_ORG_ID="your_actual_openai_org_id"
 
 ### Step 4: Start the Application
 
+**macOS/Linux:**
 ```bash
 ./start_app.sh
+```
+
+**Windows:**
+```cmd
+start_app.bat
 ```
 
 ### Step 5: Open Browser
@@ -84,9 +103,17 @@ cd ai_animation_pipline
 ```
 
 ### 2. Create Virtual Environment
+
+**macOS/Linux:**
 ```bash
 python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate
+```
+
+**Windows:**
+```cmd
+python -m venv venv
+venv\Scripts\activate.bat
 ```
 
 ### 3. Install Dependencies
@@ -96,12 +123,22 @@ pip install -r requirements.txt
 ```
 
 ### 4. Create .env File
+
+**macOS/Linux:**
 ```bash
 cp .env.example .env  # If example exists
 # or create manually with the keys above
 ```
 
+**Windows:**
+```cmd
+copy .env.example .env
+REM or create manually with the keys above
+```
+
 ### 5. Run Application
+
+**macOS/Linux:**
 ```bash
 # Terminal 1 - Web Server
 flask run --host=0.0.0.0 --port=5001
@@ -109,6 +146,16 @@ flask run --host=0.0.0.0 --port=5001
 # Terminal 2 - Background Worker (in a new terminal)
 source venv/bin/activate
 python3 worker.py
+```
+
+**Windows:**
+```cmd
+REM Terminal 1 - Web Server
+flask run --host=0.0.0.0 --port=5001
+
+REM Terminal 2 - Background Worker (in a new terminal)
+venv\Scripts\activate.bat
+python worker.py
 ```
 
 ---
@@ -158,14 +205,29 @@ git pull origin main
 ```
 
 ### Update Dependencies (if requirements.txt changed)
+
+**macOS/Linux:**
 ```bash
 source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+**Windows:**
+```cmd
+venv\Scripts\activate.bat
+pip install -r requirements.txt
+```
+
 ### Restart Application
+
+**macOS/Linux:**
 ```bash
 ./start_app.sh
+```
+
+**Windows:**
+```cmd
+start_app.bat
 ```
 
 ---
