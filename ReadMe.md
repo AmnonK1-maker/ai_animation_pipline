@@ -65,20 +65,37 @@ A comprehensive Flask-based application for AI-powered image generation, animati
 
 ## 🚀 Setup Instructions
 
-### Prerequisites
-- **Python 3.8+**
-- **ffmpeg** (for video processing)
-- **OpenCV** (automatically installed via requirements.txt)
-- **API Keys**: Leonardo AI, Replicate, OpenAI
+### 🎯 Quick Start (Recommended)
 
-### Installation
+**For New Team Members**: See [SETUP.md](SETUP.md) for detailed setup guide.
+
+**One-Click Setup:**
+```bash
+git clone https://github.com/AmnonK1-maker/ai_animation_pipline.git
+cd ai_animation_pipline
+./setup.sh          # Installs everything
+# Edit .env with your API keys
+./start_app.sh      # Starts the application
+```
+
+Open http://localhost:5001 in your browser. Done! 🎉
+
+### 📋 Prerequisites
+- **Python 3.8+** - [Download](https://www.python.org/downloads/)
+- **ffmpeg** (for video processing) - `brew install ffmpeg` (macOS)
+- **API Keys** (get at least one):
+  - [Leonardo AI](https://app.leonardo.ai/settings) - Image generation
+  - [Replicate](https://replicate.com/account/api-tokens) - Animations
+  - [OpenAI](https://platform.openai.com/api-keys) - Style analysis & DALL-E
+
+### 🔧 Manual Installation
 
 1. **Clone and Setup Environment**
    ```bash
-   git clone <repository>
-   cd kling_app
+   git clone https://github.com/AmnonK1-maker/ai_animation_pipline.git
+   cd ai_animation_pipline
    python3 -m venv venv
-   source venv/bin/activate  # On Windows: .\venv\Scripts\activate
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
    pip install -r requirements.txt
    ```
 
@@ -86,29 +103,25 @@ A comprehensive Flask-based application for AI-powered image generation, animati
    Create `.env` file in project root:
    ```env
    LEONARDO_API_KEY="your_leonardo_key"
-   REPLICATE_API_TOKEN="r8_your_replicate_key"
+   REPLICATE_API_KEY="r8_your_replicate_key"
    OPENAI_API_KEY="sk-your_openai_key"
    OPENAI_ORG_ID="org-your_openai_org_id"
    ```
 
 3. **Run the Application**
    
-   **Easy Way (Recommended) - One Command:**
+   **Easy Way - One Command:**
    ```bash
    ./start_app.sh
    ```
-   This script automatically handles virtual environment, port conflicts, and provides clear instructions.
    
    **Manual Way - Two Terminals:**
-   
-   **Terminal 1 - Web Server:**
    ```bash
+   # Terminal 1 - Web Server
    source venv/bin/activate
    flask run --host=0.0.0.0 --port=5001
-   ```
    
-   **Terminal 2 - Background Worker (Optional):**
-   ```bash
+   # Terminal 2 - Background Worker
    source venv/bin/activate
    python3 worker.py
    ```

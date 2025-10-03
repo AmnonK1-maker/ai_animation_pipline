@@ -12,6 +12,26 @@ uploads/
 outputs/
 temp_frames/
 jobs.db
+jobs.db-shm
+jobs.db-wal
+flask.log
+worker.log
+worker_debug.log
+worker_test.log
+worker_current.log
+
+# Generated media (large files)
+static/animations/generated/*.mp4
+static/animations/generated/*.webm
+static/library/*.mp4
+static/library/*.webm
+static/library/transparent_videos/*.webm
+
+# Keep directory structure but ignore large generated files
+# Team members will generate their own content
+static/uploads/*
+!static/uploads/.gitkeep
 
 # OS files
 .DS_Store
+*.DS_Store
