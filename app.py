@@ -6,7 +6,7 @@ import shutil
 import sqlite3
 import base64
 from datetime import datetime
-from flask import Flask, render_template, request, redirect, url_for, jsonify, send_file, json, Response
+from flask import Flask, render_template, request, redirect, url_for, jsonify, send_file, Response
 import cv2
 import numpy as np
 from dotenv import load_dotenv
@@ -50,6 +50,7 @@ def get_db_connection():
     """Creates a database connection with WAL mode enabled for high concurrency."""
     conn = sqlite3.connect(DATABASE_PATH, timeout=10)
     conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA busy_timeout=30000;")  # 30 second timeout for busy database
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -180,27 +181,85 @@ def fine_tune_page(job_id):
 # --- WORKFLOW ROUTES ---
 @app.route("/save-keying-settings/<int:job_id>", methods=["POST"])
 def save_keying_settings(job_id):
-    settings = {
-        "hue_center": int(request.form.get('hue_center', 60)), "hue_tolerance": int(request.form.get('hue_tolerance', 25)),
-        "saturation_min": int(request.form.get('saturation_min', 50)), "value_min": int(request.form.get('value_min', 50)),
-        "erode": int(request.form.get('erode', 2)), "dilate": int(request.form.get('dilate', 1)),
-        "blur": int(request.form.get('blur', 5)), "spill": int(request.form.get('spill', 2))
-    }
-    
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
+    try:
+        settings = {
+            "hue_center": int(request.form.get('hue_center', 60)), "hue_tolerance": int(request.form.get('hue_tolerance', 25)),
+            "saturation_min": int(request.form.get('saturation_min', 50)), "value_min": int(request.form.get('value_min', 50)),
+            "erode": int(request.form.get('erode', 2)), "dilate": int(request.form.get('dilate', 1)),
+            "blur": int(request.form.get('blur', 5)), "spill": int(request.form.get('spill', 2))
+        }
         
-        # Get current job info for logging
-        job = cursor.execute("SELECT job_type, status FROM jobs WHERE id = ?", (job_id,)).fetchone()
-        if job:
-            print(f"-> Saving keying settings for job {job_id} ({job['job_type']}) - was {job['status']}, now pending_process")
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Get current job info for logging
+            job = cursor.execute("SELECT job_type, status FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            if not job:
+                return jsonify({"success": False, "error": f"Job {job_id} not found"}), 404
+                
+            if job:
+                print(f"-> Saving keying settings for job {job_id} ({job['job_type']}) - was {job['status']}, now pending_process")
+            
+            cursor.execute("UPDATE jobs SET status = ?, keying_settings = ? WHERE id = ?", ('pending_process', json.dumps(settings), job_id))
+            conn.commit()
+            
+            print(f"   ...settings saved: {settings}")
         
-        cursor.execute("UPDATE jobs SET status = ?, keying_settings = ? WHERE id = ?", ('pending_process', json.dumps(settings), job_id))
-        conn.commit()
+        return jsonify({"success": True, "message": "Keying settings saved. Click 'Process Pending Jobs' to apply."})
+    except Exception as e:
+        print(f"Error saving keying settings: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/auto-key-video/<int:job_id>", methods=["POST"])
+def auto_key_video(job_id):
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Get job data including input_data
+            job = cursor.execute("SELECT job_type, status, input_data FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            if not job:
+                return jsonify({"success": False, "error": f"Job {job_id} not found"}), 404
+            
+            # Parse input_data to get background color
+            try:
+                input_data = json.loads(job['input_data']) if job['input_data'] else {}
+                bg_color = input_data.get('background', 'green')  # default to green
+            except:
+                bg_color = 'green'  # fallback to green if parsing fails
+            
+            # Set default settings based on background color
+            if bg_color == 'blue':
+                settings = {
+                    "hue_center": 100, "hue_tolerance": 25,
+                    "saturation_min": 50, "value_min": 50,
+                    "erode": 2, "dilate": 1,
+                    "blur": 5, "spill": 2
+                }
+                bg_display = "Blue Screen"
+            elif bg_color == 'green':
+                settings = {
+                    "hue_center": 60, "hue_tolerance": 25,
+                    "saturation_min": 50, "value_min": 50,
+                    "erode": 2, "dilate": 1,
+                    "blur": 5, "spill": 2
+                }
+                bg_display = "Green Screen"
+            else:  # default
+                # No keying needed for "default" background
+                return jsonify({"success": False, "error": "This animation was created with 'As is' background. No keying needed."}), 400
+                
+            print(f"-> Auto-keying {bg_color} background for job {job_id} ({job['job_type']}) - now pending_process")
+            
+            cursor.execute("UPDATE jobs SET status = ?, keying_settings = ? WHERE id = ?", ('pending_process', json.dumps(settings), job_id))
+            conn.commit()
+            
+            print(f"   ...auto-key settings saved: {settings}")
         
-        print(f"   ...settings saved: {settings}")
-    
-    return redirect(url_for('home'))
+        return jsonify({"success": True, "message": f"Auto-key ({bg_display}) applied. Click 'Process Pending Jobs' to apply."})
+    except Exception as e:
+        print(f"Error in auto-key: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route("/process-all-pending", methods=["POST"])
 def process_all_pending():
@@ -466,7 +525,8 @@ def generate_animation():
                 "seamless_loop": request.form.get("seamless_loop") == "true", "video_model": model,
                 "kling_duration": int(request.form.get("kling-duration", 5)), "kling_mode": request.form.get("kling-mode", "pro"),
                 "seedance_duration": int(request.form.get("seedance-duration", 5)), "seedance_resolution": request.form.get("seedance-resolution", "1080p"),
-                "seedance_aspect_ratio": request.form.get("seedance-aspect-ratio", "1:1")
+                "seedance_aspect_ratio": request.form.get("seedance-aspect-ratio", "1:1"),
+                "background": background_option
             }
             cursor.execute(
                 "INSERT INTO jobs (job_type, status, created_at, prompt, input_data, parent_job_id) VALUES (?, ?, ?, ?, ?, ?)",
@@ -598,7 +658,7 @@ def api_jobs_log():
             query = """
                 SELECT j.*, p.id as parent_id, p.result_data as parent_result_data
                 FROM jobs j LEFT JOIN jobs p ON j.parent_job_id = p.id
-                ORDER BY j.id DESC
+                ORDER BY j.created_at DESC, j.id DESC
             """
             jobs_rows = conn.execute(query).fetchall()
 

@@ -60,8 +60,6 @@
         padding: 20px;
         overflow-y: auto; 
         max-height: 100vh;
-        min-width: 400px;
-        resize: horizontal;
         min-width: 300px;
     }
     
@@ -284,19 +282,20 @@
         position: absolute; 
         right: 8px; 
         top: 8px; 
-        background: rgba(108, 117, 125, 0.8) !important; 
-        color: white !important; 
+        background: none !important; 
+        color: #6c757d !important; 
         border: none; 
-        padding: 4px 6px; 
-        font-size: 11px; 
+        padding: 4px; 
+        font-size: 20px; 
         border-radius: 3px; 
         cursor: pointer; 
         z-index: 10;
-        transition: background-color 0.2s;
+        transition: all 0.2s;
     }
     
     .copy-btn:hover {
-        background: rgba(108, 117, 125, 1) !important;
+        color: #495057 !important;
+        background: rgba(108, 117, 125, 0.1) !important;
     }
     
     /* Enhanced Job Queue Styles */
@@ -711,6 +710,8 @@
     #process-selected-btn { display: none; background-color: #17a2b8; }
     #stitch-videos-btn { display: none; background-color: #6f42c1; }
     #delete-selected-btn { display: none; background-color: #dc3545; }
+    #clear-failed-btn, #clear-stuck-btn, #clear-all-btn { background-color: #f8f9fa; color: #495057; border: 1px solid #dee2e6; }
+    #clear-failed-btn:hover, #clear-stuck-btn:hover, #clear-all-btn:hover { background-color: #e9ecef; }
     .refresh-btn { background-color: #6c757d; }
     .refresh-btn.active { background-color: #28a745; }
     .refresh-btn.paused { background-color: #dc3545; }
@@ -946,6 +947,7 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                 <input type="hidden" name="image_url" id="animation_image_url">
                 <input type="hidden" name="end_image_url" id="animation_end_image_url">
                 <input type="hidden" name="parent_job_id" id="animation_parent_job_id">
+                <input type="hidden" name="boomerang_automation" id="boomerang_automation_flag" value="false">
                 
                 <div class="image-preview-section" style="margin: 20px 0;">
                     <!-- Start Frame -->
@@ -958,12 +960,17 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                     </div>
                     
                     <!-- End Frame Controls -->
-                    <div id="end-frame-controls" style="display: none; margin-bottom: 15px;">
-                        <label style="font-weight: 600; display: block; margin-bottom: 5px;">End Frame (Optional):</label>
+                    <div id="end-frame-controls" style="display: none; margin-bottom: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 2px solid #007bff;">
+                        <label style="font-weight: 600; display: block; margin-bottom: 8px; font-size: 14px; color: #007bff;">
+                            🔄 End Frame (Optional - for ABA Loop Animation):
+                        </label>
+                        <p style="margin: 0 0 12px 0; font-size: 12px; color: #6c757d;">
+                            Select a second image to create a seamless A→B→A loop animation
+                        </p>
                         <div style="display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
-                            <button type="button" onclick="openLibraryModal('animation-end')" class="standard-btn">📚 Library</button>
-                            <button type="button" onclick="openJobSelectModal('animation-end')" class="standard-btn">📋 From Jobs</button>
-                            <div class="upload-area" onclick="document.getElementById('end-frame-upload').click()" style="display: inline-flex; padding: 6px 10px; margin: 0; cursor: pointer;">
+                            <button type="button" onclick="openLibraryModal('animation-end')" class="standard-btn" style="background: #007bff;">📚 Library</button>
+                            <button type="button" onclick="openJobSelectModal('animation-end')" class="standard-btn" style="background: #007bff;">📋 From Jobs</button>
+                            <div class="upload-area" onclick="document.getElementById('end-frame-upload').click()" style="display: inline-flex; padding: 6px 10px; margin: 0; cursor: pointer; background: #007bff; color: white;">
                                 <span>📷 Upload</span>
                                 <input type="file" id="end-frame-upload" accept="image/*" style="display: none;" onchange="handleEndFrameUpload(this)">
                             </div>
@@ -989,19 +996,19 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                 </div>
 
                 <div style="margin-bottom: 15px;">
-                    <label>Background:</label>
+                    <label style="margin-bottom: 8px;">Background:</label>
                     <div class="background-options-horizontal">
                         <div class="background-option">
-                            <input type="radio" name="background" value="default" checked id="bg-default">
-                            <label for="bg-default">As is</label>
+                            <input type="radio" name="background" value="default" checked id="bg-default" style="margin: 0;">
+                            <label for="bg-default" style="margin: 0; line-height: 1.5;">As is</label>
                         </div>
                         <div class="background-option">
-                            <input type="radio" name="background" value="green" id="bg-green">
-                            <label for="bg-green">Green Screen</label>
+                            <input type="radio" name="background" value="green" id="bg-green" style="margin: 0;">
+                            <label for="bg-green" style="margin: 0; line-height: 1.5;">Green Screen</label>
                         </div>
                         <div class="background-option">
-                            <input type="radio" name="background" value="blue" id="bg-blue">
-                            <label for="bg-blue">Blue Screen</label>
+                            <input type="radio" name="background" value="blue" id="bg-blue" style="margin: 0;">
+                            <label for="bg-blue" style="margin: 0; line-height: 1.5;">Blue Screen</label>
                         </div>
                     </div>
                 </div>
@@ -1029,6 +1036,84 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
 
                 <button type="submit" class="standard-btn">Generate Animation</button>
             </form>
+        </div>
+    </div>
+</details>
+
+<details class="dashboard-section" id="keying-section">
+    <summary>🎬 Video Keyer (Chroma Key)</summary>
+    <div class="tool-content">
+        <p style="font-size: 13px; color: #666; margin-bottom: 15px;">
+            Select a video from your completed jobs to adjust chroma key settings and remove the background.
+        </p>
+        
+        <div id="keying-tool-empty" style="padding: 20px; text-align: center; background: #f8f9fa; border-radius: 8px; color: #6c757d;">
+            <p style="margin: 0;">No video loaded. Click "⚙️ Key Video" on any completed animation to start.</p>
+        </div>
+        
+        <div id="keying-tool-container" style="display: none;">
+            <div class="video-container" id="keying-video-container" style="width: 100%; aspect-ratio: 16/9; margin-bottom: 15px; border-radius: 8px; overflow: hidden; display: flex; justify-content: center; align-items: center; background-color: #c0c0c0; background-image: linear-gradient(45deg, #808080 25%, transparent 25%), linear-gradient(-45deg, #808080 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #808080 75%), linear-gradient(-45deg, transparent 75%, #808080 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0px; position: relative; cursor: crosshair;">
+                <video id="keying-video-preview" playsinline controls style="max-width: 100%; max-height: 100%; object-fit: contain;"></video>
+                <img id="keying-image-preview" alt="Keying Preview" style="display: none; max-width: 100%; max-height: 100%; object-fit: contain; cursor: pointer;" title="Click to return to video">
+                <div id="color-sample-indicator" style="display: none; position: absolute; width: 30px; height: 30px; border: 3px solid white; border-radius: 50%; pointer-events: none; box-shadow: 0 0 10px rgba(0,0,0,0.5);"></div>
+            </div>
+            
+            <!-- Color Sampler Tool -->
+            <div style="background: #e3f2fd; padding: 10px; border-radius: 6px; margin-bottom: 15px; border: 2px solid #2196f3;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <h4 style="margin: 0; font-size: 13px; color: #1976d2;">🎨 Color Sampler</h4>
+                    <button type="button" id="toggle-sampler-btn" class="standard-btn" style="padding: 5px 10px; font-size: 11px; background: #2196f3;">Enable</button>
+                </div>
+                <div id="sampled-color-display" style="display: none; background: white; padding: 8px; border-radius: 4px; font-size: 11px;">
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <div id="sampled-color-box" style="width: 40px; height: 40px; border: 2px solid #dee2e6; border-radius: 4px;"></div>
+                        <div style="flex: 1;">
+                            <div><strong>H:</strong> <span id="sampled-hue">0</span></div>
+                            <div><strong>S:</strong> <span id="sampled-sat">0</span></div>
+                            <div><strong>V:</strong> <span id="sampled-val">0</span></div>
+                        </div>
+                        <button type="button" id="apply-sampled-color-btn" class="standard-btn" style="padding: 5px 10px; font-size: 11px; background: #28a745;">Apply to Sliders</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="background-color: #f8f9fa; padding: 12px; border-radius: 8px;">
+                <form id="keying-form">
+                    <input type="hidden" id="keying-job-id" value="">
+                    <input type="hidden" id="keying-video-path" value="">
+                    
+                    <h4 style="margin: 0 0 10px 0; font-size: 13px;">Keying Controls</h4>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 15px; margin-bottom: 12px;">
+                        <div><label style="display: block; margin-bottom: 2px; font-weight: 600; font-size: 11px;">Hue Center: <span id="hue_center_val">60</span></label><input type="range" id="hue_center" name="hue_center" min="0" max="180" value="60" style="width: 100%;"></div>
+                        <div><label style="display: block; margin-bottom: 2px; font-weight: 600; font-size: 11px;">Hue Tolerance: <span id="hue_tolerance_val">25</span></label><input type="range" id="hue_tolerance" name="hue_tolerance" min="0" max="50" value="25" style="width: 100%;"></div>
+                        <div><label style="display: block; margin-bottom: 2px; font-weight: 600; font-size: 11px;">Saturation Min: <span id="saturation_min_val">50</span></label><input type="range" id="saturation_min" name="saturation_min" min="0" max="255" value="50" style="width: 100%;"></div>
+                        <div><label style="display: block; margin-bottom: 2px; font-weight: 600; font-size: 11px;">Value Min: <span id="value_min_val">50</span></label><input type="range" id="value_min" name="value_min" min="0" max="255" value="50" style="width: 100%;"></div>
+                        <div><label style="display: block; margin-bottom: 2px; font-weight: 600; font-size: 11px;">Choke/Erode: <span id="erode_val">2</span></label><input type="range" id="erode" name="erode" min="0" max="10" value="2" style="width: 100%;"></div>
+                        <div><label style="display: block; margin-bottom: 2px; font-weight: 600; font-size: 11px;">Soften/Dilate: <span id="dilate_val">1</span></label><input type="range" id="dilate" name="dilate" min="0" max="10" value="1" style="width: 100%;"></div>
+                        <div><label style="display: block; margin-bottom: 2px; font-weight: 600; font-size: 11px;">Edge Blur: <span id="blur_val">5</span></label><input type="range" id="blur" name="blur" min="0" max="21" value="5" step="2" style="width: 100%;"></div>
+                        <div><label style="display: block; margin-bottom: 2px; font-weight: 600; font-size: 11px;">Spill Suppression: <span id="spill_val">2</span></label><input type="range" id="spill" name="spill" min="0" max="10" value="2" style="width: 100%;"></div>
+                    </div>
+                    
+                    <div style="padding: 10px 0; border-top: 1px solid #dee2e6; margin-bottom: 10px;">
+                        <h4 style="margin: 0 0 8px 0; font-size: 12px;">Background</h4>
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+                            <div><label style="display: block; font-size: 10px; margin-bottom: 3px;">Color 1:</label><input type="color" id="checkerColor1" value="#808080" style="width: 100%; height: 28px;"></div>
+                            <div><label style="display: block; font-size: 10px; margin-bottom: 3px;">Color 2:</label><input type="color" id="checkerColor2" value="#c0c0c0" style="width: 100%; height: 28px;"></div>
+                            <div><label style="display: block; font-size: 10px; margin-bottom: 3px;">Size:</label><input type="number" id="checkerSize" value="20" min="5" max="100" style="width: 100%; height: 28px; padding: 4px; font-size: 11px;"></div>
+                        </div>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px;">
+                        <button type="button" id="prev-frame-btn" class="standard-btn" style="padding: 6px; font-size: 11px;">◄ Prev</button>
+                        <button type="button" id="next-frame-btn" class="standard-btn" style="padding: 6px; font-size: 11px;">Next ►</button>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                        <button type="button" id="keying-preview-btn" class="standard-btn" style="background: #007bff; padding: 8px; font-size: 11px;">🔍 Preview</button>
+                        <button type="button" id="keying-save-btn" class="standard-btn" style="background: #28a745; padding: 8px; font-size: 11px;">💾 Save Settings</button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 </details>
@@ -1242,17 +1327,49 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
 
         const resultText = resultDiv.textContent.trim();
 
-        // Find the style prompt field in image generation section
+        // Determine job type from the button's parent elements
+        const jobCard = button.closest('.enhanced-job-item');
+        const jobTitle = jobCard?.querySelector('.job-title')?.textContent || '';
+        const isAnimationIdea = jobTitle.includes('animation prompting');
+        const isPaletteAnalysis = jobTitle.includes('palette');
+        
+        // For animation idea, place in animation prompt field
+        if (isAnimationIdea) {
+            const animationPromptField = document.getElementById('animation_prompt');
+            if (!animationPromptField) {
+                showUserFriendlyError('Animation prompt field not found. Please make sure the Animation section is visible.');
+                return;
+            }
+            
+            animationPromptField.value = resultText;
+            
+            // Visual feedback
+            const originalText = button.textContent;
+            button.textContent = '✓ Copied!';
+            button.style.background = '#198754';
+            
+            setTimeout(() => {
+                button.textContent = originalText;
+                button.style.background = '#28a745';
+            }, 2000);
+
+            // Scroll to the animation section
+            const animationSection = document.getElementById('animation-section');
+            if (animationSection) {
+                animationSection.setAttribute('open', '');
+                animationSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            
+            showUserFriendlyError('Animation idea copied to Animation Creator!', null, 'success');
+            return;
+        }
+        
+        // For style/palette analysis, place in image generation style field
         const styleField = document.getElementById('style_prompt');
         if (!styleField) {
             showUserFriendlyError('Style prompt field not found. Please make sure the Image Generation section is visible.');
             return;
         }
-
-        // Determine job type from the button's parent elements
-        const jobCard = button.closest('.enhanced-job-item');
-        const jobTitle = jobCard?.querySelector('.job-title')?.textContent || '';
-        const isPaletteAnalysis = jobTitle.includes('palette');
         
         // For palette analysis, append to existing text; for style analysis, replace
         let actionMessage = '';
@@ -1419,8 +1536,20 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                 document.getElementById('animation-end-preview').src = e.target.result;
                 document.getElementById('end-frame-display').style.display = 'block';
                 
+                // Enable boomerang automation flag
+                const boomerangFlag = document.getElementById('boomerang_automation_flag');
+                if (boomerangFlag) {
+                    boomerangFlag.value = 'true';
+                    console.log('✅ Boomerang automation enabled for ABA loop');
+                }
+                
                 // Upload the file to the server  
                 uploadImageFile(file, 'animation_end_image_url');
+                
+                // Show success message
+                setTimeout(() => {
+                    alert('✅ End frame uploaded! This will create an ABA-style loop animation.\n\nThe system will:\n1. Animate A→B (start to end)\n2. Animate B→A (end to start)\n3. Stitch them together into a seamless loop');
+                }, 500);
             };
             
             reader.readAsDataURL(file);
@@ -1441,6 +1570,13 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
     function removeEndFrame() {
         document.getElementById('end-frame-display').style.display = 'none';
         document.getElementById('animation_end_image_url').value = '';
+        
+        // Disable boomerang automation flag
+        const boomerangFlag = document.getElementById('boomerang_automation_flag');
+        if (boomerangFlag) {
+            boomerangFlag.value = 'false';
+            console.log('✅ Boomerang automation disabled');
+        }
         
         // Reset the file input
         document.getElementById('end-frame-upload').value = '';
@@ -1562,33 +1698,66 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
     
     // Enhanced job rendering with grouping
     function renderGroupedJobs(jobs) {
+        // Group image_generation jobs by creation time (within 5 seconds of each other)
         const grouped = {};
+        const imageGenJobs = jobs.filter(job => job.job_type === 'image_generation');
         
-        // Group jobs by prompt for image generation
-        jobs.forEach(job => {
-            if (job.job_type === 'image_generation') {
-                const key = job.prompt || 'unknown';
-                if (!grouped[key]) {
-                    grouped[key] = [];
+        // Sort by creation time
+        imageGenJobs.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+        
+        // Group jobs created within 5 seconds of each other
+        imageGenJobs.forEach(job => {
+            const jobTime = new Date(job.created_at).getTime();
+            let foundGroup = false;
+            
+            // Check if this job belongs to an existing group
+            Object.keys(grouped).forEach(groupKey => {
+                const groupTime = parseInt(groupKey);
+                const timeDiff = Math.abs(jobTime - groupTime) / 1000; // difference in seconds
+                
+                if (timeDiff <= 5) { // Jobs created within 5 seconds are grouped together
+                    grouped[groupKey].push(job);
+                    foundGroup = true;
                 }
-                grouped[key].push(job);
+            });
+            
+            // If no group found, create a new group
+            if (!foundGroup) {
+                grouped[jobTime] = [job];
             }
         });
         
-        // Render grouped jobs
-                let html = '';
-        Object.keys(grouped).forEach(promptKey => {
-            const jobGroup = grouped[promptKey];
-            if (jobGroup.length > 1) {
-                html += renderJobGroup(jobGroup);
-            } else {
-                html += renderSingleJob(jobGroup[0]);
+        // Create a map: jobId -> group (for multi-job groups only)
+        const jobIdToGroup = new Map();
+        Object.values(grouped).forEach(group => {
+            if (group.length > 1) {
+                group.forEach(job => jobIdToGroup.set(job.id, group));
             }
         });
         
-        // Render non-image generation jobs normally
+        // Track which groups we've already rendered
+        const renderedGroups = new Set();
+        
+        // Interleave grouped and non-grouped jobs by creation time
+        let html = '';
                 jobs.forEach(job => {
-            if (job.job_type !== 'image_generation') {
+            if (job.job_type === 'image_generation') {
+                const group = jobIdToGroup.get(job.id);
+                
+                if (group) {
+                    // This job is part of a multi-job group
+                    // Only render the group once (when we encounter the first job)
+                    if (!renderedGroups.has(group)) {
+                        html += renderJobGroup(group);
+                        renderedGroups.add(group);
+                    }
+                    // Skip individual rendering since it's part of a group
+                } else {
+                    // Single image generation job, render normally
+                    html += renderSingleJob(job);
+                }
+            } else {
+                // Non-image-generation job, render normally
                 html += renderSingleJob(job);
             }
         });
@@ -1722,17 +1891,26 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                     thumbnailHTML = `<div class="enhanced-job-thumbnail ${thumbnailClass}" style="background: #e9ecef; display: flex; align-items: center; justify-content: center; font-size: 11px;">${job.status}</div>`;
                 }
             }
-        } else if (job.result_data && job.status === 'completed') {
+        } else if (job.result_data && (job.status === 'completed' || job.status === 'pending_review' || job.status === 'pending_process')) {
             // Check if it's a video file
             const isVideoJob = job.job_type === 'animation' || job.job_type === 'video_stitching';
             const hasVideoExtension = job.result_data.match(/\.(mp4|webm|mov)$/i);
             
             if (isVideoJob || hasVideoExtension) {
-                // Ensure proper path formatting for videos
-                const videoPath = job.result_data.startsWith('/') ? job.result_data : '/' + job.result_data;
-                thumbnailHTML = `<video src="${videoPath}" class="enhanced-job-thumbnail ${thumbnailClass}" muted loop autoplay preload="metadata" style="object-fit: cover;"></video>`;
+                // Show keyed video if it exists, otherwise show original
+                const videoPath = job.keyed_result_data 
+                    ? (job.keyed_result_data.startsWith('/') ? job.keyed_result_data : '/' + job.keyed_result_data)
+                    : (job.result_data.startsWith('/') ? job.result_data : '/' + job.result_data);
+                
+                // Add timestamp to prevent caching issues
+                const cacheBuster = '?t=' + Date.now();
+                
+                const pendingIcon = job.status === 'pending_process' ? '<div style="position: absolute; top: 5px; right: 5px; background: rgba(156, 39, 176, 0.95); color: white; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">⏸</div>' : '';
+                const keyedIcon = job.keyed_result_data ? '<div style="position: absolute; top: 5px; left: 5px; background: rgba(40, 167, 69, 0.95); color: white; border-radius: 4px; padding: 3px 8px; font-size: 10px; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">KEYED</div>' : '';
+                thumbnailHTML = `<div style="position: relative; display: inline-block;">${pendingIcon}${keyedIcon}<video src="${videoPath}${cacheBuster}" class="enhanced-job-thumbnail ${thumbnailClass}" playsinline muted loop autoplay preload="auto" style="object-fit: cover;"></video></div>`;
             } else {
-                thumbnailHTML = `<img src="/${job.result_data}" class="enhanced-job-thumbnail ${thumbnailClass} clickable-image" alt="Result" onclick="event.stopPropagation(); openImageModal('/${job.result_data}')">`;
+                const pendingIcon = job.status === 'pending_process' ? '<div style="position: absolute; top: 5px; right: 5px; background: rgba(156, 39, 176, 0.95); color: white; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">⏸</div>' : '';
+                thumbnailHTML = `<div style="position: relative; display: inline-block;">${pendingIcon}<img src="/${job.result_data}" class="enhanced-job-thumbnail ${thumbnailClass} clickable-image" alt="Result" onclick="event.stopPropagation(); openImageModal('/${job.result_data}')"></div>`;
             }
         } else if (job.status === 'processing' || job.status === 'keying_processing') {
             thumbnailHTML = `<div class="content-placeholder enhanced-job-thumbnail ${thumbnailClass}">Processing...</div>`;
@@ -1744,8 +1922,8 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
         
         // Generate action buttons
         let actionButtons = '';
-        if (job.status === 'completed' && job.result_data) {
-            if (job.job_type.includes('image') || job.job_type === 'frame_extraction') {
+        if ((job.status === 'completed' || job.status === 'pending_review' || job.status === 'pending_process') && job.result_data) {
+            if (job.job_type.includes('image') || job.job_type === 'frame_extraction' || job.job_type === 'background_removal') {
                 actionButtons += `<button class="action-btn" onclick="console.log('🎬 Animate button clicked!', '${job.result_data}', ${job.id}); animateImage('${job.result_data}', ${job.id})" style="background: #007bff; font-size: 11px; padding: 4px 8px;">🎬 Animate</button>`;
                 actionButtons += `<button class="action-btn" onclick="removeBg('${job.result_data}', ${job.id})" style="background: #17a2b8; font-size: 11px; padding: 4px 8px;">✨ Remove BG</button>`;
             }
@@ -1753,8 +1931,11 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                 actionButtons += `<button class="action-btn" onclick="regenerateJob(${job.id})" style="background: #6f42c1; font-size: 11px; padding: 4px 8px;">🔄 Regenerate</button>`;
             }
             if (job.job_type === 'animation' || job.job_type === 'video_stitching') {
-                const keyText = job.keyed_result_data ? 'Re-Key' : 'Key Video';
-                actionButtons += `<button class="action-btn" onclick="openKeyingInterface(${job.id})" style="background: #28a745; font-size: 11px; padding: 4px 8px;">⚙️ ${keyText}</button>`;
+                // Show Auto Key only if not already keyed and status is not pending_process
+                if (!job.keyed_result_data && job.status !== 'pending_process') {
+                    actionButtons += `<button class="action-btn" onclick="autoKeyVideo(${job.id}, '${job.result_data}')" style="background: #9c27b0; font-size: 11px; padding: 4px 8px;">🔮 Auto Key</button>`;
+                }
+                actionButtons += `<button class="action-btn" onclick="openKeyingInterface(${job.id})" style="background: #28a745; font-size: 11px; padding: 4px 8px;">⚙️ ${job.keyed_result_data ? 'Re-Key' : 'Fine-Tune Key'}</button>`;
                 actionButtons += `<button class="action-btn" onclick="openExtractFrameModal('${job.result_data}', ${job.id})" style="background: #17a2b8; font-size: 11px; padding: 4px 8px;">🖼️ Extract Frame</button>`;
             }
         }
@@ -1765,7 +1946,7 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
         return `
             <div class="enhanced-job-item" data-job-type="${job.job_type}">
                 <div class="enhanced-job-summary" onclick="toggleJobDetails(this)">
-                    ${isSelectable ? `<input type="checkbox" class="job-selection-checkbox selection-checkbox" data-job-id="${job.id}" onclick="event.stopPropagation()">` : ''}
+                    ${isSelectable ? `<input type="checkbox" class="job-selection-checkbox selection-checkbox" data-job-id="${job.id}" data-job-type="${job.job_type}" onclick="event.stopPropagation()">` : ''}
                     <div class="job-number-badge">#${job.id}</div>
                     ${thumbnailHTML}
                     <div class="job-info-container">
@@ -1872,9 +2053,33 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                                     return html;
                                 })() :
                                 // For other jobs, show result media
-                                (job.result_data && job.status === 'completed' ? 
+                                (job.result_data && (job.status === 'completed' || job.status === 'pending_review' || job.status === 'pending_process') ? 
                                     (job.job_type === 'animation' || job.job_type === 'video_stitching' || job.result_data.match(/\.(mp4|webm|mov)$/i) ?
-                                        `<video src="${job.result_data.startsWith('/') ? job.result_data : '/' + job.result_data}" style="max-width: 500px; width: 100%; border-radius: 8px;" muted loop autoplay controls></video>` :
+                                        (() => {
+                                            let html = '';
+                                            const cacheBuster = '?t=' + Date.now();
+                                            // If keyed version exists, show both videos side-by-side
+                                            if (job.keyed_result_data) {
+                                                const origPath = job.result_data.startsWith('/') ? job.result_data : '/' + job.result_data;
+                                                const keyedPath = job.keyed_result_data.startsWith('/') ? job.keyed_result_data : '/' + job.keyed_result_data;
+                                                html = `<div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                                                    <div style="flex: 1; min-width: 250px;">
+                                                        <div style="font-size: 12px; font-weight: bold; margin-bottom: 5px; color: #6c757d;">Original:</div>
+                                                        <video src="${origPath}${cacheBuster}" style="width: 100%; border-radius: 8px;" playsinline muted loop autoplay controls></video>
+                                                        <a href="${origPath}" download class="action-btn" style="background: #007bff; color: white; margin-top: 8px; padding: 6px 12px; border-radius: 4px; text-decoration: none; display: inline-block; font-size: 12px;">⬇️ Download Original</a>
+                                                    </div>
+                                                    <div style="flex: 1; min-width: 250px;">
+                                                        <div style="font-size: 12px; font-weight: bold; margin-bottom: 5px; color: #28a745;">Keyed (Background Removed):</div>
+                                                        <video src="${keyedPath}${cacheBuster}" style="width: 100%; border-radius: 8px; background: url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\"><rect width=\"10\" height=\"10\" fill=\"%23ccc\"/><rect x=\"10\" y=\"10\" width=\"10\" height=\"10\" fill=\"%23ccc\"/><rect x=\"10\" width=\"10\" height=\"10\" fill=\"%23fff\"/><rect y=\"10\" width=\"10\" height=\"10\" fill=\"%23fff\"/></svg>'); background-size: 20px 20px;" playsinline muted loop autoplay controls></video>
+                                                        <a href="${keyedPath}" download class="action-btn" style="background: #28a745; color: white; margin-top: 8px; padding: 6px 12px; border-radius: 4px; text-decoration: none; display: inline-block; font-size: 12px;">⬇️ Download Keyed</a>
+                                                    </div>
+                                                </div>`;
+                                            } else {
+                                                const videoPath = job.result_data.startsWith('/') ? job.result_data : '/' + job.result_data;
+                                                html = `<video src="${videoPath}${cacheBuster}" style="max-width: 500px; width: 100%; border-radius: 8px;" playsinline muted loop autoplay controls></video>`;
+                                            }
+                                            return html;
+                                        })() :
                                         `<img src="/${job.result_data}" style="max-width: 500px; width: 100%; border-radius: 8px;" class="clickable-image" alt="Result" onclick="event.stopPropagation(); openImageModal('/${job.result_data}')">`
                                     ) : ''
                                 )
@@ -1911,6 +2116,18 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
         const isVisible = details.style.display !== 'none';
         
         details.style.display = isVisible ? 'none' : 'block';
+        
+        // If opening details, play all videos in the expanded section
+        if (!isVisible) {
+            setTimeout(() => {
+                const videos = details.querySelectorAll('video');
+                videos.forEach(video => {
+                    video.loop = true;
+                    video.muted = true;
+                    video.play().catch(err => console.log('Video autoplay blocked:', err));
+                });
+            }, 100);
+        }
         
         // Update thumbnail size and job state
         const thumbnail = element.querySelector('.enhanced-job-thumbnail');
@@ -1989,7 +2206,9 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
             
             // Show the animation form sections
             document.getElementById('start-frame-display').style.display = 'block';
-            document.getElementById('end-frame-controls').style.display = 'block';
+            const endFrameControls = document.getElementById('end-frame-controls');
+            endFrameControls.style.display = 'block';
+            console.log('✅ End frame controls shown:', endFrameControls.style.display);
             document.getElementById('animation-form-container').style.display = 'block';
             
             // Open and scroll to animation section
@@ -2082,14 +2301,319 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
         }
     };
     
-    window.openKeyingInterface = function(jobId) {
-        // Open the fine-tune page for this job
-        window.open(`/fine-tune/${jobId}`, '_blank');
+    window.autoKeyVideo = function(jobId, videoPath) {
+        console.log('🔮 Auto-keying video for job:', jobId);
+        
+        // Call the backend directly - it will read the background color from the job data
+        fetch(`/auto-key-video/${jobId}`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(`✅ ${data.message}`);
+                refreshJobLog();
+            } else {
+                alert('❌ Error: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Auto-key error:', error);
+            alert('Error: ' + error.message);
+        });
     };
     
-    // Enhanced animation idea generator with image analysis
+    window.openKeyingInterface = function(jobId) {
+        console.log('🎬 Opening keying interface for job:', jobId);
+        
+        // Fetch job details
+        fetch('/api/jobs')
+            .then(response => response.json())
+            .then(data => {
+                const jobs = Array.isArray(data) ? data : (data.jobs || []);
+                const job = jobs.find(j => j.id === jobId);
+                
+                if (!job || !job.result_data) {
+                    alert('Job not found or has no video result.');
+                    return;
+                }
+                
+                // Hide empty message and show keying tool
+                document.getElementById('keying-tool-empty').style.display = 'none';
+                document.getElementById('keying-tool-container').style.display = 'block';
+                
+                // Set up video and form
+                const videoPath = '/' + job.result_data.replace(/^\/+/, '');
+                document.getElementById('keying-video-preview').src = videoPath;
+                document.getElementById('keying-job-id').value = jobId;
+                document.getElementById('keying-video-path').value = videoPath;
+                
+                // Open and scroll to keying section
+                const keyingSection = document.getElementById('keying-section');
+                keyingSection.setAttribute('open', '');
+                keyingSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                
+                // Initialize keying controls if not already done
+                initializeKeyingControls();
+                
+                console.log('✅ Keying interface loaded for job', jobId);
+            })
+            .catch(error => {
+                console.error('Error loading job for keying:', error);
+                alert('Error loading video for keying.');
+            });
+    };
+    
+    let keyingControlsInitialized = false;
+    let colorSamplerEnabled = false;
+    
+    function initializeKeyingControls() {
+        if (keyingControlsInitialized) return;
+        keyingControlsInitialized = true;
+        
+        const videoPreview = document.getElementById('keying-video-preview');
+        const imagePreview = document.getElementById('keying-image-preview');
+        const previewBtn = document.getElementById('keying-preview-btn');
+        const saveBtn = document.getElementById('keying-save-btn');
+        const prevFrameBtn = document.getElementById('prev-frame-btn');
+        const nextFrameBtn = document.getElementById('next-frame-btn');
+        const videoContainer = document.getElementById('keying-video-container');
+        const toggleSamplerBtn = document.getElementById('toggle-sampler-btn');
+        const applySampledColorBtn = document.getElementById('apply-sampled-color-btn');
+        const colorIndicator = document.getElementById('color-sample-indicator');
+        const sampledColorDisplay = document.getElementById('sampled-color-display');
+        
+        const FPS = 30;
+        const FRAME_DURATION = 1 / FPS;
+        
+        // Color Sampler functionality
+        let sampledHSV = { h: 0, s: 0, v: 0 };
+        
+        toggleSamplerBtn.addEventListener('click', () => {
+            colorSamplerEnabled = !colorSamplerEnabled;
+            if (colorSamplerEnabled) {
+                toggleSamplerBtn.textContent = 'Disable';
+                toggleSamplerBtn.style.background = '#dc3545';
+                videoContainer.style.cursor = 'crosshair';
+                videoPreview.pause();
+                alert('Color Sampler enabled! Click on the video to sample a color.');
+            } else {
+                toggleSamplerBtn.textContent = 'Enable';
+                toggleSamplerBtn.style.background = '#2196f3';
+                videoContainer.style.cursor = 'default';
+                colorIndicator.style.display = 'none';
+            }
+        });
+        
+        videoContainer.addEventListener('click', (e) => {
+            if (!colorSamplerEnabled) return;
+            e.preventDefault();
+            
+            const rect = videoPreview.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            // Show indicator at click position
+            colorIndicator.style.left = e.clientX - videoContainer.getBoundingClientRect().left - 15 + 'px';
+            colorIndicator.style.top = e.clientY - videoContainer.getBoundingClientRect().top - 15 + 'px';
+            colorIndicator.style.display = 'block';
+            
+            // Sample color from video at this point
+            sampleColorFromVideo(videoPreview, x, y);
+        });
+        
+        function sampleColorFromVideo(video, x, y) {
+            // Create a temporary canvas to sample the pixel
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            // Draw the video frame
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // Calculate the actual pixel position in the video
+            const scaleX = video.videoWidth / video.offsetWidth;
+            const scaleY = video.videoHeight / video.offsetHeight;
+            const pixelX = Math.floor(x * scaleX);
+            const pixelY = Math.floor(y * scaleY);
+            
+            // Get pixel data
+            const imageData = ctx.getImageData(pixelX, pixelY, 1, 1);
+            const [r, g, b] = imageData.data;
+            
+            // Convert RGB to HSV
+            const hsv = rgbToHsv(r, g, b);
+            sampledHSV = hsv;
+            
+            // Display the sampled color
+            document.getElementById('sampled-color-box').style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
+            document.getElementById('sampled-hue').textContent = Math.round(hsv.h);
+            document.getElementById('sampled-sat').textContent = Math.round(hsv.s);
+            document.getElementById('sampled-val').textContent = Math.round(hsv.v);
+            sampledColorDisplay.style.display = 'block';
+            
+            console.log('Sampled color:', { r, g, b }, 'HSV:', hsv);
+        }
+        
+        function rgbToHsv(r, g, b) {
+            r /= 255;
+            g /= 255;
+            b /= 255;
+            
+            const max = Math.max(r, g, b);
+            const min = Math.min(r, g, b);
+            const diff = max - min;
+            
+            let h = 0;
+            if (diff !== 0) {
+                if (max === r) {
+                    h = 60 * (((g - b) / diff) % 6);
+                } else if (max === g) {
+                    h = 60 * (((b - r) / diff) + 2);
+                } else {
+                    h = 60 * (((r - g) / diff) + 4);
+                }
+            }
+            if (h < 0) h += 360;
+            
+            const s = max === 0 ? 0 : (diff / max) * 255;
+            const v = max * 255;
+            
+            // Convert hue to OpenCV range (0-180)
+            h = h / 2;
+            
+            return { h, s, v };
+        }
+        
+        applySampledColorBtn.addEventListener('click', () => {
+            // Apply sampled values to sliders
+            document.getElementById('hue_center').value = Math.round(sampledHSV.h);
+            document.getElementById('hue_center_val').textContent = Math.round(sampledHSV.h);
+            
+            document.getElementById('saturation_min').value = Math.round(sampledHSV.s);
+            document.getElementById('saturation_min_val').textContent = Math.round(sampledHSV.s);
+            
+            document.getElementById('value_min').value = Math.round(sampledHSV.v);
+            document.getElementById('value_min_val').textContent = Math.round(sampledHSV.v);
+            
+            alert('✅ Color values applied to sliders! Click "Preview Frame" to see the result.');
+        });
+        
+        // Frame navigation
+        function seekVideo(direction) {
+            videoPreview.pause();
+            let newTime = videoPreview.currentTime + (FRAME_DURATION * direction);
+            videoPreview.currentTime = Math.max(0, Math.min(videoPreview.duration, newTime));
+        }
+        
+        prevFrameBtn.addEventListener('click', () => seekVideo(-1));
+        nextFrameBtn.addEventListener('click', () => seekVideo(1));
+        
+        // Slider value updates
+        const sliders = document.querySelectorAll('#keying-form input[type="range"]');
+        sliders.forEach(slider => {
+            const display = document.getElementById(`${slider.id}_val`);
+            if (display) {
+                slider.addEventListener('input', () => { display.textContent = slider.value; });
+            }
+        });
+        
+        // Preview frame
+        previewBtn.addEventListener('click', async () => {
+            previewBtn.textContent = 'Processing...';
+            previewBtn.disabled = true;
+            
+            const formData = new FormData();
+            formData.append('video_path', document.getElementById('keying-video-path').value);
+            formData.append('frame_time', videoPreview.currentTime);
+            sliders.forEach(s => formData.append(s.name, s.value));
+            
+            try {
+                const response = await fetch('/api/preview-frame', { method: 'POST', body: formData });
+                if (!response.ok) throw new Error(`Preview failed (${response.status})`);
+                
+                const blob = await response.blob();
+                if (imagePreview.src) URL.revokeObjectURL(imagePreview.src);
+                imagePreview.src = URL.createObjectURL(blob);
+                
+                videoPreview.style.display = 'none';
+                imagePreview.style.display = 'block';
+            } catch (error) {
+                console.error('Preview error:', error);
+                alert('Could not generate preview. Please try again.');
+            } finally {
+                previewBtn.textContent = '🔍 Preview Frame';
+                previewBtn.disabled = false;
+            }
+        });
+        
+        // Click preview to return to video
+        imagePreview.addEventListener('click', () => {
+            imagePreview.style.display = 'none';
+            videoPreview.style.display = 'block';
+        });
+        
+        // Save and process
+        saveBtn.addEventListener('click', async () => {
+            const jobId = document.getElementById('keying-job-id').value;
+            if (!jobId) {
+                alert('No job loaded');
+                return;
+            }
+            
+            saveBtn.textContent = 'Saving...';
+            saveBtn.disabled = true;
+            
+            const formData = new FormData(document.getElementById('keying-form'));
+            
+            try {
+                const response = await fetch(`/save-keying-settings/${jobId}`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    alert('✅ Keying settings saved! Processing video with chroma key...');
+                    // Refresh job log
+                    if (window.refreshJobLog) {
+                        window.refreshJobLog();
+                    }
+                } else {
+                    alert('Error: ' + (result.error || 'Failed to save settings'));
+                }
+            } catch (error) {
+                console.error('Save error:', error);
+                alert('Error saving keying settings.');
+            } finally {
+                saveBtn.textContent = '💾 Save & Process';
+                saveBtn.disabled = false;
+            }
+        });
+        
+        // Background checker controls
+        const root = document.documentElement;
+        const checkerColor1 = document.getElementById('checkerColor1');
+        const checkerColor2 = document.getElementById('checkerColor2');
+        const checkerSize = document.getElementById('checkerSize');
+        
+        checkerColor1.addEventListener('input', () => {
+            document.querySelector('#keying-section .video-container').style.setProperty('background-image', 
+                `linear-gradient(45deg, ${checkerColor1.value} 25%, transparent 25%), linear-gradient(-45deg, ${checkerColor1.value} 25%, transparent 25%), linear-gradient(45deg, transparent 75%, ${checkerColor1.value} 75%), linear-gradient(-45deg, transparent 75%, ${checkerColor1.value} 75%)`);
+        });
+        checkerColor2.addEventListener('input', () => {
+            document.querySelector('#keying-section .video-container').style.backgroundColor = checkerColor2.value;
+        });
+        checkerSize.addEventListener('input', () => {
+            const size = `${checkerSize.value}px`;
+            document.querySelector('#keying-section .video-container').style.backgroundSize = `${size} ${size}`;
+        });
+    }
+    
+    // Enhanced animation idea generator with image analysis using GPT Vision
     window.getAnimationIdea = function() {
-        console.log('💡 Getting contextual animation idea...');
+        console.log('💡 Getting animation idea from GPT Vision...');
         
         const promptTextarea = document.getElementById('animation_prompt');
         if (!promptTextarea) {
@@ -2098,106 +2622,127 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
             return;
         }
         
-        // Try to get context from the current image and existing prompt
-        const currentImageSrc = document.getElementById('animation-preview')?.src || '';
-        const existingPrompt = promptTextarea.value.toLowerCase();
+        // Get the current image URL from the animation preview
+        const animationPreview = document.getElementById('animation-preview');
+        const imageUrlInput = document.getElementById('animation_image_url');
         
-        // Analyze context clues from existing content
-        let contextualIdeas = [];
-        
-        // Check for context clues in existing prompt
-        if (existingPrompt.includes('portrait') || existingPrompt.includes('face') || existingPrompt.includes('person')) {
-            contextualIdeas = [
-                "Gentle breathing motion - chest rising and falling subtly",
-                "Eyes blinking naturally with warm, lifelike expression",
-                "Hair flowing softly as if in a gentle breeze",
-                "Clothing fabric swaying naturally",
-                "Soft lighting changes creating mood transitions"
-            ];
-        } else if (existingPrompt.includes('nature') || existingPrompt.includes('tree') || existingPrompt.includes('forest')) {
-            contextualIdeas = [
-                "Leaves rustling and swaying in natural wind patterns",
-                "Sunlight filtering through moving branches",
-                "Flower petals falling gracefully",
-                "Grass or foliage gently swaying",
-                "Birds flying in the distance"
-            ];
-        } else if (existingPrompt.includes('water') || existingPrompt.includes('ocean') || existingPrompt.includes('lake')) {
-            contextualIdeas = [
-                "Water ripples expanding naturally across the surface",
-                "Waves lapping gently against the shore",
-                "Reflections shimmering on the water surface",
-                "Mist rising softly from the water",
-                "Underwater bubbles floating upward"
-            ];
-        } else if (existingPrompt.includes('city') || existingPrompt.includes('building') || existingPrompt.includes('urban')) {
-            contextualIdeas = [
-                "Window lights flickering on and off naturally",
-                "Traffic lights changing in sequence",
-                "Curtains or flags billowing in urban wind",
-                "Steam rising from manholes or vents",
-                "Neon signs flickering with electric energy"
-            ];
-        } else if (existingPrompt.includes('sky') || existingPrompt.includes('cloud')) {
-            contextualIdeas = [
-                "Clouds drifting slowly across the sky",
-                "Stars twinkling in the night sky",
-                "Sun rays breaking through moving clouds",
-                "Lightning flickering in storm clouds",
-                "Aurora-like effects dancing in the atmosphere"
-            ];
+        if (!animationPreview || !animationPreview.src || !imageUrlInput || !imageUrlInput.value) {
+            alert('Please load an image first before getting animation ideas.');
+            return;
         }
         
-        // Fallback to general ideas if no specific context
-        if (contextualIdeas.length === 0) {
-            contextualIdeas = [
-                "Camera slowly zooms in while maintaining perfect focus",
-                "Soft particles like dust motes or fireflies floating gently",
-                "Subtle lighting changes creating atmospheric mood",
-                "Gentle perspective shifts as if breathing",
-                "Magical sparkles or energy flowing around the subject",
-                "Smooth color gradations transitioning naturally",
-                "Elements in the background moving independently",
-                "Gentle rotation or parallax effect revealing depth"
-            ];
+        const imageUrl = imageUrlInput.value;
+        console.log('📸 Sending image to GPT Vision:', imageUrl);
+        
+        // Show loading state
+        const originalButtonText = document.getElementById('get-animation-idea-btn')?.textContent || '💡 Get Idea';
+        const getIdeaBtn = document.getElementById('get-animation-idea-btn');
+        if (getIdeaBtn) {
+            getIdeaBtn.textContent = '⏳ Analyzing...';
+            getIdeaBtn.disabled = true;
         }
         
-        const selectedIdea = contextualIdeas[Math.floor(Math.random() * contextualIdeas.length)];
+        // Call the backend API with GPT Vision
+        const formData = new FormData();
+        formData.append('image_url', imageUrl);
         
-        // Add contextual prefix based on current content
-        let ideaPrefix = "Add natural movement: ";
-        if (existingPrompt.includes('painting') || existingPrompt.includes('art')) {
-            ideaPrefix = "Bring the artwork to life with: ";
-        } else if (existingPrompt.includes('photo')) {
-            ideaPrefix = "Make the photo cinematic with: ";
-        }
-        
-        const fullIdea = ideaPrefix + selectedIdea;
-        
-        // Smart insertion logic
-        if (promptTextarea.value.trim() === '') {
-            promptTextarea.value = fullIdea;
-        } else {
-            // Check if we should append or suggest replacement
-            if (promptTextarea.value.length > 200) {
-                const addMore = confirm('Your prompt is getting long. Would you like to:\n\nOK = Add this idea to your existing prompt\nCancel = Replace with just this idea');
-                if (addMore) {
-                    promptTextarea.value = promptTextarea.value + '\n\n' + fullIdea;
-                } else {
-                    promptTextarea.value = fullIdea;
+        fetch('/get-animation-idea', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.job_id) {
+                console.log('✅ Animation idea job queued:', data.job_id);
+                
+                // Poll for the result and auto-paste when complete
+                pollForAnimationIdea(data.job_id, promptTextarea, getIdeaBtn, originalButtonText);
+                
+                // Refresh the job log to show the new job
+                if (window.refreshJobLog) {
+                    window.refreshJobLog();
                 }
             } else {
-                promptTextarea.value = promptTextarea.value + ' ' + fullIdea;
+                alert('Error: ' + (data.error || 'Failed to queue animation idea job'));
+                if (getIdeaBtn) {
+                    getIdeaBtn.textContent = originalButtonText;
+                    getIdeaBtn.disabled = false;
+                }
             }
-        }
-        
-        promptTextarea.focus();
-        
-        // Success feedback
-        setTimeout(() => {
-            alert('💡 Smart animation idea added based on your content! Feel free to customize further.');
-        }, 100);
+        })
+        .catch(error => {
+            console.error('❌ Error getting animation idea:', error);
+            alert('Error connecting to server: ' + error.message);
+            if (getIdeaBtn) {
+                getIdeaBtn.textContent = originalButtonText;
+                getIdeaBtn.disabled = false;
+            }
+        });
     };
+    
+    // Poll for animation idea result and auto-paste when complete
+    function pollForAnimationIdea(jobId, promptTextarea, button, originalButtonText) {
+        let pollCount = 0;
+        const maxPolls = 60; // Poll for up to 60 seconds
+        
+        const pollInterval = setInterval(() => {
+            pollCount++;
+            
+            fetch(`/api/job-status/${jobId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'completed' && data.result_data) {
+                        clearInterval(pollInterval);
+                        
+                        // Auto-paste the result
+                        promptTextarea.value = data.result_data;
+                        
+                        // Update button state
+                        if (button) {
+                            button.textContent = '✅ Idea Ready!';
+                            button.style.background = '#28a745';
+        setTimeout(() => {
+                                button.textContent = originalButtonText;
+                                button.style.background = '';
+                                button.disabled = false;
+                            }, 3000);
+                        }
+                        
+                        // Show success message
+                        console.log('✅ Animation idea automatically pasted!');
+                        
+                        // Refresh job log to show completed status
+                        if (window.refreshJobLog) {
+                            window.refreshJobLog();
+                        }
+                    } else if (data.status === 'failed') {
+                        clearInterval(pollInterval);
+                        alert('Animation idea analysis failed: ' + (data.error_message || 'Unknown error'));
+                        if (button) {
+                            button.textContent = originalButtonText;
+                            button.disabled = false;
+                        }
+                    } else if (pollCount >= maxPolls) {
+                        clearInterval(pollInterval);
+                        alert('Animation idea is taking longer than expected. Check the job log for results.');
+                        if (button) {
+                            button.textContent = originalButtonText;
+                            button.disabled = false;
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error polling job status:', error);
+                    if (pollCount >= maxPolls) {
+                        clearInterval(pollInterval);
+                        if (button) {
+                            button.textContent = originalButtonText;
+                            button.disabled = false;
+                        }
+                    }
+                });
+        }, 1000); // Poll every second
+    }
     
     // Library and Job Selection Modal Functions
     window.openLibraryModal = function(targetType) {
@@ -2211,9 +2756,9 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                 const jobs = Array.isArray(data) ? data : (data.jobs || []);
                 const completedImageJobs = jobs.filter(job => 
                     job.status === 'completed' && 
-                    (job.job_type.includes('image') || job.job_type === 'frame_extraction') &&
+                    (job.job_type.includes('image') || job.job_type === 'frame_extraction' || job.job_type === 'background_removal') &&
                     job.result_data
-                );
+                ).slice(0, 50); // Limit to 50 most recent images
                 
                 if (completedImageJobs.length === 0) {
                     alert('No images found in library. Generate some images first!');
@@ -2244,10 +2789,10 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                 const recentImageJobs = jobs
                     .filter(job => 
                         job.status === 'completed' && 
-                        (job.job_type.includes('image') || job.job_type === 'frame_extraction') &&
+                        (job.job_type.includes('image') || job.job_type === 'frame_extraction' || job.job_type === 'background_removal') &&
                         job.result_data
                     )
-                    .slice(0, 20); // Show last 20 completed image jobs
+                    .slice(0, 50); // Show last 50 completed image jobs
                 
                 if (recentImageJobs.length === 0) {
                     alert('No recent image jobs found.');
@@ -2267,39 +2812,72 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
     };
     
     function showImageSelectionModal(jobs, title, onSelect) {
-        // Create modal HTML
+        // Create modal HTML with 4x4 grid
         const modalHTML = `
             <div id="imageSelectionModal" style="
                 position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
                 background: rgba(0,0,0,0.8); z-index: 1000; display: flex; 
-                align-items: center; justify-content: center;
+                align-items: center; justify-content: center; padding: 20px;
             ">
                 <div style="
-                    background: white; border-radius: 12px; max-width: 80%; max-height: 80%; 
-                    overflow-y: auto; padding: 20px;
+                    background: white; border-radius: 12px; width: 1000px; height: 700px; 
+                    display: flex; flex-direction: column;
                 ">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 2px solid #e9ecef; flex-shrink: 0;">
                         <h3 style="margin: 0;">${title}</h3>
                         <button onclick="closeImageSelectionModal()" style="
                             background: #dc3545; color: white; border: none; border-radius: 4px; 
-                            padding: 8px 12px; cursor: pointer;
+                            padding: 10px 20px; cursor: pointer; font-size: 14px; font-weight: bold;
                         ">✕ Close</button>
                     </div>
                     <div id="imageGrid" style="
-                        display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); 
-                        gap: 15px; max-height: 400px; overflow-y: auto;
+                        display: grid; 
+                        grid-template-columns: repeat(4, 1fr); 
+                        gap: 15px; 
+                        padding: 20px; 
+                        overflow-y: auto; 
+                        flex: 1;
                     ">
                         ${jobs.map(job => `
                             <div style="
-                                border: 2px solid #e9ecef; border-radius: 8px; overflow: hidden; 
-                                cursor: pointer; transition: all 0.2s ease;
-                            " onclick="selectImageFromModal(${job.id}, '${job.result_data}')">
-                                <img src="/${job.result_data.replace(/^\/+/, '')}" alt="Job ${job.id}" style="
-                                    width: 100%; height: 120px; object-fit: cover;
+                                border: 2px solid #dee2e6; 
+                                border-radius: 8px; 
+                                overflow: hidden; 
+                                cursor: pointer; 
+                                transition: all 0.2s ease; 
+                                background: white;
+                                display: flex;
+                                flex-direction: column;
+                                height: 200px;
+                            " onmouseover="this.style.borderColor='#007bff'; this.style.transform='scale(1.02)';" 
+                               onmouseout="this.style.borderColor='#dee2e6'; this.style.transform='scale(1)';"
+                               onclick="selectImageFromModal(${job.id}, '${job.result_data}')">
+                                <div style="
+                                    flex: 1;
+                                    display: flex; 
+                                    align-items: center; 
+                                    justify-content: center; 
+                                    background: #f8f9fa; 
+                                    padding: 8px;
+                                    overflow: hidden;
                                 ">
-                                <div style="padding: 8px; font-size: 12px; background: #f8f9fa;">
+                                <img src="/${job.result_data.replace(/^\/+/, '')}" alt="Job ${job.id}" style="
+                                        max-width: 100%; 
+                                        max-height: 100%; 
+                                        object-fit: contain;
+                                        display: block;
+                                    ">
+                                </div>
+                                <div style="
+                                    padding: 8px; 
+                                    font-size: 11px; 
+                                    background: white; 
+                                    border-top: 1px solid #e9ecef;
+                                    text-align: center;
+                                    flex-shrink: 0;
+                                ">
                                     <strong>Job #${job.id}</strong><br>
-                                    ${job.job_type}
+                                    <span style="color: #6c757d;">${job.job_type.replace(/_/g, ' ')}</span>
                                 </div>
                             </div>
                         `).join('')}
@@ -2339,6 +2917,13 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
             endImageInput.value = imagePath;
         }
         
+        // Enable boomerang automation flag
+        const boomerangFlag = document.getElementById('boomerang_automation_flag');
+        if (boomerangFlag) {
+            boomerangFlag.value = 'true';
+            console.log('✅ Boomerang automation enabled for ABA loop');
+        }
+        
         // Show the end frame preview - try both possible IDs
         const endFramePreview = document.getElementById('end-frame-preview') || document.getElementById('animation-end-preview');
         const endFrameDisplay = document.getElementById('end-frame-display');
@@ -2352,7 +2937,7 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
             }
         }
         
-        alert('✅ End frame image selected! This will create an ABA-style animation.');
+        alert('✅ End frame image selected! This will create an ABA-style loop animation.\n\nThe system will:\n1. Animate A→B (start to end)\n2. Animate B→A (end to start)\n3. Stitch them together into a seamless loop');
     }
     
     // Group action functions
@@ -2398,8 +2983,27 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
         }
         if (confirm(`Remove background from ${selectedIds.length} selected images?`)) {
             showPlaceholder(`Removing backgrounds from ${selectedIds.length} images...`);
-            // Process each selected image
-            selectedIds.forEach(jobId => removeBg('', jobId));
+            
+            // Fetch job data to get image paths
+            fetch('/api/jobs')
+                .then(response => response.json())
+                .then(data => {
+                    const jobs = Array.isArray(data) ? data : (data.jobs || []);
+                    
+                    // Process each selected image with its actual path
+                    selectedIds.forEach(jobId => {
+                        const job = jobs.find(j => j.id === jobId);
+                        if (job && job.result_data) {
+                            removeBg(job.result_data, jobId);
+                        } else {
+                            console.error('Could not find result_data for job', jobId);
+                        }
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching job data for background removal:', error);
+                    alert('Error: Could not fetch image data');
+                });
         }
     }
     

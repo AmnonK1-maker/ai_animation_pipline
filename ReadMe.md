@@ -16,7 +16,10 @@ A comprehensive Flask-based application for AI-powered image generation, animati
 - **Seamless Loops**: Automatic loop detection and processing
 
 ### 🎞️ **Professional Video Processing**
-- **Chroma Keying**: Advanced green/blue screen removal with real-time preview (works on animations and stitched videos)
+- **Auto-Key Feature**: One-click automatic chroma keying based on animation background (green/blue screen)
+- **Manual Chroma Keying**: Advanced fine-tuning with real-time preview and color sampler tool
+- **Smart Keying Workflow**: Save settings to `pending_process`, batch process when ready
+- **Side-by-Side Comparison**: View original and keyed videos simultaneously with download options
 - **Video Stitching**: Optimized A-B-A loop stitching with aspect ratio preservation and timeout protection
 - **Background Removal**: BRIA AI-powered transparent image generation
 - **Performance Optimized**: Fast preset, CRF 18 encoding with 5-minute timeout for reliability
@@ -159,11 +162,28 @@ Open http://localhost:5001 in your browser. Done! 🎉
    - Creates B→A animation  
    - Stitches into seamless A→B→A loop
 
-### Video Processing
+### Video Processing & Keying Workflow
+
+**Quick Auto-Key (Recommended for standard green/blue screens):**
+1. Create animation with "Green Screen" or "Blue Screen" background option
+2. Click "🔮 Auto Key" button on completed animation
+3. Job gets purple ⏸ icon (pending_process status)
+4. Click "Process Pending Jobs" to batch process all pending keying jobs
+5. View original and keyed videos side-by-side in expanded job details
+
+**Manual Fine-Tuning (For custom adjustments):**
+1. Click "⚙️ Fine-Tune Key" on any animation or stitched video
+2. Use built-in color sampler to click and sample exact HSV values
+3. Adjust sliders for perfect keying (two-column layout for easy comparison)
+4. Preview frame-by-frame with navigation buttons
+5. Click "💾 Save Settings" (marks as pending_process)
+6. Process when ready with "Process Pending Jobs" or "Process Selected Keys"
+
+**Additional Features:**
 - **Extract Frames**: Click "Extract Frame" on any video, scrub to desired position
 - **Remove Background**: Use BRIA AI for transparent image generation
-- **Chroma Key**: Advanced green/blue screen removal with parameter tuning
 - **Stitch Videos**: Combine multiple animations into seamless loops
+- **Download Options**: Separate buttons for original and keyed versions
 
 ## 🔧 Troubleshooting
 
@@ -275,6 +295,21 @@ kling_app/
 - ✅ **Enhanced Error Handling**: User-friendly error messages with debug mode toggle for development
 - ✅ **Status Badge Visibility**: Improved "completed" badge readability with black text on teal background
 - ✅ **Responsive Dashboard**: Adjusted default panel split to 40% tools / 60% job queue for better workflow visibility
+
+### Auto-Keying & Enhanced Keying Workflow (October 4, 2025)
+- ✅ **Auto-Key Button**: One-click automatic chroma keying that reads background color from animation metadata
+- ✅ **Intelligent Background Detection**: Automatically applies correct HSV settings (hue 60 for green, 100 for blue)
+- ✅ **Pending Process Status**: Jobs marked with purple pause icon (⏸) when auto-keyed but not yet processed
+- ✅ **Manual Processing Control**: "Save Settings" button stores keying parameters without immediate processing
+- ✅ **Batch Processing**: "Process Pending Jobs" and "Process Selected Keys" for efficient batch keying
+- ✅ **Visual Status Indicators**: Green "KEYED" badge on thumbnails for completed keying jobs
+- ✅ **Side-by-Side Comparison**: Expanded view shows original and keyed videos simultaneously
+- ✅ **Transparent Background Display**: Checkered pattern background for keyed videos to show transparency
+- ✅ **Download Options**: Separate download buttons for original and keyed versions
+- ✅ **Video Playback Enhancement**: Automatic play/loop when expanding job details with cache-busting
+- ✅ **Inline Keying Tool**: Video keyer integrated into left tools panel instead of separate window
+- ✅ **Color Sampler**: Click-to-sample tool for precise HSV value selection from video frames
+- ✅ **Compact Layout**: Two-column grid for keying sliders with proper spacing
 
 ### Git Workflow
 ```bash

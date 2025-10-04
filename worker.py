@@ -383,8 +383,12 @@ def handle_openai_vision_analysis(job):
         job_type = job['job_type'].replace('_', ' ').capitalize()
         print(f"-> Starting OpenAI GPT-4o Vision Analysis ({job_type}) for job {job['id']}...")
         input_data = json.loads(job['input_data'])
+        print(f"   DEBUG: input_data keys: {input_data.keys()}")
+        print(f"   DEBUG: image_path from input_data: {input_data.get('image_path', 'NOT FOUND')}")
         system_prompt = input_data.get('system_prompt', 'Analyze this image.')
         image_path = os.path.join(BASE_DIR, input_data['image_path'].lstrip('/'))
+        print(f"   DEBUG: Full image path: {image_path}")
+        print(f"   DEBUG: Image file exists: {os.path.exists(image_path)}")
         if not os.path.exists(image_path): return None, f"Image file not found at {image_path}"
         
         # Determine the appropriate user message based on job type

@@ -79,6 +79,21 @@ This is a comprehensive Flask-based web application for AI-powered media creatio
 - **Error Handling**: Implemented user-friendly error system with debug mode and detailed logging
 - **Database Concurrency**: Enhanced SQLite connection handling with `PRAGMA busy_timeout` for better reliability
 
+## Auto-Keying & Enhanced Keying Workflow (October 4, 2025) - All Working
+- **Auto-Key Feature**: One-click automatic chroma keying that reads background color from animation `input_data`
+- **Background Detection**: Automatically applies correct HSV settings (hue 60 for green, 100 for blue screens)
+- **Pending Process Workflow**: New `pending_process` status allows saving settings without immediate processing
+- **Visual Status Indicators**: Purple pause icon (⏸) for pending_process, green "KEYED" badge for completed keying
+- **Keyed Video Display**: Thumbnails show keyed version with cache-busting, automatic video playback in expanded view
+- **Side-by-Side Comparison**: Expanded job details show original and keyed videos simultaneously with checkered transparency background
+- **Download Buttons**: Separate download options for original and keyed video versions
+- **Batch Processing**: "Process Pending Jobs" and "Process Selected Keys" with proper job type detection
+- **Inline Keying Tool**: Video keyer moved from separate window to integrated left tools panel
+- **Color Sampler Tool**: Click-to-sample feature for precise HSV value selection from video frames with RGB→HSV conversion
+- **Compact Layout**: Two-column grid for keying sliders with improved spacing and usability
+- **Video Playback Fix**: Automatic play/loop enforcement via JavaScript when expanding job details
+- **Metadata Storage**: Animation jobs now store `background` field in `input_data` for intelligent auto-keying
+
 ## Job Types & Workflow
 1. `image_generation`: Create images via AI models
 2. `animation`: Convert images to videos
@@ -151,4 +166,4 @@ python3 worker.py                      # Terminal 2: Background processor (optio
 ✅ Error handling: Timeout protection, stuck process detection, worker auto-restart
 ✅ Complete keying workflow: Both animations and stitched videos support full keying pipeline
 
-**Status**: The application is production-ready with advanced workflow automation. All major features and workflows are fully functional. Latest enhancements (October 3, 2025) include complete overhaul of style/palette analysis tools with GPT-4o Vision integration, smart result display with "Use This" functionality, responsive UI layout improvements, and enhanced error handling throughout the application.
+**Status**: The application is production-ready with advanced workflow automation. All major features and workflows are fully functional. Latest enhancements (October 4, 2025) include comprehensive auto-keying workflow with intelligent background detection, visual status indicators for pending jobs, side-by-side keyed/original video comparison with download options, inline video keyer with color sampler tool, and automatic video playback/looping in expanded job details. Previous major update (October 3, 2025) included complete overhaul of style/palette analysis tools with GPT-4o Vision integration and smart result display functionality.
