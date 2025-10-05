@@ -7,10 +7,11 @@ A comprehensive Flask-based application for AI-powered image generation, animati
 ### 🎨 **Multi-Model Image Generation**
 - **Leonardo AI**: Multiple models (Diffusion XL, Vision XL, etc.)
 - **OpenAI**: DALL-E integration
+- **ByteDance Seedream**: Advanced AI image generation
 - **Style Analysis**: AI-powered color palette and style extraction
 
 ### 🎭 **Advanced Animation Workflow** 
-- **Multiple Models**: Kling v2.1, Seedance-1-Pro, Pixverse v4.5
+- **Multiple Models**: Kling v2.1, Seedance-1-Pro
 - **Boomerang Automation**: Automatic A→B→A loop creation with consistent backgrounds
 - **Frame Extraction**: Video scrubbing with precise frame selection
 - **Seamless Loops**: Automatic loop detection and processing
