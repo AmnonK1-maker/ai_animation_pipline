@@ -73,13 +73,13 @@ A comprehensive Flask-based application for AI-powered image generation, animati
 
 **For New Team Members**: See [SETUP.md](SETUP.md) for detailed setup guide.
 
-**One-Click Setup:**
+#### **Option 1: FULLY AUTOMATIC Setup** ⚡ (Installs Python + ffmpeg automatically)
 
 **macOS/Linux:**
 ```bash
 git clone https://github.com/AmnonK1-maker/ai_animation_pipline.git
 cd ai_animation_pipline
-./setup.sh          # Installs everything
+./setup_auto.sh     # Automatically installs Python 3.8+, ffmpeg, and all dependencies
 # Edit .env with your API keys
 ./start_app.sh      # Starts the application
 ```
@@ -88,7 +88,27 @@ cd ai_animation_pipline
 ```cmd
 git clone https://github.com/AmnonK1-maker/ai_animation_pipline.git
 cd ai_animation_pipline
-setup.bat           # Installs everything
+setup_auto.bat      # Guides you through installing Python and ffmpeg, installs all dependencies
+REM Edit .env with your API keys
+start_app.bat       # Starts the application
+```
+
+#### **Option 2: Standard Setup** (Requires Python 3.8+ and ffmpeg pre-installed)
+
+**macOS/Linux:**
+```bash
+git clone https://github.com/AmnonK1-maker/ai_animation_pipline.git
+cd ai_animation_pipline
+./setup.sh          # Installs Python dependencies only
+# Edit .env with your API keys
+./start_app.sh      # Starts the application
+```
+
+**Windows:**
+```cmd
+git clone https://github.com/AmnonK1-maker/ai_animation_pipline.git
+cd ai_animation_pipline
+setup.bat           # Installs Python dependencies only
 REM Edit .env with your API keys
 start_app.bat       # Starts the application
 ```
@@ -96,8 +116,12 @@ start_app.bat       # Starts the application
 Open http://localhost:5001 in your browser. Done! 🎉
 
 ### 📋 Prerequisites
+
+**If using `setup_auto.sh`/`setup_auto.bat`**: No prerequisites! The script installs everything automatically.
+
+**If using standard `setup.sh`/`setup.bat`**:
 - **Python 3.8+** - [Download](https://www.python.org/downloads/)
-- **ffmpeg** (for video processing) - `brew install ffmpeg` (macOS)
+- **ffmpeg** (for video processing) - `brew install ffmpeg` (macOS) or see instructions below
 - **API Keys** (get at least one):
   - [Leonardo AI](https://app.leonardo.ai/settings) - Image generation
   - [Replicate](https://replicate.com/account/api-tokens) - Animations
