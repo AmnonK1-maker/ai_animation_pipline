@@ -185,7 +185,7 @@ def save_keying_settings(job_id):
         settings = {
             "hue_center": int(request.form.get('hue_center', 60)), "hue_tolerance": int(request.form.get('hue_tolerance', 25)),
             "saturation_min": int(request.form.get('saturation_min', 50)), "value_min": int(request.form.get('value_min', 50)),
-            "erode": int(request.form.get('erode', 2)), "dilate": int(request.form.get('dilate', 1)),
+            "erode": int(request.form.get('erode', 0)), "dilate": int(request.form.get('dilate', 0)),
             "blur": int(request.form.get('blur', 5)), "spill": int(request.form.get('spill', 2))
         }
         
@@ -208,6 +208,32 @@ def save_keying_settings(job_id):
         return jsonify({"success": True, "message": "Keying settings saved. Click 'Process Pending Jobs' to apply."})
     except Exception as e:
         print(f"Error saving keying settings: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/update-job-input/<int:job_id>", methods=["POST"])
+def update_job_input(job_id):
+    """Update the input_data field for a job (e.g., to set background color for uploaded videos)"""
+    try:
+        data = request.get_json()
+        input_data = data.get('input_data')
+        
+        if not input_data:
+            return jsonify({"success": False, "error": "No input_data provided"}), 400
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            job = cursor.execute("SELECT id, job_type FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            if not job:
+                return jsonify({"success": False, "error": f"Job {job_id} not found"}), 404
+            
+            print(f"-> Updating input_data for job {job_id} ({job['job_type']})")
+            cursor.execute("UPDATE jobs SET input_data = ? WHERE id = ?", (json.dumps(input_data), job_id))
+            conn.commit()
+            print(f"   ...input_data updated: {input_data}")
+        
+        return jsonify({"success": True, "message": "Job input data updated"})
+    except Exception as e:
+        print(f"Error updating job input data: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route("/auto-key-video/<int:job_id>", methods=["POST"])
@@ -233,7 +259,7 @@ def auto_key_video(job_id):
                 settings = {
                     "hue_center": 100, "hue_tolerance": 25,
                     "saturation_min": 50, "value_min": 50,
-                    "erode": 2, "dilate": 1,
+                    "erode": 0, "dilate": 0,
                     "blur": 5, "spill": 2
                 }
                 bg_display = "Blue Screen"
@@ -241,11 +267,14 @@ def auto_key_video(job_id):
                 settings = {
                     "hue_center": 60, "hue_tolerance": 25,
                     "saturation_min": 50, "value_min": 50,
-                    "erode": 2, "dilate": 1,
+                    "erode": 0, "dilate": 0,
                     "blur": 5, "spill": 2
                 }
                 bg_display = "Green Screen"
-            else:  # default
+            elif bg_color == 'unknown':
+                # For uploaded videos with unknown background, should have been set by frontend
+                return jsonify({"success": False, "error": "Please specify background color (green or blue) for this uploaded video."}), 400
+            else:  # 'default' or 'as-is'
                 # No keying needed for "default" background
                 return jsonify({"success": False, "error": "This animation was created with 'As is' background. No keying needed."}), 400
                 
@@ -299,7 +328,7 @@ def process_all_pending():
             default_settings = {
                 "hue_center": 60, "hue_tolerance": 25,
                 "saturation_min": 50, "value_min": 50,
-                "erode": 2, "dilate": 1, "blur": 5, "spill": 2
+                "erode": 0, "dilate": 0, "blur": 5, "spill": 2
             }
             cursor.execute(
                 "UPDATE jobs SET status = 'keying_queued', keying_settings = ? WHERE id = ?",
@@ -350,7 +379,7 @@ def process_selected_pending():
             jobs_query = f"""
                 SELECT id, job_type, status, keying_settings FROM jobs 
                 WHERE id IN ({placeholders}) 
-                AND job_type IN ('animation', 'video_stitching')
+                AND job_type IN ('animation', 'video_stitching', 'video_upload', 'uploaded_video_keying')
                 AND status IN ('pending_review', 'completed', 'pending_process')
             """
             jobs_to_process = cursor.execute(jobs_query, job_ids).fetchall()
@@ -368,7 +397,7 @@ def process_selected_pending():
                     default_settings = {
                         "hue_center": 60, "hue_tolerance": 25,
                         "saturation_min": 50, "value_min": 50,
-                        "erode": 2, "dilate": 1, "blur": 5, "spill": 2
+                        "erode": 0, "dilate": 0, "blur": 5, "spill": 2
                     }
                     cursor.execute(
                         "UPDATE jobs SET status = 'keying_queued', keying_settings = ? WHERE id = ?",
@@ -449,7 +478,13 @@ def style_tool():
 def palette_tool():
     image_file = request.files.get("image")
     if not image_file: return jsonify({"error": "Missing image."}), 400
-    system_prompt = """Analyze the provided image and identify the 5 most prominent colors. For each color, provide its hexadecimal code and a simple, descriptive name (e.g., 'dark slate blue', 'light coral'). Return the response as a valid JSON object with a single key "palette" which is an array of objects. Each object in the array should have two keys: "hex" and "name". Example: {"palette": [{"hex": "#2F4F4F", "name": "dark slate grey"}, ...]}"""
+    system_prompt = """Analyze the provided image and identify the 5 most prominent colors of the SUBJECT/FOREGROUND. 
+
+IMPORTANT CHROMA KEY RULE: If both green AND blue colors appear in the image, EXCLUDE the less prominent one from the palette entirely. Skip it and move to the next color to maintain 5 total colors. This is because images will later be animated on green or blue screen backgrounds - we don't want the palette to include the future chroma key background color if it appears minimally in the original image.
+
+Example: If analyzing a tree with green leaves (prominent) that also has a small blue sky area (less prominent), only include the green and skip the blue entirely, as blue will be used as the chroma key background later.
+
+For each color, provide its hexadecimal code and a simple, descriptive name (e.g., 'dark slate blue', 'light coral'). Return the response as a valid JSON object with a single key "palette" which is an array of objects. Each object in the array should have two keys: "hex" and "name". Example: {"palette": [{"hex": "#2F4F4F", "name": "dark slate grey"}, ...]}"""
     user_prompt = "Analyze image palette."
     filename = f"{uuid.uuid4()}-{os.path.basename(image_file.filename)}"
     image_path = os.path.join(UPLOADS_FOLDER, filename)
@@ -621,18 +656,24 @@ def upload_video():
     
     if purpose == 'keying':
         # Create a job for video keying with uploaded video
-        prompt = f"Key uploaded video: {video_file.filename}"
-        input_data = json.dumps({"uploaded_video": video_url})
+        # Use 'video_upload' job type so it gets the same action buttons as animations
+        prompt = f"Uploaded video: {video_file.filename}"
+        input_data = json.dumps({
+            "uploaded_video": video_url,
+            "original_filename": video_file.filename,
+            "background": "unknown"  # User will need to specify in keying settings
+        })
         
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO jobs (job_type, status, created_at, prompt, input_data, result_data) VALUES (?, ?, ?, ?, ?, ?)",
-                ('uploaded_video_keying', 'pending_review', datetime.now(), prompt, input_data, video_url)
+                ('video_upload', 'pending_review', datetime.now(), prompt, input_data, video_url)
             )
             job_id = cursor.lastrowid
             conn.commit()
         
+        print(f"📤 Created video upload job #{job_id} for file: {video_file.filename}")
         return jsonify({"success": True, "video_path": video_url, "job_id": job_id})
     
     elif purpose == 'extract':
@@ -947,7 +988,15 @@ def preview_frame():
     video_path_url = request.form.get('video_path')
     frame_time = float(request.form.get('frame_time', 0))
     if not video_path_url: return "Missing video path", 400
+    
+    # Remove cache-busting query parameters (e.g., ?t=1234567890)
+    video_path_url = video_path_url.split('?')[0]
+    
     video_path = os.path.join(BASE_DIR, video_path_url.lstrip('/'))
+    print(f"🔍 Preview frame request: video_path_url={video_path_url}, frame_time={frame_time}")
+    print(f"   Full path: {video_path}")
+    print(f"   File exists: {os.path.exists(video_path)}")
+    
     if not os.path.exists(video_path): return "Video file not found", 404
         
     cap = cv2.VideoCapture(video_path)
@@ -959,7 +1008,7 @@ def preview_frame():
     settings = {
         "hue_center": int(request.form.get('hue_center', 60)), "hue_tolerance": int(request.form.get('hue_tolerance', 25)),
         "saturation_min": int(request.form.get('saturation_min', 50)), "value_min": int(request.form.get('value_min', 50)),
-        "erode": int(request.form.get('erode', 2)), "dilate": int(request.form.get('dilate', 1)),
+        "erode": int(request.form.get('erode', 0)), "dilate": int(request.form.get('dilate', 0)),
         "blur": int(request.form.get('blur', 5)), "spill": int(request.form.get('spill', 2))
     }
     lower_green = [settings['hue_center'] - settings['hue_tolerance'], settings['saturation_min'], settings['value_min']]

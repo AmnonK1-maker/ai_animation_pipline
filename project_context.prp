@@ -94,6 +94,25 @@ This is a comprehensive Flask-based web application for AI-powered media creatio
 - **Video Playback Fix**: Automatic play/loop enforcement via JavaScript when expanding job details
 - **Metadata Storage**: Animation jobs now store `background` field in `input_data` for intelligent auto-keying
 
+## UX Improvements & Workflow Enhancements (October 5, 2025) - All Working
+- **Streamlined User Flow**: Removed all confirmation popups for background removal and keying operations
+- **Button Readability Fix**: Clear Failed, Clear Stuck, Clear All Jobs buttons now have black text on light background (with `!important` CSS)
+- **Smart Status Labels**: `waiting_for_children` displays as "Waiting...", `stitching` as "Stitching..." with shimmer animation
+- **ABA Loop Enhancement**: Stitched videos now update parent boomerang_automation job directly instead of creating separate log entry
+- **Advanced Color Sampler**: Click-to-sample now inverts saturation/value thresholds (255 - sampled value) for correct keying behavior
+- **Bidirectional Erode/Dilate**: Sliders range from -5 to 5 with 0 as default (negative values perform opposite operation)
+- **Video Processing Logic**: `process_single_frame()` in `video_processor.py` now handles negative erode/dilate values correctly
+- **Preview Endpoint Fix**: `/api/preview-frame` now strips cache-busting parameters before processing video path
+- **Uploaded Video Support**: Auto-key and manual keying now fully support user-uploaded videos with background color prompt
+- **Palette Analysis AI**: System prompt updated to exclude less prominent blue/green colors (chroma key backgrounds) from subject palette
+- **Image Modal Navigation**: Fixed navigation arrows with global function declarations and robust image collection regex
+- **Keying Tool UX**: Added Reset Preview, Zoom In/Out (0.5x-4x), Reset Zoom buttons for better frame inspection
+- **Checkerboard Background**: Simplified CSS for keying preview container using `repeating-conic-gradient`
+- **Non-Intrusive Notifications**: Replaced blocking `alert()` calls with timed toasts (4s success, 6s error) via `showUserFriendlyError()`
+- **Job Auto-Expansion Removed**: Jobs no longer auto-expand on creation, keeping log view clean and compact
+- **Video Reload Logic**: `openKeyingInterface()` now forces video reload, resets currentTime, and resets zoom on job switch
+- **Status Display Fix**: Fixed JavaScript syntax error in `renderSingleJob()` with separate `else if` blocks for waiting/stitching states
+
 ## Job Types & Workflow
 1. `image_generation`: Create images via AI models
 2. `animation`: Convert images to videos
@@ -166,4 +185,4 @@ python3 worker.py                      # Terminal 2: Background processor (optio
 ✅ Error handling: Timeout protection, stuck process detection, worker auto-restart
 ✅ Complete keying workflow: Both animations and stitched videos support full keying pipeline
 
-**Status**: The application is production-ready with advanced workflow automation. All major features and workflows are fully functional. Latest enhancements (October 4, 2025) include comprehensive auto-keying workflow with intelligent background detection, visual status indicators for pending jobs, side-by-side keyed/original video comparison with download options, inline video keyer with color sampler tool, and automatic video playback/looping in expanded job details. Previous major update (October 3, 2025) included complete overhaul of style/palette analysis tools with GPT-4o Vision integration and smart result display functionality.
+**Status**: The application is production-ready with advanced workflow automation. All major features and workflows are fully functional. Latest enhancements (October 5, 2025) include streamlined UX with non-intrusive notifications, improved button readability, advanced color sampler with inverted thresholds, bidirectional erode/dilate controls (-5 to +5), uploaded video keying support, enhanced palette analysis prompting, fixed image modal navigation, and comprehensive keying tool improvements. Previous update (October 4, 2025) included comprehensive auto-keying workflow with intelligent background detection, visual status indicators, side-by-side comparison, inline video keyer with color sampler, and automatic playback. October 3, 2025 update included complete overhaul of style/palette analysis tools with GPT-4o Vision integration.

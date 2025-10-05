@@ -12,13 +12,23 @@ def process_single_frame(frame, lower_green, upper_green, erode_amount, dilate_a
     hsv_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     mask = cv2.inRange(hsv_frame, np.array(lower_green), np.array(upper_green))
     
+    # Handle erode (positive = erode, negative = dilate)
     if erode_amount > 0:
         erode_kernel = np.ones((erode_amount, erode_amount), np.uint8)
         mask = cv2.erode(mask, erode_kernel, iterations=1)
+    elif erode_amount < 0:
+        # Negative erode means dilate
+        dilate_kernel = np.ones((abs(erode_amount), abs(erode_amount)), np.uint8)
+        mask = cv2.dilate(mask, dilate_kernel, iterations=1)
         
+    # Handle dilate (positive = dilate, negative = erode)
     if dilate_amount > 0:
         dilate_kernel = np.ones((dilate_amount, dilate_amount), np.uint8)
         mask = cv2.dilate(mask, dilate_kernel, iterations=1)
+    elif dilate_amount < 0:
+        # Negative dilate means erode
+        erode_kernel = np.ones((abs(dilate_amount), abs(dilate_amount)), np.uint8)
+        mask = cv2.erode(mask, erode_kernel, iterations=1)
 
     if blur_amount > 0:
         blur_amount = blur_amount if blur_amount % 2 != 0 else blur_amount + 1

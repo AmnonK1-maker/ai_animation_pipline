@@ -311,6 +311,20 @@ kling_app/
 - ✅ **Color Sampler**: Click-to-sample tool for precise HSV value selection from video frames
 - ✅ **Compact Layout**: Two-column grid for keying sliders with proper spacing
 
+### UX Improvements & Workflow Enhancements (October 5, 2025)
+- ✅ **Streamlined Notifications**: Removed confirmation popups for background removal and keying operations
+- ✅ **Enhanced Button Readability**: Clear Failed, Clear Stuck, Clear All Jobs now have black text on light background
+- ✅ **Smart Status Display**: "waiting_for_children" and "stitching" statuses show friendly labels with shimmer animation
+- ✅ **Improved ABA Loop Flow**: Stitched videos now update parent boomerang job directly (no separate log entry)
+- ✅ **Advanced Color Sampler**: Click-to-sample now inverts saturation/value thresholds for correct keying
+- ✅ **Bidirectional Erode/Dilate**: Sliders now range from -5 to 5 with 0 as default (negative values reverse the effect)
+- ✅ **Enhanced Preview System**: Fixed cache-busting parameter handling in keying preview endpoint
+- ✅ **Uploaded Video Support**: Auto-key and manual keying now fully support user-uploaded videos
+- ✅ **Palette Analysis Enhancement**: System prompt updated to exclude chroma key background colors from subject palette
+- ✅ **Image Modal Navigation**: Fixed navigation arrows to work correctly across all job types with proper image collection
+- ✅ **Keying Tool UX**: Added Reset Preview, Zoom In/Out controls, and improved checkerboard background display
+- ✅ **Non-Intrusive Feedback**: Replaced blocking alerts with timed notification toasts (4s for success, 6s for errors)
+
 ### Git Workflow
 ```bash
 git status                    # Check changes

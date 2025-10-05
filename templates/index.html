@@ -249,6 +249,45 @@
         background: rgba(0, 0, 0, 0.8);
     }
     
+    .image-modal-nav {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        background: rgba(0, 0, 0, 0.5);
+        color: white;
+        border: none;
+        font-size: 40px;
+        padding: 16px 20px;
+        cursor: pointer;
+        border-radius: 4px;
+        transition: background 0.3s;
+        z-index: 10001;
+    }
+    
+    .image-modal-nav:hover {
+        background: rgba(0, 0, 0, 0.8);
+    }
+    
+    .image-modal-prev {
+        left: 20px;
+    }
+    
+    .image-modal-next {
+        right: 20px;
+    }
+    
+    .image-modal-content.has-transparency {
+        background: 
+            linear-gradient(45deg, #808080 25%, transparent 25%),
+            linear-gradient(-45deg, #808080 25%, transparent 25%),
+            linear-gradient(45deg, transparent 75%, #808080 75%),
+            linear-gradient(-45deg, transparent 75%, #808080 75%);
+        background-size: 20px 20px;
+        background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+        background-color: #c0c0c0;
+        padding: 20px;
+    }
+    
     /* Clickable images */
     .clickable-image {
         cursor: pointer;
@@ -710,8 +749,8 @@
     #process-selected-btn { display: none; background-color: #17a2b8; }
     #stitch-videos-btn { display: none; background-color: #6f42c1; }
     #delete-selected-btn { display: none; background-color: #dc3545; }
-    #clear-failed-btn, #clear-stuck-btn, #clear-all-btn { background-color: #f8f9fa; color: #495057; border: 1px solid #dee2e6; }
-    #clear-failed-btn:hover, #clear-stuck-btn:hover, #clear-all-btn:hover { background-color: #e9ecef; }
+    #clear-failed-btn, #clear-stuck-btn, #clear-all-btn { background-color: #f8f9fa !important; color: #000000 !important; border: 1px solid #dee2e6; font-weight: 600; }
+    #clear-failed-btn:hover, #clear-stuck-btn:hover, #clear-all-btn:hover { background-color: #e9ecef !important; color: #000000 !important; }
     .refresh-btn { background-color: #6c757d; }
     .refresh-btn.active { background-color: #28a745; }
     .refresh-btn.paused { background-color: #dc3545; }
@@ -852,7 +891,13 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                     <div style="margin-top: 15px;">
                         <label for="palette_system_prompt">System Prompt:</label>
                         <div class="text-field-container">
-                        <textarea id="palette_system_prompt" name="system_prompt" disabled>Analyze the provided image and identify the 5 most prominent colors. For each color, provide its hexadecimal code and a simple, descriptive name (e.g., 'dark slate blue', 'light coral'). Return the response as a valid JSON object with a single key "palette" which is an array of objects. Each object in the array should have two keys: "hex" and "name". Example: {"palette": [{"hex": "#2F4F4F", "name": "dark slate grey"}, ...]}</textarea>
+                        <textarea id="palette_system_prompt" name="system_prompt" disabled>Analyze the provided image and identify the 5 most prominent colors of the SUBJECT/FOREGROUND. 
+
+IMPORTANT CHROMA KEY RULE: If both green AND blue colors appear in the image, EXCLUDE the less prominent one from the palette entirely. Skip it and move to the next color to maintain 5 total colors. This is because images will later be animated on green or blue screen backgrounds - we don't want the palette to include the future chroma key background color if it appears minimally in the original image.
+
+Example: If analyzing a tree with green leaves (prominent) that also has a small blue sky area (less prominent), only include the green and skip the blue entirely, as blue will be used as the chroma key background later.
+
+For each color, provide its hexadecimal code and a simple, descriptive name (e.g., 'dark slate blue', 'light coral'). Return the response as a valid JSON object with a single key "palette" which is an array of objects. Each object in the array should have two keys: "hex" and "name". Example: {"palette": [{"hex": "#2F4F4F", "name": "dark slate grey"}, ...]}</textarea>
                             <button type="button" class="copy-btn" onclick="copyToClipboard('palette_system_prompt')">⎘</button>
                         </div>
                         <div class="unlock-prompt-container">
@@ -1052,10 +1097,18 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
         </div>
         
         <div id="keying-tool-container" style="display: none;">
-            <div class="video-container" id="keying-video-container" style="width: 100%; aspect-ratio: 16/9; margin-bottom: 15px; border-radius: 8px; overflow: hidden; display: flex; justify-content: center; align-items: center; background-color: #c0c0c0; background-image: linear-gradient(45deg, #808080 25%, transparent 25%), linear-gradient(-45deg, #808080 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #808080 75%), linear-gradient(-45deg, transparent 75%, #808080 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0px; position: relative; cursor: crosshair;">
-                <video id="keying-video-preview" playsinline controls style="max-width: 100%; max-height: 100%; object-fit: contain;"></video>
-                <img id="keying-image-preview" alt="Keying Preview" style="display: none; max-width: 100%; max-height: 100%; object-fit: contain; cursor: pointer;" title="Click to return to video">
+            <div class="video-container" id="keying-video-container" style="width: 100%; aspect-ratio: 16/9; margin-bottom: 15px; border-radius: 8px; overflow: auto; display: flex; justify-content: center; align-items: center; background: repeating-conic-gradient(#ddd 0% 25%, #fff 0% 50%) 50% / 20px 20px; position: relative; cursor: crosshair;">
+                <video id="keying-video-preview" playsinline controls style="max-width: 100%; max-height: 100%; object-fit: contain; transition: transform 0.2s;"></video>
+                <img id="keying-image-preview" alt="Keying Preview" style="display: none; max-width: 100%; max-height: 100%; object-fit: contain; cursor: pointer; transition: transform 0.2s;" title="Click to return to video">
                 <div id="color-sample-indicator" style="display: none; position: absolute; width: 30px; height: 30px; border: 3px solid white; border-radius: 50%; pointer-events: none; box-shadow: 0 0 10px rgba(0,0,0,0.5);"></div>
+            </div>
+            
+            <!-- Quick Actions Row -->
+            <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+                <button type="button" id="reset-preview-btn" class="standard-btn" style="background: #6c757d; padding: 8px 12px; font-size: 11px; flex: 1; min-width: 120px;">🔄 Reset Preview</button>
+                <button type="button" id="zoom-in-btn" class="standard-btn" style="background: #17a2b8; padding: 8px 12px; font-size: 11px; flex: 1; min-width: 120px;">🔍+ Zoom In</button>
+                <button type="button" id="zoom-out-btn" class="standard-btn" style="background: #17a2b8; padding: 8px 12px; font-size: 11px; flex: 1; min-width: 120px;">🔍- Zoom Out</button>
+                <button type="button" id="zoom-reset-btn" class="standard-btn" style="background: #17a2b8; padding: 8px 12px; font-size: 11px; flex: 1; min-width: 120px;">↺ Reset Zoom</button>
             </div>
             
             <!-- Color Sampler Tool -->
@@ -1088,8 +1141,8 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                         <div><label style="display: block; margin-bottom: 2px; font-weight: 600; font-size: 11px;">Hue Tolerance: <span id="hue_tolerance_val">25</span></label><input type="range" id="hue_tolerance" name="hue_tolerance" min="0" max="50" value="25" style="width: 100%;"></div>
                         <div><label style="display: block; margin-bottom: 2px; font-weight: 600; font-size: 11px;">Saturation Min: <span id="saturation_min_val">50</span></label><input type="range" id="saturation_min" name="saturation_min" min="0" max="255" value="50" style="width: 100%;"></div>
                         <div><label style="display: block; margin-bottom: 2px; font-weight: 600; font-size: 11px;">Value Min: <span id="value_min_val">50</span></label><input type="range" id="value_min" name="value_min" min="0" max="255" value="50" style="width: 100%;"></div>
-                        <div><label style="display: block; margin-bottom: 2px; font-weight: 600; font-size: 11px;">Choke/Erode: <span id="erode_val">2</span></label><input type="range" id="erode" name="erode" min="0" max="10" value="2" style="width: 100%;"></div>
-                        <div><label style="display: block; margin-bottom: 2px; font-weight: 600; font-size: 11px;">Soften/Dilate: <span id="dilate_val">1</span></label><input type="range" id="dilate" name="dilate" min="0" max="10" value="1" style="width: 100%;"></div>
+                        <div><label style="display: block; margin-bottom: 2px; font-weight: 600; font-size: 11px;">Choke/Erode: <span id="erode_val">0</span></label><input type="range" id="erode" name="erode" min="-5" max="5" value="0" style="width: 100%;"></div>
+                        <div><label style="display: block; margin-bottom: 2px; font-weight: 600; font-size: 11px;">Soften/Dilate: <span id="dilate_val">0</span></label><input type="range" id="dilate" name="dilate" min="-5" max="5" value="0" style="width: 100%;"></div>
                         <div><label style="display: block; margin-bottom: 2px; font-weight: 600; font-size: 11px;">Edge Blur: <span id="blur_val">5</span></label><input type="range" id="blur" name="blur" min="0" max="21" value="5" step="2" style="width: 100%;"></div>
                         <div><label style="display: block; margin-bottom: 2px; font-weight: 600; font-size: 11px;">Spill Suppression: <span id="spill_val">2</span></label><input type="range" id="spill" name="spill" min="0" max="10" value="2" style="width: 100%;"></div>
                     </div>
@@ -1245,9 +1298,12 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
 <!-- Image popup modal -->
 <div id="imageModal" class="image-modal">
     <span class="image-modal-close" onclick="closeImageModal()">&times;</span>
-    <div class="image-modal-content">
+    <button class="image-modal-nav image-modal-prev" onclick="navigateModalImage(-1)">❮</button>
+    <button class="image-modal-nav image-modal-next" onclick="navigateModalImage(1)">❯</button>
+    <div class="image-modal-content" id="imageModalContent">
         <img id="modalImage" src="" alt="Enlarged view">
     </div>
+    <div id="imageModalCounter" style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); color: white; font-size: 14px; background: rgba(0,0,0,0.7); padding: 8px 16px; border-radius: 20px;"></div>
 </div>
 
 {% endblock %}
@@ -1288,12 +1344,13 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
         `;
         document.body.appendChild(notification);
         
-        // Auto-remove after 8 seconds
+        // Auto-remove after 4 seconds for success, 6 for errors
+        const duration = isSuccess ? 4000 : 6000;
         setTimeout(() => {
             if (notification.parentElement) {
                 notification.remove();
             }
-        }, 8000);
+        }, duration);
     }
 
     // Copy to clipboard function
@@ -1422,11 +1479,94 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
     }
     
     // Image modal functions
-    function openImageModal(imageSrc) {
+    let currentModalImageIndex = 0;
+    let modalImageList = [];
+    
+    window.openImageModal = function(imageSrc) {
         const modal = document.getElementById('imageModal');
         const modalImage = document.getElementById('modalImage');
+        const modalContent = document.getElementById('imageModalContent');
+        const counter = document.getElementById('imageModalCounter');
         
-        modalImage.src = imageSrc;
+        // Collect all clickable images on the page
+        modalImageList = [];
+        document.querySelectorAll('.clickable-image').forEach(img => {
+            if (img.src) {
+                modalImageList.push(img.src);
+            } else {
+                // Extract from onclick attribute (handles event.stopPropagation(); openImageModal(...))
+                const onclick = img.getAttribute('onclick');
+                if (onclick) {
+                    const match = onclick.match(/openImageModal\(['"](.*?)['"]\)/);
+                    if (match && match[1]) {
+                        // Ensure the path starts with /
+                        const path = match[1].startsWith('/') ? match[1] : '/' + match[1];
+                        modalImageList.push(path);
+                    }
+                }
+            }
+        });
+        
+        // Remove duplicates
+        modalImageList = [...new Set(modalImageList)];
+        
+        console.log('📸 Found images:', modalImageList.length);
+        console.log('📸 Image list:', modalImageList);
+        
+        // Normalize imageSrc to path only (remove domain if present)
+        let normalizedImageSrc = imageSrc;
+        try {
+            const url = new URL(imageSrc);
+            normalizedImageSrc = url.pathname;
+        } catch (e) {
+            // Already a path, not a full URL
+            if (!normalizedImageSrc.startsWith('/')) {
+                normalizedImageSrc = '/' + normalizedImageSrc;
+            }
+        }
+        
+        console.log('🔍 Looking for:', normalizedImageSrc);
+        
+        // Find current image index
+        currentModalImageIndex = modalImageList.findIndex(src => {
+            // Normalize src for comparison
+            let normalizedSrc = src;
+            try {
+                const url = new URL(src);
+                normalizedSrc = url.pathname;
+            } catch (e) {
+                // Already a path
+            }
+            return normalizedSrc === normalizedImageSrc;
+        });
+        
+        if (currentModalImageIndex === -1) {
+            currentModalImageIndex = 0;
+            modalImageList = [normalizedImageSrc];
+            console.log('⚠️ Image not in list, using single image');
+        } else {
+            console.log('✅ Current image index:', currentModalImageIndex + 1, 'of', modalImageList.length);
+        }
+        
+        // Load image (use the normalized path)
+        const imageToLoad = currentModalImageIndex >= 0 && currentModalImageIndex < modalImageList.length 
+            ? modalImageList[currentModalImageIndex] 
+            : normalizedImageSrc;
+        modalImage.src = imageToLoad;
+        
+        // Check for transparency after image loads
+        modalImage.onload = function() {
+            checkImageTransparency(imageToLoad, modalContent);
+        };
+        
+        // Update counter
+        counter.textContent = `${currentModalImageIndex + 1} / ${modalImageList.length}`;
+        counter.style.display = modalImageList.length > 1 ? 'block' : 'none';
+        
+        // Show/hide navigation buttons
+        document.querySelector('.image-modal-prev').style.display = modalImageList.length > 1 ? 'block' : 'none';
+        document.querySelector('.image-modal-next').style.display = modalImageList.length > 1 ? 'block' : 'none';
+        
         modal.style.display = 'block';
         
         // Close modal on background click
@@ -1436,19 +1576,78 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
             }
         };
         
-        // Close modal on ESC key
-        document.addEventListener('keydown', function escHandler(e) {
-            if (e.key === 'Escape') {
+        // Handle keyboard navigation
+        document.addEventListener('keydown', handleModalKeypress);
+    };
+    
+    function handleModalKeypress(event) {
+        if (document.getElementById('imageModal').style.display === 'block') {
+            if (event.key === 'Escape') {
                 closeImageModal();
-                document.removeEventListener('keydown', escHandler);
+            } else if (event.key === 'ArrowLeft') {
+                navigateModalImage(-1);
+            } else if (event.key === 'ArrowRight') {
+                navigateModalImage(1);
             }
-        });
+        }
     }
     
-    function closeImageModal() {
+    window.navigateModalImage = function(direction) {
+        console.log('🔄 Navigate called:', direction > 0 ? 'next' : 'previous');
+        console.log('   Current index:', currentModalImageIndex, 'Total images:', modalImageList.length);
+        
+        if (modalImageList.length <= 1) {
+            console.log('⚠️ Not enough images to navigate');
+            return;
+        }
+        
+        currentModalImageIndex += direction;
+        
+        // Wrap around
+        if (currentModalImageIndex < 0) {
+            currentModalImageIndex = modalImageList.length - 1;
+            console.log('↩️ Wrapped to end:', currentModalImageIndex);
+        } else if (currentModalImageIndex >= modalImageList.length) {
+            currentModalImageIndex = 0;
+            console.log('↪️ Wrapped to start:', currentModalImageIndex);
+        }
+        
+        const modalImage = document.getElementById('modalImage');
+        const modalContent = document.getElementById('imageModalContent');
+        const counter = document.getElementById('imageModalCounter');
+        
+        const newImage = modalImageList[currentModalImageIndex];
+        console.log('📸 Loading image:', newImage);
+        modalImage.src = newImage;
+        
+        // Check for transparency
+        modalImage.onload = function() {
+            checkImageTransparency(modalImageList[currentModalImageIndex], modalContent);
+        };
+        
+        // Update counter
+        counter.textContent = `${currentModalImageIndex + 1} / ${modalImageList.length}`;
+    };
+    
+    function checkImageTransparency(imageSrc, container) {
+        // Check if image has transparent background by file extension or path
+        const hasTransparency = imageSrc.match(/\.(png|webp)$/i) && 
+                               (imageSrc.includes('background_removal') || 
+                                imageSrc.includes('keyed') || 
+                                imageSrc.includes('/library/'));
+        
+        if (hasTransparency) {
+            container.classList.add('has-transparency');
+        } else {
+            container.classList.remove('has-transparency');
+        }
+    }
+    
+    window.closeImageModal = function() {
         const modal = document.getElementById('imageModal');
         modal.style.display = 'none';
-    }
+        document.removeEventListener('keydown', handleModalKeypress);
+    };
     
     // Make images clickable for popup viewing
     function makeImageClickable(imgElement) {
@@ -1636,7 +1835,7 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
         .then(data => {
             if (data.success) {
                 if (purpose === 'keying') {
-                    openKeyingInterface(data.video_path);
+                    openKeyingInterface(data.job_id); // Pass job ID, not video path
                 } else if (purpose === 'extract') {
                     openExtractFrameModal(data.video_path);
                 }
@@ -1893,7 +2092,7 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
             }
         } else if (job.result_data && (job.status === 'completed' || job.status === 'pending_review' || job.status === 'pending_process')) {
             // Check if it's a video file
-            const isVideoJob = job.job_type === 'animation' || job.job_type === 'video_stitching';
+            const isVideoJob = job.job_type === 'animation' || job.job_type === 'video_stitching' || job.job_type === 'video_upload' || job.job_type === 'uploaded_video_keying';
             const hasVideoExtension = job.result_data.match(/\.(mp4|webm|mov)$/i);
             
             if (isVideoJob || hasVideoExtension) {
@@ -1916,8 +2115,12 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
             thumbnailHTML = `<div class="content-placeholder enhanced-job-thumbnail ${thumbnailClass}">Processing...</div>`;
         } else if (job.status === 'failed') {
             thumbnailHTML = `<div class="enhanced-job-thumbnail ${thumbnailClass}" style="background: #f8d7da; color: #721c24; display: flex; align-items: center; justify-content: center; font-weight: bold;">Failed</div>`;
+        } else if (job.status === 'waiting_for_children') {
+            thumbnailHTML = `<div class="content-placeholder enhanced-job-thumbnail ${thumbnailClass}">Waiting...</div>`;
+        } else if (job.status === 'stitching') {
+            thumbnailHTML = `<div class="content-placeholder enhanced-job-thumbnail ${thumbnailClass}">Stitching...</div>`;
         } else {
-            thumbnailHTML = `<div class="enhanced-job-thumbnail ${thumbnailClass}" style="background: #e9ecef; display: flex; align-items: center; justify-content: center; font-size: 11px;">${job.status}</div>`;
+            thumbnailHTML = `<div class="enhanced-job-thumbnail ${thumbnailClass}" style="background: #e9ecef; display: flex; align-items: center; justify-content: center; font-size: 11px; padding: 5px; text-align: center; word-wrap: break-word;">${job.status.replace(/_/g, ' ')}</div>`;
         }
         
         // Generate action buttons
@@ -1930,7 +2133,7 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
             if (job.job_type === 'image_generation' || job.job_type === 'animation') {
                 actionButtons += `<button class="action-btn" onclick="regenerateJob(${job.id})" style="background: #6f42c1; font-size: 11px; padding: 4px 8px;">🔄 Regenerate</button>`;
             }
-            if (job.job_type === 'animation' || job.job_type === 'video_stitching') {
+            if (job.job_type === 'animation' || job.job_type === 'video_stitching' || job.job_type === 'video_upload' || job.job_type === 'uploaded_video_keying') {
                 // Show Auto Key only if not already keyed and status is not pending_process
                 if (!job.keyed_result_data && job.status !== 'pending_process') {
                     actionButtons += `<button class="action-btn" onclick="autoKeyVideo(${job.id}, '${job.result_data}')" style="background: #9c27b0; font-size: 11px; padding: 4px 8px;">🔮 Auto Key</button>`;
@@ -2054,7 +2257,7 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                                 })() :
                                 // For other jobs, show result media
                                 (job.result_data && (job.status === 'completed' || job.status === 'pending_review' || job.status === 'pending_process') ? 
-                                    (job.job_type === 'animation' || job.job_type === 'video_stitching' || job.result_data.match(/\.(mp4|webm|mov)$/i) ?
+                                    (job.job_type === 'animation' || job.job_type === 'video_stitching' || job.job_type === 'video_upload' || job.job_type === 'uploaded_video_keying' || job.result_data.match(/\.(mp4|webm|mov)$/i) ?
                                         (() => {
                                             let html = '';
                                             const cacheBuster = '?t=' + Date.now();
@@ -2216,44 +2419,42 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
             animationSection.setAttribute('open', '');
             animationSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
             
-            // Show success message
+            // Show success message (silently via notification)
             setTimeout(() => {
-                alert('✅ Image loaded in Animation Creator! You can now create an animation.');
+                showUserFriendlyError('Image loaded in Animation Creator!', null, 'success');
             }, 500);
             
             console.log('✅ Animation form populated successfully');
             
         } catch (error) {
             console.error('❌ Error populating animation form:', error);
-            alert('Error loading image in animation tool: ' + error.message);
+            showUserFriendlyError('Error loading image in animation tool: ' + error.message, error, 'error');
         }
     };
     
     window.removeBg = function(imagePath, parentJobId) {
-        if (confirm('Remove background from this image?')) {
-            const formData = new FormData();
-            formData.append('image_url', '/' + imagePath);
-            formData.append('parent_job_id', parentJobId);
-            
-            showPlaceholder('Removing background...');
-            
-            fetch('/remove-background', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    refreshJobLog();
-                } else {
-                    alert('Error: ' + data.error);
-                }
-            })
-            .catch(error => {
-                console.error('Remove BG error:', error);
-                alert('Error: ' + error.message);
-            });
-        }
+        const formData = new FormData();
+        formData.append('image_url', '/' + imagePath);
+        formData.append('parent_job_id', parentJobId);
+        
+        showPlaceholder('Removing background...');
+        
+        fetch('/remove-background', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                refreshJobLog();
+            } else {
+                showUserFriendlyError('Background removal failed: ' + data.error, null, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Remove BG error:', error);
+            showUserFriendlyError('Background removal error: ' + error.message, error, 'error');
+        });
     };
     
     window.regenerateJob = function(jobId) {
@@ -2301,26 +2502,57 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
         }
     };
     
-    window.autoKeyVideo = function(jobId, videoPath) {
+    window.autoKeyVideo = async function(jobId, videoPath) {
         console.log('🔮 Auto-keying video for job:', jobId);
         
-        // Call the backend directly - it will read the background color from the job data
-        fetch(`/auto-key-video/${jobId}`, {
-            method: 'POST'
-        })
-        .then(response => response.json())
-        .then(data => {
+        // First, check if this is an uploaded video that needs background color selection
+        try {
+            const jobsResponse = await fetch('/api/jobs');
+            const jobsData = await jobsResponse.json();
+            const jobs = Array.isArray(jobsData) ? jobsData : (jobsData.jobs || []);
+            const job = jobs.find(j => j.id === jobId);
+            
+            if (job && (job.job_type === 'video_upload' || job.job_type === 'uploaded_video_keying')) {
+                // For uploaded videos, ask user to select background color
+                const bgColor = prompt('What background color should be keyed?\n\nEnter:\n• "green" for green screen\n• "blue" for blue screen', 'green');
+                
+                if (!bgColor || (bgColor.toLowerCase() !== 'green' && bgColor.toLowerCase() !== 'blue')) {
+                    alert('❌ Auto-key cancelled. Please enter "green" or "blue".');
+                    return;
+                }
+                
+                // Update the job's input_data with the background color
+                try {
+                    const inputData = JSON.parse(job.input_data || '{}');
+                    inputData.background = bgColor.toLowerCase();
+                    
+                    // Save updated input_data back to job
+                    await fetch(`/api/update-job-input/${jobId}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ input_data: inputData })
+                    });
+                } catch (e) {
+                    console.error('Error updating job input data:', e);
+                }
+            }
+            
+            // Call the backend to apply auto-key settings
+            const response = await fetch(`/auto-key-video/${jobId}`, {
+                method: 'POST'
+            });
+            
+            const data = await response.json();
             if (data.success) {
-                alert(`✅ ${data.message}`);
+                showUserFriendlyError(data.message, null, 'success');
                 refreshJobLog();
             } else {
-                alert('❌ Error: ' + data.error);
+                showUserFriendlyError('Auto-key error: ' + data.error, null, 'error');
             }
-        })
-        .catch(error => {
+        } catch (error) {
             console.error('Auto-key error:', error);
-            alert('Error: ' + error.message);
-        });
+            showUserFriendlyError('Auto-key error: ' + error.message, error, 'error');
+        }
     };
     
     window.openKeyingInterface = function(jobId) {
@@ -2334,19 +2566,68 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                 const job = jobs.find(j => j.id === jobId);
                 
                 if (!job || !job.result_data) {
-                    alert('Job not found or has no video result.');
+                    showUserFriendlyError('Job not found or has no video result.', null, 'error');
                     return;
                 }
+                
+                console.log('📹 Loading job', jobId, 'with video:', job.result_data);
                 
                 // Hide empty message and show keying tool
                 document.getElementById('keying-tool-empty').style.display = 'none';
                 document.getElementById('keying-tool-container').style.display = 'block';
                 
                 // Set up video and form
-                const videoPath = '/' + job.result_data.replace(/^\/+/, '');
-                document.getElementById('keying-video-preview').src = videoPath;
+                const videoPath = '/' + job.result_data.replace(/^\/+/, '') + '?t=' + Date.now(); // Cache busting
+                const videoPreview = document.getElementById('keying-video-preview');
+                const imagePreview = document.getElementById('keying-image-preview');
+                
+                // Clear previous preview
+                imagePreview.src = '';
+                imagePreview.style.display = 'none';
+                videoPreview.style.display = 'block';
+                
+                // Update video source and force reload
+                videoPreview.src = videoPath;
+                videoPreview.load(); // Force video reload
+                videoPreview.currentTime = 0; // Reset to beginning
+                
+                // Reset zoom
+                currentZoom = 1.0;
+                videoPreview.style.transform = 'scale(1)';
+                imagePreview.style.transform = 'scale(1)';
+                
                 document.getElementById('keying-job-id').value = jobId;
                 document.getElementById('keying-video-path').value = videoPath;
+                
+                // Load existing keying settings for this job if they exist
+                if (job.keying_settings) {
+                    try {
+                        const settings = JSON.parse(job.keying_settings);
+                        console.log('📋 Loading saved keying settings:', settings);
+                        document.getElementById('hue_center').value = settings.hue_center || 60;
+                        document.getElementById('hue_tolerance').value = settings.hue_tolerance || 25;
+                        document.getElementById('saturation_min').value = settings.saturation_min || 50;
+                        document.getElementById('value_min').value = settings.value_min || 50;
+                        document.getElementById('erode').value = settings.erode || 0;
+                        document.getElementById('dilate').value = settings.dilate || 0;
+                        document.getElementById('blur').value = settings.blur || 5;
+                        document.getElementById('spill').value = settings.spill || 2;
+                        
+                        // Update span displays
+                        document.getElementById('hue_center_val').textContent = settings.hue_center || 60;
+                        document.getElementById('hue_tolerance_val').textContent = settings.hue_tolerance || 25;
+                        document.getElementById('saturation_min_val').textContent = settings.saturation_min || 50;
+                        document.getElementById('value_min_val').textContent = settings.value_min || 50;
+                        document.getElementById('erode_val').textContent = settings.erode || 0;
+                        document.getElementById('dilate_val').textContent = settings.dilate || 0;
+                        document.getElementById('blur_val').textContent = settings.blur || 5;
+                        document.getElementById('spill_val').textContent = settings.spill || 2;
+                    } catch (e) {
+                        console.error('Error parsing keying settings:', e);
+                    }
+                } else {
+                    console.log('🔧 No saved settings, using defaults');
+                }
                 
                 // Open and scroll to keying section
                 const keyingSection = document.getElementById('keying-section');
@@ -2356,7 +2637,7 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                 // Initialize keying controls if not already done
                 initializeKeyingControls();
                 
-                console.log('✅ Keying interface loaded for job', jobId);
+                console.log('✅ Keying interface loaded for job', jobId, 'with video:', videoPath);
             })
             .catch(error => {
                 console.error('Error loading job for keying:', error);
@@ -2366,6 +2647,7 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
     
     let keyingControlsInitialized = false;
     let colorSamplerEnabled = false;
+    let currentZoom = 1.0;
     
     function initializeKeyingControls() {
         if (keyingControlsInitialized) return;
@@ -2382,6 +2664,12 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
         const applySampledColorBtn = document.getElementById('apply-sampled-color-btn');
         const colorIndicator = document.getElementById('color-sample-indicator');
         const sampledColorDisplay = document.getElementById('sampled-color-display');
+        
+        // New button references
+        const resetPreviewBtn = document.getElementById('reset-preview-btn');
+        const zoomInBtn = document.getElementById('zoom-in-btn');
+        const zoomOutBtn = document.getElementById('zoom-out-btn');
+        const zoomResetBtn = document.getElementById('zoom-reset-btn');
         
         const FPS = 30;
         const FRAME_DURATION = 1 / FPS;
@@ -2488,16 +2776,24 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
         
         applySampledColorBtn.addEventListener('click', () => {
             // Apply sampled values to sliders
+            // Hue: use directly
             document.getElementById('hue_center').value = Math.round(sampledHSV.h);
             document.getElementById('hue_center_val').textContent = Math.round(sampledHSV.h);
             
-            document.getElementById('saturation_min').value = Math.round(sampledHSV.s);
-            document.getElementById('saturation_min_val').textContent = Math.round(sampledHSV.s);
+            // Saturation & Value: invert them (255 - sampled)
+            // If sampled S is high (255), we want saturation_min to be low (0)
+            // This is because saturation_min is a threshold - we key pixels ABOVE this threshold
+            const invertedS = Math.max(0, 255 - Math.round(sampledHSV.s));
+            const invertedV = Math.max(0, 255 - Math.round(sampledHSV.v));
             
-            document.getElementById('value_min').value = Math.round(sampledHSV.v);
-            document.getElementById('value_min_val').textContent = Math.round(sampledHSV.v);
+            document.getElementById('saturation_min').value = invertedS;
+            document.getElementById('saturation_min_val').textContent = invertedS;
             
-            alert('✅ Color values applied to sliders! Click "Preview Frame" to see the result.');
+            document.getElementById('value_min').value = invertedV;
+            document.getElementById('value_min_val').textContent = invertedV;
+            
+            console.log(`🎨 Applied inverted color: H=${Math.round(sampledHSV.h)}, S=${invertedS} (from ${Math.round(sampledHSV.s)}), V=${invertedV} (from ${Math.round(sampledHSV.v)})`);
+            showUserFriendlyError('Color values applied to sliders!', null, 'success');
         });
         
         // Frame navigation
@@ -2552,6 +2848,46 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
         imagePreview.addEventListener('click', () => {
             imagePreview.style.display = 'none';
             videoPreview.style.display = 'block';
+        });
+        
+        // Reset Preview button - return to video view
+        resetPreviewBtn.addEventListener('click', () => {
+            console.log('🔄 Resetting preview to video');
+            imagePreview.src = '';
+            imagePreview.style.display = 'none';
+            videoPreview.style.display = 'block';
+            videoPreview.currentTime = 0;
+            
+            // Disable color sampler
+            if (colorSamplerEnabled) {
+                colorSamplerEnabled = false;
+                toggleSamplerBtn.textContent = 'Enable';
+                toggleSamplerBtn.style.background = '#2196f3';
+                videoContainer.style.cursor = 'crosshair';
+                colorIndicator.style.display = 'none';
+            }
+        });
+        
+        // Zoom controls
+        function applyZoom() {
+            const activeElement = videoPreview.style.display !== 'none' ? videoPreview : imagePreview;
+            activeElement.style.transform = `scale(${currentZoom})`;
+            console.log('🔍 Zoom level:', currentZoom);
+        }
+        
+        zoomInBtn.addEventListener('click', () => {
+            currentZoom = Math.min(currentZoom + 0.25, 4.0); // Max 4x zoom
+            applyZoom();
+        });
+        
+        zoomOutBtn.addEventListener('click', () => {
+            currentZoom = Math.max(currentZoom - 0.25, 0.5); // Min 0.5x zoom
+            applyZoom();
+        });
+        
+        zoomResetBtn.addEventListener('click', () => {
+            currentZoom = 1.0;
+            applyZoom();
         });
         
         // Save and process
@@ -2981,8 +3317,7 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
             alert('Please select images for background removal by checking their boxes.');
             return;
         }
-        if (confirm(`Remove background from ${selectedIds.length} selected images?`)) {
-            showPlaceholder(`Removing backgrounds from ${selectedIds.length} images...`);
+        showPlaceholder(`Removing backgrounds from ${selectedIds.length} images...`);
             
             // Fetch job data to get image paths
             fetch('/api/jobs')
@@ -3211,7 +3546,7 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
         
         // Show success message
         setTimeout(() => {
-            alert('Video loaded in Extract Frame tool! Use the controls to select the exact frame to extract.');
+            showUserFriendlyError('Video loaded in Extract Frame tool!', null, 'success');
         }, 500);
     }
     
@@ -3283,8 +3618,8 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
             
             // Count jobs that can be processed for keying 
             const keyingJobs = Array.from(allSelected).filter(cb => {
-                const jobId = cb.dataset.jobId;
-                return jobId; // For now, any job with an ID can potentially be processed
+                const jobType = cb.dataset.jobType || '';
+                return (jobType === 'animation' || jobType === 'video_stitching' || jobType === 'video_upload' || jobType === 'uploaded_video_keying');
             });
             
             const deleteSelectedBtn = document.getElementById('delete-selected-btn');
@@ -3304,6 +3639,7 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
             if (processSelectedBtn) {
                 processSelectedBtn.textContent = `⚙️ Process Selected Keys (${keyingJobs.length})`;
                 processSelectedBtn.disabled = keyingJobs.length === 0;
+                processSelectedBtn.style.display = keyingJobs.length > 0 ? 'inline-block' : 'none';
             }
         }
 
@@ -3471,7 +3807,7 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                         await refreshJobLog();
                         document.getElementById('log-section')?.scrollIntoView({ behavior: 'smooth' });
                     } catch (error) {
-                        alert('Error regenerating: ' + error.message);
+                        showUserFriendlyError('Error regenerating: ' + error.message, error, 'error');
                         regenerateBtn.textContent = '🔄 Regenerate';
                         regenerateBtn.disabled = false;
                     }
@@ -3554,14 +3890,14 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                                 body: JSON.stringify({ job_id: jobId, new_status: 'queued' })
                             }).then(response => response.json()).then(data => {
                                 if (data.success) {
-                                    alert('Job queued for re-stitching!');
+                                    showUserFriendlyError('Job queued for re-stitching!', null, 'success');
                                     refreshJobLog();
                                 } else {
-                                    alert('Error: ' + data.error);
+                                    showUserFriendlyError('Error: ' + data.error, null, 'error');
                                 }
                             });
                         } catch (error) {
-                            alert('Error: ' + error.message);
+                            showUserFriendlyError('Error: ' + error.message, error, 'error');
                             reStitchBtn.textContent = '🔄 Re-Stitch';
                             reStitchBtn.disabled = false;
                         }
@@ -3583,14 +3919,14 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                                 body: JSON.stringify({ job_id: jobId, new_status: 'queued' })
                             }).then(response => response.json()).then(data => {
                                 if (data.success) {
-                                    alert('Job queued for retry!');
+                                    showUserFriendlyError('Job queued for retry!', null, 'success');
                                     refreshJobLog();
                                 } else {
-                                    alert('Error: ' + data.error);
+                                    showUserFriendlyError('Error: ' + data.error, null, 'error');
                                 }
                             });
                         } catch (error) {
-                            alert('Error: ' + error.message);
+                            showUserFriendlyError('Error: ' + error.message, error, 'error');
                             retryStitchBtn.textContent = '🔄 Retry Stitch';
                             retryStitchBtn.disabled = false;
                         }
@@ -3811,15 +4147,15 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                 if (response.ok) {
                     const result = await response.json();
                     // Show success message but keep modal open
-                    alert('Frame extracted successfully! You can extract more frames or close this window.');
+                    showUserFriendlyError('Frame extracted successfully!', null, 'success');
                     // Don't close the modal - let user extract more frames
                     await refreshJobLog();
                 } else {
                     const error = await response.json();
-                    alert('Error extracting frame: ' + (error.error || 'Unknown error'));
+                    showUserFriendlyError('Error extracting frame: ' + (error.error || 'Unknown error'), null, 'error');
                 }
             } catch (error) {
-                alert('Network error: ' + error.message);
+                showUserFriendlyError('Network error: ' + error.message, error, 'error');
             } finally {
                 this.textContent = 'Save This Frame';
                 this.disabled = false;
@@ -3932,9 +4268,8 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                         if (response.ok) {
                             const result = await response.json();
                             alert(result.message || 'All pending jobs have been queued for keying!');
-                            // Resume auto-refresh when keying jobs start
-                            console.log('🔄 Resuming auto-refresh for keying jobs');
-                            resumeAutoRefresh();
+                            // Refresh job log to show updated status
+                            console.log('🔄 Refreshing job log for keying jobs');
                             await refreshJobLog();
                         } else {
                             const error = await response.json();
@@ -3957,42 +4292,40 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                 const selectedCheckboxes = document.querySelectorAll('.selection-checkbox:checked');
                 const pendingKeyingJobs = Array.from(selectedCheckboxes).filter(cb => {
                     const jobType = cb.dataset.jobType || '';
-                    return (jobType === 'animation' || jobType === 'video_stitching');
+                    return (jobType === 'animation' || jobType === 'video_stitching' || jobType === 'video_upload' || jobType === 'uploaded_video_keying');
                 });
                 
                 const jobIds = pendingKeyingJobs.map(cb => cb.dataset.jobId);
                 
                 if (jobIds.length === 0) {
-                    alert('No animation or video stitching jobs selected for keying.');
+                    showUserFriendlyError('No video jobs selected for keying.', null, 'error');
                     return;
                 }
                 
-                if (confirm(`Process ${jobIds.length} selected job(s) for keying?`)) {
-                    try {
-                        this.textContent = 'Processing...';
-                        this.disabled = true;
-                        
-                        const response = await fetch('/process-selected-pending', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ job_ids: jobIds })
-                        });
-                        
-                        if (response.ok) {
-                            const result = await response.json();
-                            alert(result.message || 'Selected jobs have been queued for keying!');
-                            await refreshJobLog();
-                        } else {
-                            const error = await response.json();
-                            alert('Error: ' + (error.error || 'Unknown error processing selected jobs.'));
-                        }
-                    } catch (error) {
-                        alert('Network error: ' + error.message);
-                    } finally {
-                        this.textContent = '⚙️ Process Selected Keys (0)';
-                        this.disabled = false;
-                        this.style.display = 'none';
+                try {
+                    this.textContent = 'Processing...';
+                    this.disabled = true;
+                    
+                    const response = await fetch('/process-selected-pending', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ job_ids: jobIds })
+                    });
+                    
+                    if (response.ok) {
+                        const result = await response.json();
+                        showUserFriendlyError(result.message || 'Selected jobs have been queued for keying!', null, 'success');
+                        await refreshJobLog();
+                    } else {
+                        const error = await response.json();
+                        showUserFriendlyError('Error: ' + (error.error || 'Unknown error processing selected jobs.'), null, 'error');
                     }
+                } catch (error) {
+                    showUserFriendlyError('Network error: ' + error.message, error, 'error');
+                } finally {
+                    this.textContent = '⚙️ Process Selected Keys (0)';
+                    this.disabled = false;
+                    this.style.display = 'none';
                 }
             });
         }
@@ -4066,14 +4399,14 @@ Keep each section to short declarative fragments to stay under limit.</textarea>
                             const response = await fetch('/api/clear-all-jobs', { method: 'POST' });
                             if (response.ok) {
                                 const result = await response.json();
-                                alert(result.message);
+                                showUserFriendlyError(result.message, null, 'success');
                                 await refreshJobLog();
                             } else {
                                 const error = await response.json();
-                                alert('Error: ' + (error.error || 'Unknown error'));
+                                showUserFriendlyError('Error: ' + (error.error || 'Unknown error'), null, 'error');
                             }
                         } catch (error) {
-                            alert('Network error: ' + error.message);
+                            showUserFriendlyError('Network error: ' + error.message, error, 'error');
                         } finally {
                             this.textContent = '🗑️ Clear All Jobs';
                             this.disabled = false;

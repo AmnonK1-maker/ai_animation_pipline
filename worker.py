@@ -450,21 +450,64 @@ def handle_openai_vision_analysis(job):
 
 def handle_keying(job):
     try:
-        print(f"-> Starting OpenCV keying for job {job['id']}...")
-        print(f"   DEBUG: Job type: {job['job_type']}, Input file: {job['result_data']}")
+        job_id = job['id']
+        print(f"-> Starting OpenCV keying for job #{job_id}...")
+        print(f"   JOB #{job_id}: Job type: {job['job_type']}")
+        print(f"   JOB #{job_id}: Input video: {job['result_data']}")
+        
+        # Validate input file exists
         greenscreen_video_path = os.path.join(BASE_DIR, job['result_data'].lstrip('/'))
-        print(f"   DEBUG: Full path: {greenscreen_video_path}")
+        if not os.path.exists(greenscreen_video_path):
+            error_msg = f"Input video file not found: {greenscreen_video_path}"
+            print(f"   JOB #{job_id}: ERROR - {error_msg}")
+            return None, error_msg
+            
+        print(f"   JOB #{job_id}: Full input path: {greenscreen_video_path}")
+        print(f"   JOB #{job_id}: File exists: {os.path.exists(greenscreen_video_path)}")
+        print(f"   JOB #{job_id}: File size: {os.path.getsize(greenscreen_video_path)} bytes")
+        
+        # Parse keying settings
         settings = json.loads(job['keying_settings'])
-        output_filename = f"keyed_{uuid.uuid4()}.webm"
+        print(f"   JOB #{job_id}: Keying settings: {settings}")
+        
+        # Generate unique output filename
+        output_filename = f"keyed_{job_id}_{uuid.uuid4().hex[:8]}.webm"
         final_output_path = os.path.join(TRANSPARENT_VIDEOS_FOLDER, output_filename)
-        print(f"   DEBUG: Output path: {final_output_path}")
+        print(f"   JOB #{job_id}: Output will be: {final_output_path}")
+        
+        # Prepare keying parameters
         lower_green = [settings['hue_center'] - settings['hue_tolerance'], settings['saturation_min'], settings['value_min']]
         upper_green = [settings['hue_center'] + settings['hue_tolerance'], 255, 255]
-        process_video_with_opencv(video_path=greenscreen_video_path, output_path=final_output_path, lower_green=lower_green, upper_green=upper_green, erode_amount=settings['erode'], dilate_amount=settings['dilate'], blur_amount=settings['blur'], spill_amount=settings['spill'])
-        print(f"   DEBUG: Keying completed successfully")
+        print(f"   JOB #{job_id}: Color range - Lower: {lower_green}, Upper: {upper_green}")
+        
+        # Process video
+        print(f"   JOB #{job_id}: ▶️  Starting video processing...")
+        process_video_with_opencv(
+            video_path=greenscreen_video_path, 
+            output_path=final_output_path, 
+            lower_green=lower_green, 
+            upper_green=upper_green, 
+            erode_amount=settings['erode'], 
+            dilate_amount=settings['dilate'], 
+            blur_amount=settings['blur'], 
+            spill_amount=settings['spill']
+        )
+        
+        # Verify output was created
+        if not os.path.exists(final_output_path):
+            error_msg = f"Output file was not created: {final_output_path}"
+            print(f"   JOB #{job_id}: ERROR - {error_msg}")
+            return None, error_msg
+            
+        output_size = os.path.getsize(final_output_path)
+        print(f"   JOB #{job_id}: ✅ Keying completed successfully!")
+        print(f"   JOB #{job_id}: Output file: {final_output_path}")
+        print(f"   JOB #{job_id}: Output size: {output_size} bytes")
+        
         return os.path.join('static/library/transparent_videos', output_filename), None
     except Exception as e:
-        print(f"   DEBUG: Keying failed with error: {e}")
+        print(f"   JOB #{job.get('id', '???')}: ❌ Keying failed with error: {e}")
+        traceback.print_exc()
         return None, f"Keying error: {e}"
 
 def kill_stuck_ffmpeg_processes():
@@ -664,6 +707,24 @@ def main():
                                 except Exception as e:
                                     print(f"   ...error checking parent job for {job['id']}: {e}, defaulting to completed")
                                     new_status = 'completed'  # Safe default for boomerang children
+                                    cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job['id']))
+                            # For stitching jobs that are part of boomerang automation, update the parent with the result
+                            elif job['job_type'] == 'video_stitching' and job['parent_job_id']:
+                                try:
+                                    parent_job = cursor.execute("SELECT job_type FROM jobs WHERE id = ?", (job['parent_job_id'],)).fetchone()
+                                    if parent_job and parent_job['job_type'] == 'boomerang_automation':
+                                        new_status = 'completed'  # Complete the stitching job
+                                        print(f"   ...completing stitching job {job['id']} (part of boomerang automation #{job['parent_job_id']})")
+                                        cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job['id']))
+                                        # Update the parent boomerang automation job with the stitched result
+                                        print(f"   ...updating parent boomerang job #{job['parent_job_id']} with stitched result")
+                                        cursor.execute("UPDATE jobs SET status = 'completed', result_data = ? WHERE id = ?", (result_data, job['parent_job_id']))
+                                    else:
+                                        new_status = 'pending_review'  # Regular stitching workflow needs review
+                                        cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job['id']))
+                                except Exception as e:
+                                    print(f"   ...error checking parent job for stitching {job['id']}: {e}, defaulting to pending_review")
+                                    new_status = 'pending_review'
                                     cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job['id']))
                             else:
                                 new_status = 'pending_review' if job['job_type'] in ['animation', 'video_stitching'] else 'completed'
