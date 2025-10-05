@@ -20,9 +20,12 @@ worker_debug.log
 worker_test.log
 worker_current.log
 
-# Generated media (large files)
+# Generated media (large files - exclude all generated content)
 static/animations/generated/*.mp4
 static/animations/generated/*.webm
+static/library/*.png
+static/library/*.jpg
+static/library/*.jpeg
 static/library/*.mp4
 static/library/*.webm
 static/library/transparent_videos/*.webm
