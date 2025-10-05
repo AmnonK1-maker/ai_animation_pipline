@@ -5,7 +5,7 @@ import uuid
 import shutil
 import sqlite3
 import base64
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, jsonify, send_file, Response
 import cv2
 import numpy as np
@@ -446,12 +446,17 @@ def stitch_videos():
     prompt = f"Stitch {os.path.basename(video_paths[0])} and {os.path.basename(video_paths[1])}"
     input_data = json.dumps({"video_a_path": video_paths[0], "video_b_path": video_paths[1]})
 
-    with get_db_connection() as conn:
-        conn.cursor().execute(
-            "INSERT INTO jobs (job_type, status, created_at, prompt, input_data) VALUES (?, ?, ?, ?, ?)",
-            ('video_stitching', 'queued', datetime.now(), prompt, input_data)
-        )
-        conn.commit()
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO jobs (job_type, status, created_at, prompt, input_data) VALUES (?, ?, ?, ?, ?)",
+                ('video_stitching', 'queued', datetime.now(), prompt, input_data)
+            )
+            conn.commit()
+    except Exception as e:
+        print(f"Error creating stitching job: {e}")
+        return jsonify({"success": False, "error": f"Failed to create stitching job: {str(e)}"}), 500
     
     return jsonify({"success": True, "message": "Video stitching job queued."})
 
@@ -466,12 +471,17 @@ def style_tool():
     image_path = os.path.join(UPLOADS_FOLDER, filename)
     image_file.save(image_path)
     input_data = json.dumps({"image_path": os.path.join('static/uploads', filename), "system_prompt": system_prompt})
-    with get_db_connection() as conn:
-        conn.cursor().execute(
-            "INSERT INTO jobs (job_type, status, created_at, prompt, input_data) VALUES (?, ?, ?, ?, ?)",
-            ('style_analysis', 'queued', datetime.now(), user_prompt, input_data)
-        )
-        conn.commit()
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO jobs (job_type, status, created_at, prompt, input_data) VALUES (?, ?, ?, ?, ?)",
+                ('style_analysis', 'queued', datetime.now(), user_prompt, input_data)
+            )
+            conn.commit()
+    except Exception as e:
+        print(f"Error creating style analysis job: {e}")
+        return jsonify({"success": False, "error": f"Failed to create job: {str(e)}"}), 500
     return jsonify({"success": True})
 
 @app.route("/palette-tool", methods=["POST"])
@@ -490,12 +500,17 @@ For each color, provide its hexadecimal code and a simple, descriptive name (e.g
     image_path = os.path.join(UPLOADS_FOLDER, filename)
     image_file.save(image_path)
     input_data = json.dumps({"image_path": os.path.join('static/uploads', filename), "system_prompt": system_prompt})
-    with get_db_connection() as conn:
-        conn.cursor().execute(
-            "INSERT INTO jobs (job_type, status, created_at, prompt, input_data) VALUES (?, ?, ?, ?, ?)",
-            ('palette_analysis', 'queued', datetime.now(), user_prompt, input_data)
-        )
-        conn.commit()
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO jobs (job_type, status, created_at, prompt, input_data) VALUES (?, ?, ?, ?, ?)",
+                ('palette_analysis', 'queued', datetime.now(), user_prompt, input_data)
+            )
+            conn.commit()
+    except Exception as e:
+        print(f"Error creating palette analysis job: {e}")
+        return jsonify({"success": False, "error": f"Failed to create job: {str(e)}"}), 500
     return jsonify({"success": True})
 
 @app.route("/image-tool", methods=["POST"])
@@ -627,12 +642,17 @@ def remove_background():
     prompt = f"Remove background from {os.path.basename(image_url)}"
     input_data = json.dumps({"image_path": image_url.lstrip('/')})
     
-    with get_db_connection() as conn:
-        conn.cursor().execute(
-            "INSERT INTO jobs (job_type, status, created_at, prompt, input_data, parent_job_id) VALUES (?, ?, ?, ?, ?, ?)",
-            ('background_removal', 'queued', datetime.now(), prompt, input_data, parent_job_id)
-        )
-        conn.commit()
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO jobs (job_type, status, created_at, prompt, input_data, parent_job_id) VALUES (?, ?, ?, ?, ?, ?)",
+                ('background_removal', 'queued', datetime.now(), prompt, input_data, parent_job_id)
+            )
+            conn.commit()
+    except Exception as e:
+        print(f"Error creating background removal job: {e}")
+        return jsonify({"success": False, "error": f"Failed to create job: {str(e)}"}), 500
     return jsonify({"success": True, "message": "Background removal job queued."})
 
 @app.route("/upload-video", methods=["POST"])
@@ -771,14 +791,13 @@ def extract_frame():
         result_path = os.path.join('static/library', frame_filename)
         
         with get_db_connection() as conn:
-            # Insert frame extraction job at the top by using current max id + 1000 to force it to top
-            max_id_result = conn.execute("SELECT MAX(id) as max_id FROM jobs").fetchone()
-            max_id = max_id_result['max_id'] if max_id_result['max_id'] else 0
-            new_id = max_id + 1000
+            # Use a future timestamp to ensure it appears at the top of the queue
+            # This is safer than manipulating IDs
+            future_time = datetime.now() + timedelta(minutes=1)
             
             conn.cursor().execute(
-                "INSERT INTO jobs (id, job_type, status, created_at, prompt, input_data, result_data, parent_job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (new_id, 'frame_extraction', 'completed', datetime.now(), prompt, input_data, result_path, parent_job_id)
+                "INSERT INTO jobs (job_type, status, created_at, prompt, input_data, result_data, parent_job_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ('frame_extraction', 'completed', future_time, prompt, input_data, result_path, parent_job_id)
             )
             conn.commit()
         

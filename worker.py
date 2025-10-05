@@ -178,12 +178,13 @@ def handle_animation(job):
             api_input["duration"] = input_data.get('seedance_duration', 5)
             api_input["resolution"] = input_data.get('seedance_resolution', '1080p')
             api_input["aspect_ratio"] = input_data.get('seedance_aspect_ratio', '1:1')
-        with open(start_image_path, "rb") as start_file:
-            if 'seedance' in video_model: api_input["image"] = start_file
-            else: api_input["start_image"] = start_file
-            end_image_url = input_data.get("end_image_url")
-            end_file_obj = None
-            try:
+        end_file_obj = None
+        try:
+            with open(start_image_path, "rb") as start_file:
+                if 'seedance' in video_model: api_input["image"] = start_file
+                else: api_input["start_image"] = start_file
+                end_image_url = input_data.get("end_image_url")
+                
                 if end_image_url and isinstance(end_image_url, str) and end_image_url.strip():
                     end_image_path = os.path.join(BASE_DIR, end_image_url.lstrip('/'))
                     if os.path.exists(end_image_path):
@@ -202,8 +203,12 @@ def handle_animation(job):
                 if "end_image" in api_input: loggable_input['end_image_provided'] = True
                 print(f"   ...calling Replicate with parameters: {loggable_input}")
                 video_output_url = replicate.run(video_model, input=api_input)
-            finally:
-                if end_file_obj: end_file_obj.close()
+        finally:
+            if end_file_obj and not isinstance(end_file_obj, io.BytesIO):
+                try:
+                    end_file_obj.close()
+                except Exception as e:
+                    print(f"   ...warning: could not close end_file_obj: {e}")
         video_response = requests.get(video_output_url)
         video_response.raise_for_status()
         video_filename = f"{uuid.uuid4()}.mp4"
@@ -572,11 +577,15 @@ def check_for_completed_automations(conn):
         children = cursor.execute("SELECT * FROM jobs WHERE parent_job_id = ? AND job_type = 'animation'", (meta_job['id'],)).fetchall()
         if len(children) < 2: continue
         
-        # Check for completed children (either completed status or completed with keyed_result_data)
-        completed_children = [c for c in children if c['status'] == 'completed' and (c['keyed_result_data'] or c['result_data'])]
+        # Check for completed children - only consider truly completed (not pending_review)
+        # For boomerang automation, we only need result_data, not keyed_result_data
+        completed_children = [c for c in children if c['status'] == 'completed' and c['result_data']]
         failed_children = [c for c in children if c['status'] == 'failed']
         
-        print(f"Checking automation job #{meta_job['id']}: {len(children)} children, {len(completed_children)} completed, {len(failed_children)} failed")
+        # Count pending_review as not completed for boomerang - they need to finish processing first
+        pending_review = [c for c in children if c['status'] == 'pending_review']
+        
+        print(f"Checking automation job #{meta_job['id']}: {len(children)} children, {len(completed_children)} completed, {len(pending_review)} pending_review, {len(failed_children)} failed")
         
         if failed_children:
             print(f"A child job for Automation Job #{meta_job['id']} failed. Marking as failed.")

@@ -138,20 +138,27 @@ def stitch_videos_with_ffmpeg(video_paths, output_path, target_resolution=None):
         print(f"   ...command: {' '.join(ffmpeg_cmd)}")
         
         # Much shorter timeout - stitching should be very fast with copy mode
-        result = subprocess.run(
-            ffmpeg_cmd, 
-            check=True, 
-            capture_output=True, 
-            text=True, 
-            timeout=60  # 1 minute max - copy mode should be under 10 seconds
-        )
-        
-        print(f"   ...successfully stitched video to {output_path}")
-        
-    except subprocess.TimeoutExpired:
-        print("   ...FFMPEG CONCAT TIMED OUT after 1 minute.")
-        # Try fallback method with re-encoding
-        return _fallback_stitch_with_reencoding(video_paths, output_path)
+        process = None
+        try:
+            process = subprocess.run(
+                ffmpeg_cmd, 
+                check=True, 
+                capture_output=True, 
+                text=True, 
+                timeout=60  # 1 minute max - copy mode should be under 10 seconds
+            )
+            print(f"   ...successfully stitched video to {output_path}")
+        except subprocess.TimeoutExpired as e:
+            print("   ...FFMPEG CONCAT TIMED OUT after 1 minute.")
+            # Kill the process if it's still running
+            if e.child_process and e.child_process.poll() is None:
+                try:
+                    e.child_process.kill()
+                    e.child_process.wait(timeout=5)
+                except:
+                    pass
+            # Try fallback method with re-encoding
+            return _fallback_stitch_with_reencoding(video_paths, output_path)
         
     except subprocess.CalledProcessError as e:
         print("   ...FFMPEG CONCAT FAILED. Trying fallback method...")
@@ -205,8 +212,15 @@ def _fallback_stitch_with_reencoding(video_paths, output_path):
         )
         print(f"   ...fallback method succeeded: {output_path}")
         
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as e:
         print("   ...FALLBACK ALSO TIMED OUT after 2 minutes.")
+        # Kill the process if it's still running
+        if e.child_process and e.child_process.poll() is None:
+            try:
+                e.child_process.kill()
+                e.child_process.wait(timeout=5)
+            except:
+                pass
         raise Exception("Video stitching failed - both concat and re-encoding methods timed out")
         
     except subprocess.CalledProcessError as e:

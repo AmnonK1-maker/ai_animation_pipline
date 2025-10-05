@@ -3301,7 +3301,7 @@ For each color, provide its hexadecimal code and a simple, descriptive name (e.g
                     if (selectedIds.length > 1) {
                         alert(`Animation tool loaded with first selected image. ${selectedIds.length - 1} other images selected for batch processing.`);
                     }
-                    } else {
+                } else {
                     alert('Could not find image data for selected item.');
                 }
             })
@@ -3339,7 +3339,6 @@ For each color, provide its hexadecimal code and a simple, descriptive name (e.g
                     console.error('Error fetching job data for background removal:', error);
                     alert('Error: Could not fetch image data');
                 });
-        }
     }
     
     function regenerateGroup(jobIds) {
@@ -3367,7 +3366,7 @@ For each color, provide its hexadecimal code and a simple, descriptive name (e.g
             .then(data => {
                 if (data.success) {
                     refreshJobLog();
-                    } else {
+                } else {
                     alert('Error: ' + data.error);
                 }
             });

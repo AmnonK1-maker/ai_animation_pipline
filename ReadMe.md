@@ -326,6 +326,16 @@ kling_app/
 - ✅ **Keying Tool UX**: Added Reset Preview, Zoom In/Out controls, and improved checkerboard background display
 - ✅ **Non-Intrusive Feedback**: Replaced blocking alerts with timed notification toasts (4s for success, 6s for errors)
 
+### Critical Bug Fixes & Stability Improvements (October 5, 2025 PM)
+- ✅ **Frame Extraction Database Bug**: Fixed SQLite AUTOINCREMENT conflict by using future timestamps instead of manual ID assignment
+- ✅ **Animation File Handle Leak**: Implemented try-finally blocks to ensure proper cleanup of `end_file_obj` in all error scenarios
+- ✅ **Boomerang Race Condition**: Refined child job completion detection to explicitly check `status=='completed'` and `result_data`
+- ✅ **Database Lock Prevention**: Added comprehensive error handling to Flask route database operations to prevent crashes
+- ✅ **FFmpeg Zombie Process Fix**: Implemented explicit `process.kill()` in timeout handlers to prevent hung FFmpeg processes
+- ✅ **JavaScript Syntax Errors**: Fixed 3 critical frontend bugs (misplaced braces in deleteGroup, animateGroupImages, removeBgGroup functions)
+- ✅ **Worker Process Cleanup**: Eliminated 18 duplicate worker processes that were causing resource contention
+- ✅ **Database Integrity**: Updated stuck boomerang automation job (status='stitching' despite completed children) to restore frontend functionality
+
 ### Git Workflow
 ```bash
 git status                    # Check changes
