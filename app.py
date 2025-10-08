@@ -12,6 +12,7 @@ import numpy as np
 from dotenv import load_dotenv
 from PIL import Image
 from video_processor import process_single_frame
+from s3_storage import storage, upload_file, save_uploaded_file, get_public_url, is_s3_enabled
 
 app = Flask(__name__)
 
@@ -151,7 +152,11 @@ def preprocess_animation_image(source_image_path, background_color_str):
             output_full_path = os.path.join(UPLOADS_FOLDER, output_filename)
             bg_image.convert("RGB").save(output_full_path, 'PNG')
             print(f"   ...saved pre-processed image to {output_full_path}")
-            return os.path.join('static/uploads', output_filename)
+            
+            # Upload to S3 if enabled
+            s3_key = f"uploads/{output_filename}"
+            public_url = upload_file(output_full_path, s3_key)
+            return public_url
     except Exception as e:
         print(f"Error during image pre-processing: {e}")
         return source_image_path
@@ -429,10 +434,11 @@ def upload_for_animation():
     if image_file.filename == '': return "No selected file.", 400
     
     filename = f"upload_{uuid.uuid4()}_{os.path.basename(image_file.filename)}"
-    save_path = os.path.join(UPLOADS_FOLDER, filename)
-    image_file.save(save_path)
+    s3_key = f"uploads/{filename}"
     
-    image_url = os.path.join('/static/uploads', filename)
+    # Save to S3 or local depending on configuration
+    image_url = save_uploaded_file(image_file, s3_key)
+    
     return redirect(url_for('animate_image_page', image_url=image_url))
     
 @app.route("/stitch-videos", methods=["POST"])
@@ -468,9 +474,11 @@ def style_tool():
     system_prompt = request.form.get("system_prompt", "Default prompt")
     user_prompt = "Analyze image style."
     filename = f"{uuid.uuid4()}-{os.path.basename(image_file.filename)}"
-    image_path = os.path.join(UPLOADS_FOLDER, filename)
-    image_file.save(image_path)
-    input_data = json.dumps({"image_path": os.path.join('static/uploads', filename), "system_prompt": system_prompt})
+    s3_key = f"uploads/{filename}"
+    
+    # Save to S3 or local
+    image_url = save_uploaded_file(image_file, s3_key)
+    input_data = json.dumps({"image_path": image_url, "system_prompt": system_prompt})
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
@@ -497,9 +505,11 @@ Example: If analyzing a tree with green leaves (prominent) that also has a small
 For each color, provide its hexadecimal code and a simple, descriptive name (e.g., 'dark slate blue', 'light coral'). Return the response as a valid JSON object with a single key "palette" which is an array of objects. Each object in the array should have two keys: "hex" and "name". Example: {"palette": [{"hex": "#2F4F4F", "name": "dark slate grey"}, ...]}"""
     user_prompt = "Analyze image palette."
     filename = f"{uuid.uuid4()}-{os.path.basename(image_file.filename)}"
-    image_path = os.path.join(UPLOADS_FOLDER, filename)
-    image_file.save(image_path)
-    input_data = json.dumps({"image_path": os.path.join('static/uploads', filename), "system_prompt": system_prompt})
+    s3_key = f"uploads/{filename}"
+    
+    # Save to S3 or local
+    image_url = save_uploaded_file(image_file, s3_key)
+    input_data = json.dumps({"image_path": image_url, "system_prompt": system_prompt})
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
@@ -667,12 +677,10 @@ def upload_video():
     if video_file.filename == '':
         return jsonify({"error": "No selected file."}), 400
     
-    # Save the uploaded video
+    # Save the uploaded video to S3 or local
     filename = f"upload_{uuid.uuid4()}_{os.path.basename(video_file.filename)}"
-    save_path = os.path.join(UPLOADS_FOLDER, filename)
-    video_file.save(save_path)
-    
-    video_url = os.path.join('static/uploads', filename)
+    s3_key = f"uploads/{filename}"
+    video_url = save_uploaded_file(video_file, s3_key)
     
     if purpose == 'keying':
         # Create a job for video keying with uploaded video
@@ -788,7 +796,9 @@ def extract_frame():
         frame_filepath = os.path.join(LIBRARY_FOLDER, frame_filename)
         cv2.imwrite(frame_filepath, frame)
         
-        result_path = os.path.join('static/library', frame_filename)
+        # Upload to S3 if enabled
+        s3_key = f"library/{frame_filename}"
+        result_path = upload_file(frame_filepath, s3_key)
         
         with get_db_connection() as conn:
             # Use a future timestamp to ensure it appears at the top of the queue

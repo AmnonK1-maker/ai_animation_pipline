@@ -113,6 +113,37 @@ This is a comprehensive Flask-based web application for AI-powered media creatio
 - **Video Reload Logic**: `openKeyingInterface()` now forces video reload, resets currentTime, and resets zoom on job switch
 - **Status Display Fix**: Fixed JavaScript syntax error in `renderSingleJob()` with separate `else if` blocks for waiting/stitching states
 
+## Cloud Deployment Implementation (October 8, 2025) - Production Ready ☁️
+- **S3 Storage Integration**: Complete AWS S3 support for cloud media storage (`s3_storage.py`)
+- **Railway.app Configuration**: Production deployment setup with `Procfile`, `railway.json`, `nixpacks.toml`
+- **Hybrid Storage System**: Seamlessly switches between local files (development) and S3 (production) via `USE_S3` env var
+- **Production Server**: Gunicorn WSGI server with 2 workers, 120s timeout for video processing
+- **Environment-Based Config**: `PRODUCTION_MODE` flag enables optimized settings for cloud deployment
+- **Automatic Worker Deployment**: Railway runs both Flask web server and background worker as separate processes
+- **Cloud Dependencies**: Added `boto3` (AWS SDK) and `gunicorn` to `requirements.txt`
+- **Complete Documentation**: 
+  - `CLOUD_DEPLOYMENT.md`: Step-by-step Railway + S3 setup guide (~40 min deployment time)
+  - `env.example`: Template with all required environment variables (API keys + S3 config)
+  - Updated `ReadMe.md`: Added cloud deployment section with cost breakdown (~$15/month)
+- **Cost-Effective Scaling**: Railway Hobby ($10) + S3 storage ($2-5) for 5-10 concurrent users
+- **Centralized Media**: All generated images/videos stored in S3 with public URLs
+- **Team Collaboration**: Single deployment accessible by entire team via web browser
+- **Zero Installation**: Team members access via URL - no local setup required
+- **Always Up-to-Date**: Update code once, entire team gets changes immediately
+
+**Files Modified for Cloud:**
+- `app.py`: S3 upload integration for all image/video saves
+- `worker.py`: S3 upload for all AI-generated media (animations, images, keyed videos)
+- `requirements.txt`: Added production dependencies (gunicorn, boto3)
+
+**New Files for Cloud:**
+- `s3_storage.py`: Complete S3 wrapper with upload/download/delete functions
+- `Procfile`: Railway process definitions (web + worker)
+- `railway.json`: Railway deployment configuration
+- `nixpacks.toml`: Build configuration (Python 3.10, ffmpeg, opencv)
+- `env.example`: Environment variables template with S3 settings
+- `CLOUD_DEPLOYMENT.md`: Complete deployment guide for Railway + S3
+
 ## Job Types & Workflow
 1. `image_generation`: Create images via AI models
 2. `animation`: Convert images to videos

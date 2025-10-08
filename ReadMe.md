@@ -69,9 +69,16 @@ A comprehensive Flask-based application for AI-powered image generation, animati
 
 ## 🚀 Setup Instructions
 
-### 🎯 Quick Start (Recommended)
+### 🎯 Choose Your Deployment Method
 
-**For New Team Members**: See [SETUP.md](SETUP.md) for detailed setup guide.
+**Option A: Local Setup** (for small teams, 1-5 users)  
+**Option B: Cloud Deployment** (for growing teams, remote access, 5+ users)
+
+---
+
+### 💻 **Option A: Local Setup** (Recommended for Getting Started)
+
+**For New Team Members**: See [TEAM_SETUP.md](TEAM_SETUP.md) for detailed setup guide.
 
 #### **Option 1: FULLY AUTOMATIC Setup** ⚡ (Installs Python + ffmpeg automatically)
 
@@ -115,7 +122,38 @@ start_app.bat       # Starts the application
 
 Open http://localhost:5001 in your browser. Done! 🎉
 
-### 📋 Prerequisites
+---
+
+### ☁️ **Option B: Cloud Deployment** (Railway.app + AWS S3)
+
+**Perfect for:**
+- Remote teams working from different locations
+- 5+ concurrent users
+- 24/7 access from any device
+- No local installation needed
+
+**What you get:**
+- ✅ Web-based access from anywhere
+- ✅ Centralized storage (AWS S3)
+- ✅ Always up-to-date (update once, everyone benefits)
+- ✅ Professional URLs like `https://your-studio.up.railway.app`
+
+**Cost:** ~$15/month (Railway $10 + S3 $2-5)
+
+**Setup time:** 30-40 minutes
+
+📖 **Full Guide**: See [CLOUD_DEPLOYMENT.md](CLOUD_DEPLOYMENT.md) for complete step-by-step instructions.
+
+**Quick Overview:**
+1. Create AWS S3 bucket for media storage
+2. Deploy to Railway.app from GitHub
+3. Add environment variables (API keys + S3 config)
+4. Start worker service
+5. Share URL with team! 🚀
+
+---
+
+### 📋 Prerequisites (Local Setup)
 
 **If using `setup_auto.sh`/`setup_auto.bat`**: No prerequisites! The script installs everything automatically.
 

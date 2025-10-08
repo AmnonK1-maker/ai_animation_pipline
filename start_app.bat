@@ -1,80 +1,102 @@
 @echo off
-REM AI Media Workflow Dashboard - Windows Startup Script
-REM This script starts both the Flask web server and the background worker
+REM AI Media Workflow Dashboard - ONE-CLICK Startup Script (Windows)
+REM This script starts BOTH Flask web server AND background worker automatically
 
-echo ========================================
-echo AI Media Workflow Dashboard - Starting
-echo ========================================
+title AI Media Workflow Dashboard
+
+echo ==========================================
+echo 🎬 Starting AI Media Workflow Dashboard
+echo ==========================================
 echo.
 
 REM Check if virtual environment exists
-if not exist "venv\Scripts\activate.bat" (
-    echo [ERROR] Virtual environment not found!
-    echo Please run setup.bat first
+if not exist "venv" (
+    echo ❌ Virtual environment not found!
+    echo Please run setup first: setup_auto.bat ^(or setup.bat^)
     pause
     exit /b 1
 )
 
-REM Check if .env exists
+REM Check if .env file exists
 if not exist ".env" (
-    echo [ERROR] .env file not found!
-    echo Please create .env with your API keys
-    echo You can copy .env.example or run setup.bat
+    echo ❌ .env file not found!
+    echo.
+    echo Please create .env file with API keys.
+    echo If you're a team member, ask your administrator for the .env file.
+    echo.
+    echo Required format:
+    echo LEONARDO_API_KEY=your_key_here
+    echo REPLICATE_API_KEY=your_token_here
+    echo OPENAI_API_KEY=your_key_here
+    echo OPENAI_ORG_ID=your_org_id_here
+    echo.
     pause
     exit /b 1
 )
 
 REM Activate virtual environment
-echo [INFO] Activating virtual environment...
 call venv\Scripts\activate.bat
+echo ✅ Virtual environment activated
 
-REM Check if port 5001 is in use
-echo [INFO] Checking if port 5001 is available...
-netstat -ano | findstr :5001 >nul
-if %ERRORLEVEL% EQU 0 (
-    echo [WARNING] Port 5001 is already in use!
-    echo.
-    set /p KILL="Do you want to kill the process and restart? (y/n): "
-    if /i "%KILL%"=="y" (
-        for /f "tokens=5" %%a in ('netstat -ano ^| findstr :5001') do (
-            taskkill /F /PID %%a >nul 2>&1
-        )
-        echo [INFO] Killed existing process on port 5001
-        timeout /t 2 /nobreak >nul
-    ) else (
-        echo [INFO] Exiting. Please stop the existing process manually.
-        pause
-        exit /b 1
-    )
-)
+REM Kill any existing Flask processes on port 5001
+for /f "tokens=5" %%a in ('netstat -aon ^| find ":5001" ^| find "LISTENING"') do taskkill /F /PID %%a >nul 2>&1
 
-REM Start Flask in a new window
-echo [INFO] Starting Flask web server on http://localhost:5001
-start "Flask Web Server" cmd /k "venv\Scripts\activate.bat && flask run --host=0.0.0.0 --port=5001"
+REM Kill any existing worker processes
+taskkill /F /IM python.exe /FI "WINDOWTITLE eq *worker.py*" >nul 2>&1
 
-REM Wait a moment for Flask to start
+echo.
+echo 🚀 Starting Flask web server on http://localhost:5001...
+
+REM Start Flask in a new hidden window
+start /B "" cmd /c "flask run --host=0.0.0.0 --port=5001 > nul 2>&1"
+
+REM Wait for Flask to start
 timeout /t 3 /nobreak >nul
 
-REM Start Worker in a new window
-echo [INFO] Starting background worker...
-start "Background Worker" cmd /k "venv\Scripts\activate.bat && python worker.py"
+REM Start background worker in a new hidden window
+echo ⚙️  Starting background worker...
+start /B "" cmd /c "python worker.py > worker_current.log 2>&1"
 
-echo.
-echo ========================================
-echo [SUCCESS] Application Started!
-echo ========================================
-echo.
-echo Flask Web Server: Running in separate window
-echo Background Worker: Running in separate window
-echo.
-echo Access the dashboard at:
-echo   http://localhost:5001
-echo.
-echo To stop the application:
-echo   - Close both terminal windows
-echo   - Or press Ctrl+C in each window
-echo.
-echo Logs are visible in the separate windows
-echo.
-pause
+REM Wait for worker to start
+timeout /t 2 /nobreak >nul
 
+echo ✅ Flask web server started
+echo ✅ Background worker started
+echo.
+echo ==========================================
+echo ✅ AI Media Workflow Dashboard is running!
+echo ==========================================
+echo.
+echo 🌐 Open your browser to: http://localhost:5001
+echo.
+echo 📊 Both processes are running in the background
+echo 📝 Worker logs: worker_current.log
+echo.
+echo ⚠️  To stop the application, close this window
+echo     or run: stop_app.bat
+echo ==========================================
+echo.
+
+REM Open browser automatically
+start http://localhost:5001
+
+REM Keep window open
+echo Press any key to stop all processes and exit...
+pause >nul
+
+REM Cleanup on exit
+echo.
+echo 🛑 Shutting down...
+
+REM Kill Flask
+for /f "tokens=5" %%a in ('netstat -aon ^| find ":5001" ^| find "LISTENING"') do (
+    echo    Stopping Flask server...
+    taskkill /F /PID %%a >nul 2>&1
+)
+
+REM Kill worker
+echo    Stopping background worker...
+taskkill /F /FI "WINDOWTITLE eq *worker.py*" >nul 2>&1
+
+echo ✅ Shutdown complete
+timeout /t 2 /nobreak >nul

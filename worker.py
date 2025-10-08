@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 from video_processor import process_video_with_opencv, stitch_videos_with_ffmpeg
+from s3_storage import storage, upload_file, save_uploaded_file, get_public_url, is_s3_enabled, download_file
 
 # --- CONFIGURATION ---
 load_dotenv()
@@ -85,7 +86,11 @@ def preprocess_animation_image_for_boomerang(source_image_path, background_color
             output_full_path = os.path.join(LIBRARY_FOLDER, output_filename)
             bg_image.convert("RGB").save(output_full_path, 'PNG')
             print(f"   ...saved preprocessed image to {output_full_path}")
-            return os.path.join('static/library', output_filename)
+            
+            # Upload to S3 if enabled
+            s3_key = f"library/{output_filename}"
+            public_url = upload_file(output_full_path, s3_key)
+            return public_url
             
     except Exception as e:
         print(f"   ...error during boomerang preprocessing: {e}")
@@ -214,7 +219,11 @@ def handle_animation(job):
         video_filename = f"{uuid.uuid4()}.mp4"
         video_filepath = os.path.join(ANIMATIONS_FOLDER_GENERATED, video_filename)
         with open(video_filepath, "wb") as f: f.write(video_response.content)
-        return os.path.join('static/animations/generated', video_filename), None
+        
+        # Upload to S3 if enabled
+        s3_key = f"animations/generated/{video_filename}"
+        public_url = upload_file(video_filepath, s3_key)
+        return public_url, None
     except Exception as e:
         traceback.print_exc()
         return None, f"Animation generation error: {e}"
@@ -262,7 +271,11 @@ def handle_video_stitching(job):
             return None, f"Stitching produced invalid output file ({output_size} bytes)"
             
         print(f"   ...stitching successful: {output_size/1024/1024:.1f}MB output")
-        return os.path.join('static/library', output_filename), None
+        
+        # Upload to S3 if enabled
+        s3_key = f"library/{output_filename}"
+        public_url = upload_file(output_filepath, s3_key)
+        return public_url, None
         
     except Exception as e:
         print(f"   ...ERROR in video stitching: {e}")
@@ -286,7 +299,11 @@ def handle_replicate_openai_generation(job):
         filename = f"{uuid.uuid4()}.png"
         filepath = os.path.join(LIBRARY_FOLDER, filename)
         with open(filepath, "wb") as f: f.write(image_res.content)
-        return os.path.join('static/library', filename), None
+        
+        # Upload to S3 if enabled
+        s3_key = f"library/{filename}"
+        public_url = upload_file(filepath, s3_key)
+        return public_url, None
     except Exception as e:
         return None, f"Replicate OpenAI generation error: {e}"
 
@@ -305,7 +322,11 @@ def handle_bytedance_generation(job):
         filename = f"{uuid.uuid4()}.png"
         filepath = os.path.join(LIBRARY_FOLDER, filename)
         with open(filepath, "wb") as f: f.write(img_res.content)
-        return os.path.join('static/library', filename), None
+        
+        # Upload to S3 if enabled
+        s3_key = f"library/{filename}"
+        public_url = upload_file(filepath, s3_key)
+        return public_url, None
     except Exception as e:
         return None, f"Bytedance generation error: {e}"
 
@@ -332,7 +353,11 @@ def handle_background_removal(job):
         filepath = os.path.join(LIBRARY_FOLDER, filename)
         with open(filepath, "wb") as f: f.write(img_res.content)
         print(f"   ...kept original image: {full_image_path}")
-        return os.path.join('static/library', filename), None
+        
+        # Upload to S3 if enabled
+        s3_key = f"library/{filename}"
+        public_url = upload_file(filepath, s3_key)
+        return public_url, None
     except Exception as e:
         return None, f"BRIA background removal error: {e}"
 
@@ -368,7 +393,11 @@ def handle_leonardo_generation(job):
                     filename = f"{uuid.uuid4()}.png"
                     filepath = os.path.join(LIBRARY_FOLDER, filename)
                     with open(filepath, "wb") as f: f.write(img_res.content)
-                    filepaths.append(os.path.join('static/library', filename))
+                    
+                    # Upload to S3 if enabled
+                    s3_key = f"library/{filename}"
+                    public_url = upload_file(filepath, s3_key)
+                    filepaths.append(public_url)
                 return filepaths[0], None
             elif status == "FAILED":
                 return None, "Leonardo AI job failed."
@@ -509,7 +538,10 @@ def handle_keying(job):
         print(f"   JOB #{job_id}: Output file: {final_output_path}")
         print(f"   JOB #{job_id}: Output size: {output_size} bytes")
         
-        return os.path.join('static/library/transparent_videos', output_filename), None
+        # Upload to S3 if enabled
+        s3_key = f"library/transparent_videos/{output_filename}"
+        public_url = upload_file(final_output_path, s3_key)
+        return public_url, None
     except Exception as e:
         print(f"   JOB #{job.get('id', '???')}: ❌ Keying failed with error: {e}")
         traceback.print_exc()

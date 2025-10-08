@@ -1,3 +1,4 @@
+# Core dependencies
 Flask
 numpy
 opencv-python
@@ -6,3 +7,13 @@ requests
 Pillow
 openai
 python-dotenv
+
+# Production server
+gunicorn
+
+# Cloud storage (AWS S3)
+boto3
+
+# Optional: PostgreSQL support (upgrade from SQLite for production)
+# Uncomment if you want to use PostgreSQL instead of SQLite
+# psycopg2-binary
