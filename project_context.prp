@@ -144,6 +144,15 @@ This is a comprehensive Flask-based web application for AI-powered media creatio
 - `env.example`: Environment variables template with S3 settings
 - `CLOUD_DEPLOYMENT.md`: Complete deployment guide for Railway + S3
 
+## Dependency Fix (October 9, 2025) - Resolved
+- **boto3 Installation**: Fixed missing `boto3` dependency that prevented app startup after cloud deployment code merge
+- **ModuleNotFoundError**: Resolved import error in `s3_storage.py` by installing boto3 and its dependencies
+- **Virtual Environment Update**: Installed `boto3-1.40.47`, `botocore-1.40.47`, `s3transfer-0.14.0` in local venv
+- **Startup Restored**: Both Flask app and worker now start successfully with S3 storage module loaded
+- **Local Storage Mode**: App runs in development mode with local file storage (S3 disabled by default)
+- **Port Conflict Resolution**: Cleaned up duplicate processes on port 5001 before restart
+- **Dependencies Installed**: boto3, botocore, s3transfer, jmespath, python-dateutil, six
+
 ## Job Types & Workflow
 1. `image_generation`: Create images via AI models
 2. `animation`: Convert images to videos
