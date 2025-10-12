@@ -661,6 +661,79 @@ def check_for_completed_automations(conn):
         else:
             print(f"   ...waiting for more children to complete: {len(completed_children)}/2")
 
+def check_for_analysis_completion(conn):
+    """Check if image generation jobs waiting for analysis can proceed"""
+    cursor = conn.cursor()
+    waiting_jobs = cursor.execute(
+        "SELECT * FROM jobs WHERE job_type = 'image_generation' AND status = 'waiting_for_analysis'"
+    ).fetchall()
+    
+    for job in waiting_jobs:
+        try:
+            input_data = json.loads(job['input_data'])
+            style_job_id = input_data.get('style_analysis_job_id')
+            color_job_id = input_data.get('color_analysis_job_id')
+            
+            # Check if all required analysis jobs are completed
+            analyses_complete = True
+            style_result = None
+            color_result = None
+            
+            if style_job_id:
+                style_job = cursor.execute(
+                    "SELECT status, result_data FROM jobs WHERE id = ?", (style_job_id,)
+                ).fetchone()
+                if style_job and style_job['status'] == 'completed':
+                    style_result = style_job['result_data']
+                else:
+                    analyses_complete = False
+            
+            if color_job_id:
+                color_job = cursor.execute(
+                    "SELECT status, result_data FROM jobs WHERE id = ?", (color_job_id,)
+                ).fetchone()
+                if color_job and color_job['status'] == 'completed':
+                    color_result = color_job['result_data']
+                else:
+                    analyses_complete = False
+            
+            # If all analyses are complete, merge results and queue the job
+            if analyses_complete:
+                # Merge analysis results into style_prompt
+                merged_style = input_data.get('style_prompt', '')
+                
+                if style_result:
+                    merged_style = style_result if not merged_style else f"{style_result}. {merged_style}"
+                
+                if color_result:
+                    # Parse color palette and append
+                    try:
+                        color_data = json.loads(color_result)
+                        if 'palette' in color_data:
+                            color_desc = ", ".join([f"{c['name']} ({c['hex']})" for c in color_data['palette']])
+                            merged_style = f"{merged_style}. Color palette: {color_desc}" if merged_style else f"Color palette: {color_desc}"
+                    except:
+                        merged_style = f"{merged_style}. {color_result}" if merged_style else color_result
+                
+                # Update input_data with merged style
+                input_data['style_prompt'] = merged_style
+                
+                # Update prompt with merged style
+                object_prompt = input_data.get('object_prompt', '')
+                new_prompt = f"{object_prompt}, in the style of {merged_style}" if merged_style else object_prompt
+                
+                # Update job to queued status with merged data
+                cursor.execute(
+                    "UPDATE jobs SET status = 'queued', prompt = ?, input_data = ? WHERE id = ?",
+                    (new_prompt, json.dumps(input_data), job['id'])
+                )
+                conn.commit()
+                print(f"-> Analysis complete for image_generation job {job['id']}, queued for processing")
+                
+        except Exception as e:
+            print(f"Error checking analysis for job {job['id']}: {e}")
+            traceback.print_exc()
+
 def process_job(job, conn):
     job_type = job['job_type']
     status = job['status']
@@ -695,6 +768,7 @@ def main():
             
             with get_db_connection() as conn:
                 check_for_completed_automations(conn)
+                check_for_analysis_completion(conn)  # Check if analysis jobs are complete
                 cursor = conn.cursor()
                 job = cursor.execute("SELECT * FROM jobs WHERE status = 'keying_queued' ORDER BY created_at ASC LIMIT 1").fetchone()
                 if job:
@@ -768,7 +842,8 @@ def main():
                                     new_status = 'pending_review'
                                     cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job['id']))
                             else:
-                                new_status = 'pending_review' if job['job_type'] in ['animation', 'video_stitching'] else 'completed'
+                                # Mark all jobs as completed (animations no longer need review)
+                                new_status = 'completed'
                                 cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job['id']))
                         else: # Default case for completion
                             new_status = 'completed'

@@ -165,7 +165,7 @@ def preprocess_animation_image(source_image_path, background_color_str):
 # --- Main Routes ---
 @app.route("/")
 def home():
-    return render_template("index.html")
+    return render_template("index_v2.html")
 
 @app.route("/fine-tune/<int:job_id>")
 def fine_tune_page(job_id):
@@ -268,7 +268,10 @@ def auto_key_video(job_id):
                     "blur": 5, "spill": 2
                 }
                 bg_display = "Blue Screen"
-            elif bg_color == 'green':
+            elif bg_color == 'unknown':
+                # For uploaded videos with unknown background, should have been set by frontend
+                return jsonify({"success": False, "error": "Please specify background color (green or blue) for this uploaded video."}), 400
+            else:  # 'green', 'as-is', or any other value - default to green screen
                 settings = {
                     "hue_center": 60, "hue_tolerance": 25,
                     "saturation_min": 50, "value_min": 50,
@@ -276,23 +279,56 @@ def auto_key_video(job_id):
                     "blur": 5, "spill": 2
                 }
                 bg_display = "Green Screen"
-            elif bg_color == 'unknown':
-                # For uploaded videos with unknown background, should have been set by frontend
-                return jsonify({"success": False, "error": "Please specify background color (green or blue) for this uploaded video."}), 400
-            else:  # 'default' or 'as-is'
-                # No keying needed for "default" background
-                return jsonify({"success": False, "error": "This animation was created with 'As is' background. No keying needed."}), 400
                 
-            print(f"-> Auto-keying {bg_color} background for job {job_id} ({job['job_type']}) - now pending_process")
+            print(f"-> Auto-keying {bg_color} background for job {job_id} ({job['job_type']}) - queuing for immediate processing")
             
-            cursor.execute("UPDATE jobs SET status = ?, keying_settings = ? WHERE id = ?", ('pending_process', json.dumps(settings), job_id))
+            cursor.execute("UPDATE jobs SET status = ?, keying_settings = ? WHERE id = ?", ('keying_queued', json.dumps(settings), job_id))
             conn.commit()
             
-            print(f"   ...auto-key settings saved: {settings}")
+            print(f"   ...auto-key settings saved and queued: {settings}")
         
-        return jsonify({"success": True, "message": f"Auto-key ({bg_display}) applied. Click 'Process Pending Jobs' to apply."})
+        return jsonify({"success": True, "message": f"Auto-key ({bg_display}) queued for processing!"})
     except Exception as e:
         print(f"Error in auto-key: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/manual-key/<int:job_id>", methods=["POST"])
+def manual_key_video(job_id):
+    """Apply manual keying settings and immediately queue for processing"""
+    try:
+        keying_settings_json = request.form.get('keying_settings')
+        if not keying_settings_json:
+            return jsonify({"success": False, "error": "Missing keying settings"}), 400
+        
+        # Parse and validate the settings
+        try:
+            settings = json.loads(keying_settings_json)
+        except json.JSONDecodeError:
+            return jsonify({"success": False, "error": "Invalid keying settings format"}), 400
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Verify job exists
+            job = cursor.execute("SELECT job_type, result_data FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            if not job:
+                return jsonify({"success": False, "error": f"Job {job_id} not found"}), 404
+            
+            if not job['result_data']:
+                return jsonify({"success": False, "error": "Job has no video to key"}), 400
+            
+            # Update job with keying settings and set status to keying_queued
+            cursor.execute(
+                "UPDATE jobs SET status = ?, keying_settings = ? WHERE id = ?",
+                ('keying_queued', json.dumps(settings), job_id)
+            )
+            conn.commit()
+            
+            print(f"-> Manual keying queued for job {job_id} with settings: {settings}")
+        
+        return jsonify({"success": True, "message": "Manual keying job queued for processing"})
+    except Exception as e:
+        print(f"Error in manual-key: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route("/process-all-pending", methods=["POST"])
@@ -440,31 +476,6 @@ def upload_for_animation():
     image_url = save_uploaded_file(image_file, s3_key)
     
     return redirect(url_for('animate_image_page', image_url=image_url))
-    
-@app.route("/stitch-videos", methods=["POST"])
-def stitch_videos():
-    data = request.get_json()
-    video_paths = data.get('video_paths')
-    
-    if not video_paths or len(video_paths) != 2:
-        return jsonify({"success": False, "error": "Please select exactly two videos to stitch."}), 400
-
-    prompt = f"Stitch {os.path.basename(video_paths[0])} and {os.path.basename(video_paths[1])}"
-    input_data = json.dumps({"video_a_path": video_paths[0], "video_b_path": video_paths[1]})
-
-    try:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO jobs (job_type, status, created_at, prompt, input_data) VALUES (?, ?, ?, ?, ?)",
-                ('video_stitching', 'queued', datetime.now(), prompt, input_data)
-            )
-            conn.commit()
-    except Exception as e:
-        print(f"Error creating stitching job: {e}")
-        return jsonify({"success": False, "error": f"Failed to create stitching job: {str(e)}"}), 500
-    
-    return jsonify({"success": True, "message": "Video stitching job queued."})
 
 # --- Form Handlers for Job Creation ---
 @app.route("/style-tool", methods=["POST"])
@@ -525,40 +536,151 @@ For each color, provide its hexadecimal code and a simple, descriptive name (e.g
 
 @app.route("/image-tool", methods=["POST"])
 def image_tool():
+    """Unified image generation with optional background style/color analysis"""
     selected_models = request.form.getlist("modelId")
     if not selected_models: return jsonify({"error": "Please select at least one model."}), 400
     
     parent_job_id = request.form.get("parent_job_id")
     object_prompt = request.form.get("object_prompt")
-    style_prompt = request.form.get("style_prompt")
+    style_prompt = request.form.get("style_prompt", "")
     preset_style = request.form.get("presetStyle")
-
+    aspect_ratio = request.form.get("aspect_ratio", "1:1")
+    
+    # Check if user uploaded reference images for analysis
+    style_ref_image = request.files.get("style_ref_image")
+    color_ref_image = request.files.get("color_ref_image")
+    
+    style_analysis_job_id = None
+    color_analysis_job_id = None
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
+        
+        # Create internal style analysis job if style ref provided
+        if style_ref_image:
+            filename = f"{uuid.uuid4()}-style-ref-{os.path.basename(style_ref_image.filename)}"
+            s3_key = f"uploads/{filename}"
+            style_image_url = save_uploaded_file(style_ref_image, s3_key)
+            
+            style_system_prompt = """Analyze the visual style of this image. Focus on:
+- Art medium (e.g., digital painting, watercolor, 3D render, photography)
+- Rendering style (e.g., realistic, stylized, minimalist, detailed)
+- Lighting and atmosphere
+- Composition and framing choices
+Keep it concise and actionable for image generation."""
+            
+            style_input_data = json.dumps({
+                "image_path": style_image_url,
+                "system_prompt": style_system_prompt,
+                "internal": True  # Hidden from UI
+            })
+            
+            cursor.execute(
+                "INSERT INTO jobs (job_type, status, created_at, prompt, input_data) VALUES (?, ?, ?, ?, ?)",
+                ('style_analysis', 'queued', datetime.now(), "Internal style analysis", style_input_data)
+            )
+            style_analysis_job_id = cursor.lastrowid
+            print(f"-> Created internal style analysis job {style_analysis_job_id}")
+        
+        # Create internal color analysis job if color ref provided
+        if color_ref_image:
+            filename = f"{uuid.uuid4()}-color-ref-{os.path.basename(color_ref_image.filename)}"
+            s3_key = f"uploads/{filename}"
+            color_image_url = save_uploaded_file(color_ref_image, s3_key)
+            
+            color_system_prompt = """Analyze the provided image and identify the 5 most prominent colors of the SUBJECT/FOREGROUND. 
+
+IMPORTANT CHROMA KEY RULE: If both green AND blue colors appear in the image, EXCLUDE the less prominent one from the palette entirely. Skip it and move to the next color to maintain 5 total colors. This is because images will later be animated on green or blue screen backgrounds - we don't want the palette to include the future chroma key background color if it appears minimally in the original image.
+
+For each color, provide its hexadecimal code and a simple, descriptive name (e.g., 'dark slate blue', 'light coral'). Return the response as a valid JSON object with a single key "palette" which is an array of objects. Each object in the array should have two keys: "hex" and "name". Example: {"palette": [{"hex": "#2F4F4F", "name": "dark slate grey"}, ...]}"""
+            
+            color_input_data = json.dumps({
+                "image_path": color_image_url,
+                "system_prompt": color_system_prompt,
+                "internal": True  # Hidden from UI
+            })
+            
+            cursor.execute(
+                "INSERT INTO jobs (job_type, status, created_at, prompt, input_data) VALUES (?, ?, ?, ?, ?)",
+                ('palette_analysis', 'queued', datetime.now(), "Internal color analysis", color_input_data)
+            )
+            color_analysis_job_id = cursor.lastrowid
+            print(f"-> Created internal color analysis job {color_analysis_job_id}")
+        
+        # Create image generation job(s)
+        # If analysis jobs exist, create with waiting_for_analysis status
         for model_id in selected_models:
-            prompt = f"{object_prompt}, in the style of {style_prompt}"
+            prompt = f"{object_prompt}, in the style of {style_prompt}" if style_prompt else object_prompt
             if model_id == "replicate-gpt-image-1":
-                prompt = f"{object_prompt} on a transparent background, in the style of {style_prompt}"
+                prompt = f"{object_prompt} on a transparent background, in the style of {style_prompt}" if style_prompt else f"{object_prompt} on a transparent background"
 
             input_data = {
-                "object_prompt": object_prompt, "style_prompt": style_prompt, 
-                "modelId": model_id, "presetStyle": preset_style
+                "object_prompt": object_prompt, 
+                "style_prompt": style_prompt, 
+                "modelId": model_id, 
+                "presetStyle": preset_style,
+                "aspect_ratio": aspect_ratio,
+                "style_analysis_job_id": style_analysis_job_id,
+                "color_analysis_job_id": color_analysis_job_id
             }
+            
+            # If analysis jobs exist, wait for them to complete
+            status = 'waiting_for_analysis' if (style_analysis_job_id or color_analysis_job_id) else 'queued'
+            
             cursor.execute(
                 "INSERT INTO jobs (job_type, status, created_at, prompt, input_data, parent_job_id) VALUES (?, ?, ?, ?, ?, ?)",
-                ('image_generation', 'queued', datetime.now(), prompt, json.dumps(input_data), parent_job_id)
+                ('image_generation', status, datetime.now(), prompt, json.dumps(input_data), parent_job_id)
             )
+            print(f"-> Created image generation job {cursor.lastrowid} (status: {status})")
+        
         conn.commit()
-    return jsonify({"success": True})
+    
+    return jsonify({"success": True, "message": f"{len(selected_models)} image generation job(s) created"})
 
 @app.route("/generate-animation", methods=["POST"])
 def generate_animation():
+    """Generate animation from image - handles both file uploads and URLs"""
     parent_job_id = request.form.get("parent_job_id")
     prompt = request.form.get("prompt")
     
-    if request.form.get("boomerang_automation") == "true" and request.form.get("end_image_url"):
-        all_input_data = dict(request.form)
-        meta_prompt = f"A-B-A Loop Automation: {prompt}"
+    # Handle start frame - either file upload or URL
+    start_frame_file = request.files.get("start_frame")
+    image_url = request.form.get("image_url")
+    
+    if start_frame_file:
+        # Upload new file
+        filename = f"{uuid.uuid4()}-{os.path.basename(start_frame_file.filename)}"
+        s3_key = f"uploads/{filename}"
+        image_url = save_uploaded_file(start_frame_file, s3_key)
+    elif not image_url:
+        return jsonify({"error": "Missing start frame image"}), 400
+    
+    # Check for boomerang automation (A-B-A loop)
+    end_frame_file = request.files.get("end_frame")
+    end_image_url = request.form.get("end_image_url")
+    
+    if end_frame_file:
+        filename = f"{uuid.uuid4()}-end-{os.path.basename(end_frame_file.filename)}"
+        s3_key = f"uploads/{filename}"
+        end_image_url = save_uploaded_file(end_frame_file, s3_key)
+    
+    if request.form.get("boomerang_automation") == "true" and end_image_url:
+        # Create A-B-A loop automation job
+        background_option = request.form.get("background", "as-is")
+        
+        all_input_data = {
+            "image_url": image_url,
+            "end_image_url": end_image_url,
+            "prompt": prompt,
+            "negative_prompt": request.form.get("negative_prompt", ""),
+            "background": background_option,
+            "video_model": request.form.getlist("video_model")[0] if request.form.getlist("video_model") else "kling-v2.1",
+            "seamless_loop": request.form.get("seamless_loop") == "true",
+            "kling_duration": int(request.form.get("kling_duration", 5)),
+            "kling_mode": request.form.get("kling_mode", "pro")
+        }
+        
+        meta_prompt = f"A-B-A Loop: {prompt}"
         with get_db_connection() as conn:
             conn.cursor().execute(
                 "INSERT INTO jobs (job_type, status, created_at, prompt, input_data, parent_job_id) VALUES (?, ?, ?, ?, ?, ?)",
@@ -567,25 +689,32 @@ def generate_animation():
             conn.commit()
         return jsonify({"success": True, "message": "A-B-A loop automation job queued."})
 
+    # Regular animation generation
     selected_models = request.form.getlist("video_model")
-    if not selected_models: return jsonify({"error": "Please select at least one video model."}), 400
+    if not selected_models: 
+        return jsonify({"error": "Please select at least one video model."}), 400
     
-    background_option = request.form.get("background", "default")
-    image_url = request.form.get("image_url")
-    if not image_url or not prompt: return jsonify({"error": "Missing image_url or prompt"}), 400
-
+    if not prompt:
+        return jsonify({"error": "Missing animation prompt"}), 400
+    
+    background_option = request.form.get("background", "as-is")
     processed_image_url = preprocess_animation_image(image_url, background_option)
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
         for model in selected_models:
             input_data = {
-                "image_url": processed_image_url, "end_image_url": request.form.get("end_image_url"),
-                "prompt": prompt, "negative_prompt": request.form.get("negative_prompt", ""),
-                "seamless_loop": request.form.get("seamless_loop") == "true", "video_model": model,
-                "kling_duration": int(request.form.get("kling-duration", 5)), "kling_mode": request.form.get("kling-mode", "pro"),
-                "seedance_duration": int(request.form.get("seedance-duration", 5)), "seedance_resolution": request.form.get("seedance-resolution", "1080p"),
-                "seedance_aspect_ratio": request.form.get("seedance-aspect-ratio", "1:1"),
+                "image_url": processed_image_url, 
+                "end_image_url": end_image_url if end_image_url else None,
+                "prompt": prompt, 
+                "negative_prompt": request.form.get("negative_prompt", ""),
+                "seamless_loop": request.form.get("seamless_loop") == "true", 
+                "video_model": model,
+                "kling_duration": int(request.form.get("kling_duration", 5)), 
+                "kling_mode": request.form.get("kling_mode", "pro"),
+                "seedance_duration": int(request.form.get("seedance_duration", 5)), 
+                "seedance_resolution": request.form.get("seedance_resolution", "1080p"),
+                "seedance_aspect_ratio": request.form.get("seedance_aspect_ratio", "1:1"),
                 "background": background_option
             }
             cursor.execute(
@@ -593,12 +722,21 @@ def generate_animation():
                 ('animation', 'queued', datetime.now(), prompt, json.dumps(input_data), parent_job_id)
             )
         conn.commit()
-    return jsonify({"success": True, "message": f"{len(selected_models)} job(s) queued."})
+    return jsonify({"success": True, "message": f"{len(selected_models)} animation job(s) queued."})
 
 @app.route("/get-animation-idea", methods=["POST"])
 def get_animation_idea():
+    """Get animation idea from image - handles both file uploads and URLs"""
+    image_file = request.files.get("image")
     image_url = request.form.get("image_url")
-    if not image_url: return jsonify({"success": False, "error": "Missing image URL."}), 400
+    
+    if image_file:
+        # Upload new file
+        filename = f"{uuid.uuid4()}-{os.path.basename(image_file.filename)}"
+        s3_key = f"uploads/{filename}"
+        image_url = save_uploaded_file(image_file, s3_key)
+    elif not image_url:
+        return jsonify({"success": False, "error": "Missing image file or URL."}), 400
 
     system_prompt = """You are an Image-to-Animation Director.
 Your task is to look at the uploaded image, analyze it visually, and propose actionable animation ideas that bring its key elements to life.
@@ -645,12 +783,27 @@ Tone: Be concise, creative, and practical — as if briefing an animation team."
 
 @app.route("/remove-background", methods=["POST"])
 def remove_background():
-    image_url = request.form.get("image_url")
+    """Remove background - accepts either image_url or uploaded file"""
     parent_job_id = request.form.get("parent_job_id")
-    if not image_url: return jsonify({"error": "Missing image URL for background removal."}), 400
     
-    prompt = f"Remove background from {os.path.basename(image_url)}"
-    input_data = json.dumps({"image_path": image_url.lstrip('/')})
+    # Check if file upload or URL
+    image_file = request.files.get("image")
+    image_url = request.form.get("image_url")
+    
+    if image_file:
+        # Handle file upload
+        filename = f"{uuid.uuid4()}-{os.path.basename(image_file.filename)}"
+        s3_key = f"uploads/{filename}"
+        image_url = save_uploaded_file(image_file, s3_key)
+        prompt = f"Remove background from {image_file.filename}"
+    elif image_url:
+        # Handle URL
+        prompt = f"Remove background from {os.path.basename(image_url)}"
+        image_url = image_url.lstrip('/')
+    else:
+        return jsonify({"error": "Missing image file or URL for background removal."}), 400
+    
+    input_data = json.dumps({"image_path": image_url})
     
     try:
         with get_db_connection() as conn:
@@ -939,6 +1092,111 @@ def reset_job():
         print(f"ERROR in /api/reset-job: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route("/api/edit-job/<int:job_id>", methods=["GET"])
+def edit_job(job_id):
+    """Get job data for editing - returns input_data and prompt to populate the tool"""
+    try:
+        with get_db_connection() as conn:
+            job = conn.execute(
+                "SELECT id, job_type, prompt, input_data, result_data FROM jobs WHERE id = ?", 
+                (job_id,)
+            ).fetchone()
+        
+        if not job:
+            return jsonify({"success": False, "error": "Job not found"}), 404
+        
+        job_dict = dict(job)
+        # Parse input_data JSON string back to dict
+        if job_dict.get('input_data'):
+            try:
+                job_dict['input_data'] = json.loads(job_dict['input_data'])
+            except:
+                pass
+        
+        return jsonify({"success": True, "job": job_dict})
+        
+    except Exception as e:
+        print(f"ERROR in /api/edit-job: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/regenerate-job/<int:job_id>", methods=["POST"])
+def regenerate_job(job_id):
+    """Clone a job with same inputs but new random seed"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Get original job
+            job = cursor.execute(
+                "SELECT job_type, prompt, input_data, parent_job_id FROM jobs WHERE id = ?", 
+                (job_id,)
+            ).fetchone()
+            
+            if not job:
+                return jsonify({"success": False, "error": "Job not found"}), 404
+            
+            job_dict = dict(job)
+            
+            # Create new job with same parameters
+            cursor.execute(
+                "INSERT INTO jobs (job_type, status, created_at, prompt, input_data, parent_job_id) VALUES (?, ?, ?, ?, ?, ?)",
+                (job_dict['job_type'], 'queued', datetime.now(), job_dict['prompt'], 
+                 job_dict['input_data'], job_dict['parent_job_id'])
+            )
+            new_job_id = cursor.lastrowid
+            conn.commit()
+            
+            print(f"-> Regenerated job {job_id} as new job {new_job_id} ({job_dict['job_type']})")
+            return jsonify({
+                "success": True, 
+                "message": f"Job regenerated successfully", 
+                "new_job_id": new_job_id
+            })
+            
+    except Exception as e:
+        print(f"ERROR in /api/regenerate-job: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/stitch-videos", methods=["POST"])
+def stitch_videos():
+    """Create a manual video stitching job"""
+    try:
+        video_a_url = request.form.get('video_a_url')
+        video_b_url = request.form.get('video_b_url')
+        prompt = request.form.get('prompt', 'Manual Video Stitch')
+        
+        if not video_a_url or not video_b_url:
+            return jsonify({"success": False, "error": "Both video URLs are required"}), 400
+        
+        # Convert URLs to local paths
+        video_a_path = video_a_url.replace(request.host_url.rstrip('/'), '')
+        video_b_path = video_b_url.replace(request.host_url.rstrip('/'), '')
+        
+        input_data = {
+            "video_a_path": video_a_path,
+            "video_b_path": video_b_path
+        }
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO jobs (job_type, status, created_at, prompt, input_data) VALUES (?, ?, ?, ?, ?)",
+                ('video_stitching', 'queued', datetime.now(), prompt, json.dumps(input_data))
+            )
+            job_id = cursor.lastrowid
+            conn.commit()
+            
+        print(f"-> Manual stitch job created: {job_id}")
+        return jsonify({
+            "success": True,
+            "message": "Video stitching job queued",
+            "job_id": job_id
+        })
+        
+    except Exception as e:
+        print(f"ERROR in /api/stitch-videos: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route("/api/clear-all-jobs", methods=["POST"])
 def clear_all_jobs():
     """Clear all jobs from the database via API"""
@@ -1048,44 +1306,6 @@ def preview_frame():
     )
     _, img_encoded = cv2.imencode('.png', bgra_frame)
     return send_file(io.BytesIO(img_encoded.tobytes()), mimetype='image/png')
-
-@app.route("/api/jobs/<int:job_id>/regenerate", methods=["POST"])
-def regenerate_job(job_id):
-    """Regenerate a job with the same parameters"""
-    try:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            
-            # Get the original job
-            job = cursor.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
-            if not job:
-                return jsonify({"success": False, "error": "Job not found"}), 404
-            
-            # Parse input data
-            input_data = json.loads(job['input_data'] or '{}')
-            
-            if job['job_type'] == 'image_generation':
-                # Regenerate image with same parameters
-                cursor.execute(
-                    "INSERT INTO jobs (job_type, status, created_at, prompt, input_data, parent_job_id) VALUES (?, ?, ?, ?, ?, ?)",
-                    ('image_generation', 'queued', datetime.now(), job['prompt'], job['input_data'], job['parent_job_id'])
-                )
-            elif job['job_type'] == 'animation':
-                # Regenerate animation with same parameters
-                cursor.execute(
-                    "INSERT INTO jobs (job_type, status, created_at, prompt, input_data, parent_job_id) VALUES (?, ?, ?, ?, ?, ?)",
-                    ('animation', 'queued', datetime.now(), job['prompt'], job['input_data'], job['parent_job_id'])
-                )
-            else:
-                return jsonify({"success": False, "error": "Job type cannot be regenerated"}), 400
-            
-            conn.commit()
-            return jsonify({"success": True, "message": "Job queued for regeneration"})
-            
-    except Exception as e:
-        print(f"ERROR in /api/jobs/{job_id}/regenerate: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
-
 
 if __name__ == '__main__':
     # Initialize database on startup

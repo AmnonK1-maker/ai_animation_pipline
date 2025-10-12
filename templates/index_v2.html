@@ -1,0 +1,2391 @@
+{% extends "base.html" %}
+{% block title %}AI Workflow Dashboard v2{% endblock %}
+{% block content %}
+<style>
+    /* ===== GLOBAL STYLES ===== */
+    * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+    }
+    
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        background: #f5f5f5;
+        overflow: hidden;
+    }
+    
+    /* ===== TOP TOOLBAR ===== */
+    .top-toolbar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 60px;
+        background: white;
+        border-bottom: 2px solid #e0e0e0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 15px;
+        padding: 0 30px;
+        z-index: 1000;
+    }
+    
+    .tool-btn {
+        padding: 10px 25px;
+        background: #f0f0f0;
+        border: 2px solid #ddd;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        transition: all 0.2s;
+    }
+    
+    .tool-btn:hover {
+        background: #e8e8e8;
+        border-color: #bbb;
+    }
+    
+    .tool-btn.active {
+        background: #007bff;
+        color: white;
+        border-color: #0056b3;
+    }
+    
+    /* ===== MAIN LAYOUT ===== */
+    .main-container {
+        position: fixed;
+        top: 60px;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: flex;
+    }
+    
+    /* ===== LEFT TOOL PANEL ===== */
+    .tool-panel {
+        width: 40%;
+        max-width: 600px;
+        background: white;
+        border-right: 2px solid #e0e0e0;
+        overflow-y: auto;
+        padding: 30px;
+    }
+    
+    .tool-content {
+        display: none;
+    }
+    
+    .tool-content.active {
+        display: block;
+    }
+    
+    .tool-title {
+        font-size: 24px;
+        font-weight: 700;
+        margin-bottom: 20px;
+        color: #333;
+    }
+    
+    .form-group {
+        margin-bottom: 20px;
+    }
+    
+    .form-label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 8px;
+        color: #555;
+    }
+    
+    .form-input,
+    .form-textarea,
+    .form-select {
+        width: 100%;
+        padding: 10px;
+        border: 2px solid #ddd;
+        border-radius: 6px;
+        font-size: 14px;
+        font-family: inherit;
+    }
+    
+    .form-textarea {
+        resize: vertical;
+        min-height: 80px;
+    }
+    
+    .form-input:focus,
+    .form-textarea:focus,
+    .form-select:focus {
+        outline: none;
+        border-color: #007bff;
+    }
+    
+    .upload-area {
+        border: 2px dashed #ddd;
+        border-radius: 8px;
+        padding: 30px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.2s;
+        background: #fafafa;
+    }
+    
+    .upload-area:hover {
+        border-color: #007bff;
+        background: #f0f8ff;
+    }
+    
+    .upload-area.has-file {
+        border-color: #28a745;
+        background: #f0fff4;
+    }
+    
+    .checkbox-group {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin-top: 10px;
+    }
+    
+    .checkbox-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px;
+        border: 2px solid #ddd;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .checkbox-item:hover {
+        border-color: #007bff;
+        background: #f8f9fa;
+    }
+    
+    .checkbox-item input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+    }
+    
+    .btn-primary {
+        width: 100%;
+        padding: 14px;
+        background: #007bff;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        margin-top: 20px;
+    }
+    
+    .btn-primary:hover {
+        background: #0056b3;
+    }
+    
+    .btn-primary:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+    }
+    
+    /* Get Idea Button Loading Animation */
+    .btn-loading {
+        position: relative;
+        background: linear-gradient(90deg, #007bff 0%, #0056b3 50%, #007bff 100%) !important;
+        background-size: 200% 100% !important;
+        animation: shimmer 2s infinite !important;
+        pointer-events: none !important;
+    }
+    
+    @keyframes shimmer {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+    }
+    
+    .btn-secondary {
+        padding: 8px 16px;
+        background: #6c757d;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 0.3s;
+    }
+    
+    .btn-secondary:hover {
+        background: #5a6268;
+    }
+    
+    /* ===== RIGHT JOB QUEUE PANEL ===== */
+    .queue-panel {
+        flex: 1;
+        background: #f9f9f9;
+        overflow-y: auto;
+        padding: 30px;
+    }
+    
+    .queue-header {
+        font-size: 20px;
+        font-weight: 700;
+        margin-bottom: 20px;
+        color: #333;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .queue-count {
+        font-size: 14px;
+        font-weight: 500;
+        color: #666;
+        background: #e9ecef;
+        padding: 4px 12px;
+        border-radius: 12px;
+    }
+    
+    /* ===== JOB CARDS ===== */
+    .job-card {
+        background: white;
+        border: 2px solid #e0e0e0;
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 15px;
+        display: flex;
+        gap: 15px;
+        transition: all 0.2s;
+    }
+    
+    .job-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    
+    .job-card.selected {
+        border-color: #007bff;
+        background: #f0f8ff;
+    }
+    
+    .job-checkbox {
+        display: flex;
+        align-items: center;
+    }
+    
+    .job-checkbox input[type="checkbox"] {
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+    }
+    
+    .job-thumbnail {
+        width: 120px;
+        height: 120px;
+        border-radius: 8px;
+        object-fit: cover;
+        background: #f0f0f0;
+        flex-shrink: 0;
+    }
+    
+    .job-info {
+        flex: 1;
+        min-width: 0;
+    }
+    
+    .job-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+    
+    .job-type {
+        font-weight: 600;
+        color: #333;
+        font-size: 15px;
+    }
+    
+    .job-status {
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    
+    .status-queued { background: #ffc107; color: #000; }
+    .status-processing { background: #17a2b8; color: white; }
+    .status-completed { background: #28a745; color: white; }
+    .status-pending { background: #20c997; color: white; }
+    .status-failed { background: #dc3545; color: white; }
+    .status-waiting { background: #6c757d; color: white; }
+    
+    .job-prompt {
+        color: #666;
+        font-size: 13px;
+        margin-bottom: 10px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    
+    .job-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    
+    .job-action-btn {
+        padding: 6px 12px;
+        background: #f0f0f0;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        font-size: 12px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .job-action-btn:hover {
+        background: #e0e0e0;
+        border-color: #bbb;
+    }
+    
+    /* ===== FLOATING DELETE BAR ===== */
+    .delete-bar {
+        position: fixed;
+        bottom: -100px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: white;
+        border: 2px solid #e0e0e0;
+        border-radius: 12px;
+        padding: 15px 30px;
+        display: flex;
+        gap: 15px;
+        box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+        transition: bottom 0.3s ease;
+        z-index: 999;
+    }
+    
+    .delete-bar.visible {
+        bottom: 30px;
+    }
+    
+    .delete-btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .delete-btn-selected {
+        background: #dc3545;
+        color: white;
+    }
+    
+    .delete-btn-selected:hover {
+        background: #c82333;
+    }
+    
+    .delete-btn-all {
+        background: #6c757d;
+        color: white;
+    }
+    
+    .delete-btn-all:hover {
+        background: #5a6268;
+    }
+    
+    /* ===== VIDEO PREVIEW AREA ===== */
+    .video-preview-container {
+        margin-top: 20px;
+        border: 2px solid #ddd;
+        border-radius: 8px;
+        padding: 20px;
+        background: #fafafa;
+        display: none;
+    }
+    
+    .video-preview-container.active {
+        display: block;
+    }
+    
+    .video-preview {
+        width: 100%;
+        max-height: 400px;
+        background: repeating-conic-gradient(#ddd 0% 25%, white 0% 50%) 50% / 20px 20px;
+        border-radius: 8px;
+    }
+    
+    .frame-controls {
+        display: flex;
+        gap: 10px;
+        margin-top: 15px;
+        justify-content: center;
+    }
+    
+    .frame-btn {
+        padding: 8px 16px;
+        background: #007bff;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 600;
+    }
+    
+    .frame-btn:hover {
+        background: #0056b3;
+    }
+    
+    /* ===== KEYING CONTROLS ===== */
+    .keying-controls {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+        margin-top: 20px;
+    }
+    
+    .slider-group {
+        margin-bottom: 15px;
+    }
+    
+    .slider-label {
+        display: flex;
+        justify-content: space-between;
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 5px;
+        color: #555;
+    }
+    
+    .slider {
+        width: 100%;
+        height: 6px;
+        border-radius: 3px;
+        background: #ddd;
+        outline: none;
+    }
+    
+    .slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: #007bff;
+        cursor: pointer;
+    }
+    
+    .slider::-moz-range-thumb {
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: #007bff;
+        cursor: pointer;
+        border: none;
+    }
+    
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 1200px) {
+        .tool-panel {
+            width: 45%;
+        }
+    }
+    
+    @media (max-width: 900px) {
+        .tool-panel {
+            width: 100%;
+            max-width: none;
+        }
+        
+        .queue-panel {
+            display: none;
+        }
+    }
+    
+    /* ===== MEDIA VIEWER MODAL ===== */
+    .media-modal {
+        display: none;
+        position: fixed;
+        z-index: 2000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.95);
+    }
+    
+    .media-modal.active {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .media-modal-content {
+        position: relative;
+        max-width: 90vw;
+        max-height: 90vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .modal-media {
+        max-width: 100%;
+        max-height: 90vh;
+        object-fit: contain;
+        border-radius: 8px;
+    }
+    
+    .media-modal-close {
+        position: absolute;
+        top: -50px;
+        right: 0;
+        background: rgba(255,255,255,0.1);
+        color: white;
+        border: 2px solid rgba(255,255,255,0.3);
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        font-size: 30px;
+        cursor: pointer;
+        line-height: 35px;
+        transition: all 0.2s;
+    }
+    
+    .media-modal-close:hover {
+        background: rgba(255,255,255,0.2);
+        border-color: rgba(255,255,255,0.5);
+    }
+    
+    .media-modal-nav {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        background: rgba(255,255,255,0.1);
+        color: white;
+        border: 2px solid rgba(255,255,255,0.3);
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        font-size: 40px;
+        cursor: pointer;
+        line-height: 45px;
+        transition: all 0.2s;
+    }
+    
+    .media-modal-nav:hover {
+        background: rgba(255,255,255,0.2);
+        border-color: rgba(255,255,255,0.5);
+    }
+    
+    .media-nav-prev {
+        left: -80px;
+    }
+    
+    .media-nav-next {
+        right: -80px;
+    }
+    
+    .media-modal-info {
+        position: absolute;
+        bottom: -50px;
+        left: 50%;
+        transform: translateX(-50%);
+        color: white;
+        display: flex;
+        gap: 20px;
+        font-size: 14px;
+    }
+    
+    /* ===== UTILITY CLASSES ===== */
+    .hidden {
+        display: none !important;
+    }
+    
+    .text-center {
+        text-align: center;
+    }
+    
+    .mb-10 {
+        margin-bottom: 10px;
+    }
+    
+    .mb-20 {
+        margin-bottom: 20px;
+    }
+    
+    .mt-10 {
+        margin-top: 10px;
+    }
+    
+    .flex-between {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .clickable-thumbnail {
+        cursor: pointer;
+        transition: opacity 0.2s;
+    }
+    
+    .clickable-thumbnail:hover {
+        opacity: 0.8;
+    }
+</style>
+
+<!-- TOP TOOLBAR -->
+<div class="top-toolbar">
+    <button class="tool-btn" data-tool="image-generator">Generate Image</button>
+    <button class="tool-btn" data-tool="animation">Animate</button>
+    <button class="tool-btn" data-tool="loop-creator">Loop Creator</button>
+    <button class="tool-btn" data-tool="keyer">Key</button>
+    <button class="tool-btn" data-tool="remove-bg">Remove Background</button>
+</div>
+
+<!-- MAIN CONTAINER -->
+<div class="main-container">
+    <!-- LEFT TOOL PANEL -->
+    <div class="tool-panel">
+        <!-- IMAGE GENERATOR TOOL -->
+        <div class="tool-content" id="tool-image-generator">
+            <h2 class="tool-title">Image Generator</h2>
+            
+            <div class="form-group">
+                <label class="form-label">Object to create:</label>
+                <input type="text" class="form-input" id="img-object-prompt" placeholder="e.g., a magical cat">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Upload Style Reference:</label>
+                <div class="upload-area" id="style-ref-upload">
+                    <p>Click or drag to upload style reference image</p>
+                    <input type="file" id="style-ref-file" accept="image/*" style="display: none;">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Upload Color Reference:</label>
+                <div class="upload-area" id="color-ref-upload">
+                    <p>Click or drag to upload color reference image</p>
+                    <input type="file" id="color-ref-file" accept="image/*" style="display: none;">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Describe style (optional):</label>
+                <textarea class="form-textarea" id="img-style-prompt" placeholder="Additional style description..."></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Select Image Models:</label>
+                <div class="checkbox-group" style="grid-template-columns: repeat(2, 1fr);">
+                    <label class="checkbox-item">
+                        <input type="checkbox" name="image-model" value="b24e16ff-06e3-43eb-8d33-4416c2d75876">
+                        <span>Leonardo Diffusion XL</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" name="image-model" value="5c232a9e-9061-4777-980a-ddc8e65647c6">
+                        <span>Leonardo Vision XL</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" name="image-model" value="2067ae52-33fd-4a82-bb92-c2c55e7d2786">
+                        <span>AlbedoBase XL</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" name="image-model" value="replicate-gpt-image-1">
+                        <span>OpenAI Replicate</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" name="image-model" value="bytedance-seedream-4">
+                        <span>Bytedance Seedream-4</span>
+                    </label>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Dimensions:</label>
+                <select class="form-select" id="img-aspect-ratio">
+                    <option value="1:1">1:1 (Square)</option>
+                    <option value="16:9">16:9 (Landscape)</option>
+                    <option value="9:16">9:16 (Portrait)</option>
+                    <option value="4:3">4:3</option>
+                    <option value="3:4">3:4</option>
+                </select>
+            </div>
+            
+            <button class="btn-primary" onclick="generateImage()">Generate Image</button>
+        </div>
+        
+        <!-- ANIMATION GENERATOR TOOL -->
+        <div class="tool-content" id="tool-animation">
+            <h2 class="tool-title">Animation Generator</h2>
+            
+            <div class="form-group">
+                <div class="upload-area" id="anim-start-frame-upload">
+                    <p>Upload Start Frame</p>
+                    <input type="file" id="anim-start-frame" accept="image/*" style="display: none;">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Animation Prompt:</label>
+                <textarea class="form-textarea" id="anim-prompt" placeholder="Describe the animation..."></textarea>
+                <button class="btn-secondary mt-10" id="get-idea-btn" onclick="getAnimationIdea()">Get Idea</button>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Negative Prompt (optional):</label>
+                <textarea class="form-textarea" id="anim-neg-prompt" placeholder="What to avoid..."></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Choose Background:</label>
+                <div class="checkbox-group" style="grid-template-columns: repeat(3, 1fr);">
+                    <label class="checkbox-item">
+                        <input type="radio" name="anim-background" value="as-is" checked>
+                        <span>As Is</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="radio" name="anim-background" value="green">
+                        <span>Green Screen</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="radio" name="anim-background" value="blue">
+                        <span>Blue Screen</span>
+                    </label>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Select Animation Models:</label>
+                <div class="checkbox-group">
+                    <label class="checkbox-item">
+                        <input type="checkbox" name="anim-model" value="kwaivgi/kling-v2.1">
+                        <span>Kling v2.1</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" name="anim-model" value="bytedance/seedance-1-pro">
+                        <span>Seedance-1 Pro</span>
+                    </label>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="checkbox-item" style="border: none; padding: 0;">
+                    <input type="checkbox" id="anim-seamless-loop">
+                    <span>Seamless Loop</span>
+                </label>
+            </div>
+            
+            <button class="btn-primary" onclick="generateAnimation()">Generate Animation</button>
+        </div>
+        
+        <!-- LOOP CREATOR TOOL -->
+        <div class="tool-content" id="tool-loop-creator">
+            <h2 class="tool-title">Loop Creator</h2>
+            
+            <div class="form-group">
+                <label class="form-label">Upload Video:</label>
+                <div class="upload-area" id="loop-video-upload">
+                    <p>Click or drag to upload video</p>
+                    <input type="file" id="loop-video-file" accept="video/*" style="display: none;">
+                </div>
+            </div>
+            
+            <div class="video-preview-container" id="loop-video-preview-container">
+                <video class="video-preview" id="loop-video-preview" controls></video>
+                <div class="frame-controls">
+                    <button class="frame-btn" onclick="loopPrevFrame()">◀ Frame</button>
+                    <button class="frame-btn" onclick="loopNextFrame()">+ Frame ▶</button>
+                    <button class="frame-btn" onclick="extractFrameA()">Extract A</button>
+                    <button class="frame-btn" onclick="extractFrameB()">Extract B</button>
+                </div>
+            </div>
+            
+            <div class="form-group mt-20">
+                <label class="form-label">Animation Prompt:</label>
+                <textarea class="form-textarea" id="loop-anim-prompt" placeholder="Describe the animation..."></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Negative Prompt:</label>
+                <textarea class="form-textarea" id="loop-neg-prompt" placeholder="What to avoid..."></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Choose Background:</label>
+                <div class="checkbox-group" style="grid-template-columns: repeat(3, 1fr);">
+                    <label class="checkbox-item">
+                        <input type="radio" name="loop-background" value="as-is" checked>
+                        <span>As Is</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="radio" name="loop-background" value="green">
+                        <span>Green Screen</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="radio" name="loop-background" value="blue">
+                        <span>Blue Screen</span>
+                    </label>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Select Animation Model:</label>
+                <div class="checkbox-group">
+                    <label class="checkbox-item">
+                        <input type="radio" name="loop-model" value="kwaivgi/kling-v2.1" checked>
+                        <span>Kling v2.1</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="radio" name="loop-model" value="bytedance/seedance-1-pro">
+                        <span>Seedance-1 Pro</span>
+                    </label>
+                </div>
+            </div>
+            
+            <button class="btn-primary" onclick="createLoop()">Generate Animation</button>
+        </div>
+        
+        <!-- VIDEO KEYER TOOL -->
+        <div class="tool-content" id="tool-keyer">
+            <h2 class="tool-title">Video Keyer</h2>
+            
+            <div class="form-group">
+                <label class="form-label">Upload Video:</label>
+                <div class="upload-area" id="keyer-video-upload">
+                    <p>Click or drag to upload video</p>
+                    <input type="file" id="keyer-video-file" accept="video/*" style="display: none;">
+                </div>
+            </div>
+            
+            <div class="video-preview-container" id="keyer-video-preview-container">
+                <video class="video-preview" id="keyer-video-preview" controls></video>
+                
+                <div class="keying-controls">
+                    <!-- Color Preview Box -->
+                    <div style="margin-bottom: 15px; text-align: center;">
+                        <div style="font-weight: 600; margin-bottom: 8px;">Target Color Preview:</div>
+                        <div id="color-preview" style="width: 100px; height: 50px; margin: 0 auto; border: 2px solid #333; border-radius: 8px; background: hsl(60, 100%, 50%);"></div>
+                        <div style="margin-top: 5px; font-size: 12px; color: #666;" id="color-preview-text">HSV: (60, 100%, 100%)</div>
+                    </div>
+                    
+                    <div class="slider-group">
+                        <div class="slider-label">
+                            <span>Hue: <span id="hue-value">60</span></span>
+                        </div>
+                        <input type="range" class="slider" id="keyer-hue" min="0" max="180" value="60" oninput="updateSliderValue('hue'); updateColorPreview();">
+                    </div>
+                    
+                    <div class="slider-group">
+                        <div class="slider-label">
+                            <span>Hue Tolerance: <span id="hue-tol-value">25</span></span>
+                        </div>
+                        <input type="range" class="slider" id="keyer-hue-tol" min="0" max="90" value="25" oninput="updateSliderValue('hue-tol')">
+                    </div>
+                    
+                    <div class="slider-group">
+                        <div class="slider-label">
+                            <span>Saturation: <span id="sat-value">80</span></span>
+                        </div>
+                        <input type="range" class="slider" id="keyer-sat" min="0" max="255" value="80" oninput="updateSliderValue('sat'); updateColorPreview();">
+                    </div>
+                    
+                    <div class="slider-group">
+                        <div class="slider-label">
+                            <span>Value Min: <span id="val-value">80</span></span>
+                        </div>
+                        <input type="range" class="slider" id="keyer-val" min="0" max="255" value="80" oninput="updateSliderValue('val'); updateColorPreview();">
+                    </div>
+                    
+                    <div class="slider-group">
+                        <div class="slider-label">
+                            <span>Choke/Erode: <span id="erode-value">2</span></span>
+                        </div>
+                        <input type="range" class="slider" id="keyer-erode" min="-5" max="5" value="2" oninput="updateSliderValue('erode')">
+                    </div>
+                    
+                    <div class="slider-group">
+                        <div class="slider-label">
+                            <span>Soften/Dilate: <span id="dilate-value">2</span></span>
+                        </div>
+                        <input type="range" class="slider" id="keyer-dilate" min="-5" max="5" value="2" oninput="updateSliderValue('dilate')">
+                    </div>
+                    
+                    <div class="slider-group">
+                        <div class="slider-label">
+                            <span>Edge Blur: <span id="blur-value">5</span></span>
+                        </div>
+                        <input type="range" class="slider" id="keyer-blur" min="0" max="15" value="5" oninput="updateSliderValue('blur')">
+                    </div>
+                    
+                    <div class="slider-group">
+                        <div class="slider-label">
+                            <span>Spill Suppression: <span id="spill-value">5</span></span>
+                        </div>
+                        <input type="range" class="slider" id="keyer-spill" min="0" max="20" value="5" oninput="updateSliderValue('spill')">
+                    </div>
+                </div>
+                
+                <div class="frame-controls">
+                    <button class="frame-btn" onclick="keyerPrevFrame()">◀ Frame</button>
+                    <button class="frame-btn" onclick="keyerNextFrame()">+ Frame ▶</button>
+                    <button class="frame-btn" onclick="previewKeying()">Preview</button>
+                    <button class="frame-btn" onclick="resetPreview()">Reset Preview</button>
+                </div>
+            </div>
+            
+            <button class="btn-primary" onclick="processKeying()">Save & Process</button>
+        </div>
+        
+        <!-- REMOVE BACKGROUND TOOL -->
+        <div class="tool-content" id="tool-remove-bg">
+            <h2 class="tool-title">Remove Background</h2>
+            
+            <div class="form-group">
+                <label class="form-label">Upload Image:</label>
+                <div class="upload-area" id="remove-bg-upload">
+                    <p>Click or drag to upload image</p>
+                    <input type="file" id="remove-bg-file" accept="image/*" style="display: none;">
+                </div>
+            </div>
+            
+            <button class="btn-primary" onclick="removeBackground()">Remove Background</button>
+        </div>
+    </div>
+    
+    <!-- RIGHT JOB QUEUE PANEL -->
+    <div class="queue-panel">
+        <div class="queue-header">
+            <span>Job Queue</span>
+            <span class="queue-count" id="queue-count">0 jobs</span>
+        </div>
+        
+        <div id="job-queue-container">
+            <!-- Jobs will be dynamically inserted here -->
+        </div>
+    </div>
+</div>
+
+<!-- FLOATING DELETE BAR -->
+<div class="delete-bar" id="delete-bar">
+    <button class="delete-btn delete-btn-selected" onclick="deleteSelected()">Delete Selected</button>
+    <button class="delete-btn delete-btn-all" onclick="deleteAll()">Delete All</button>
+</div>
+
+<!-- MEDIA VIEWER MODAL -->
+<div id="media-viewer-modal" class="media-modal" onclick="closeMediaViewer(event)">
+    <div class="media-modal-content">
+        <button class="media-modal-close" onclick="closeMediaViewer(event)">&times;</button>
+        <button class="media-modal-nav media-nav-prev" onclick="navigateMedia(-1, event)">&#8249;</button>
+        <button class="media-modal-nav media-nav-next" onclick="navigateMedia(1, event)">&#8250;</button>
+        
+        <img id="modal-image" class="modal-media" style="display: none;" />
+        <video id="modal-video" class="modal-media" controls loop autoplay muted style="display: none;"></video>
+        
+        <div class="media-modal-info">
+            <span id="modal-counter"></span>
+            <span id="modal-job-type"></span>
+        </div>
+    </div>
+</div>
+
+<script>
+// ===== GLOBAL STATE =====
+let currentTool = null;
+let selectedJobs = new Set();
+let allJobs = [];
+let frameA = null;
+let frameB = null;
+let loopVideoPath = null;
+let keyerVideoPath = null;
+let lastJobHash = '';
+let stitchSelection = []; // Track videos selected for stitching
+let currentKeyingJobId = null; // Track which job is being keyed
+let pollInterval = null;
+let currentPollSpeed = 3000; // Start at 3 seconds
+let mediaViewerIndex = 0;
+let viewableJobs = [];
+
+// ===== TOOL SWITCHING =====
+document.querySelectorAll('.tool-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const tool = btn.dataset.tool;
+        switchTool(tool);
+    });
+});
+
+function switchTool(toolName) {
+    // Remove active class from all buttons
+    document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+    
+    // Hide all tool contents
+    document.querySelectorAll('.tool-content').forEach(content => content.classList.remove('active'));
+    
+    // Activate selected tool
+    const btn = document.querySelector(`[data-tool="${toolName}"]`);
+    const content = document.getElementById(`tool-${toolName}`);
+    
+    if (btn && content) {
+        btn.classList.add('active');
+        content.classList.add('active');
+        currentTool = toolName;
+    }
+}
+
+// ===== UPLOAD AREA HANDLERS =====
+function setupUploadArea(uploadId, fileInputId) {
+    const uploadArea = document.getElementById(uploadId);
+    const fileInput = document.getElementById(fileInputId);
+    
+    uploadArea.addEventListener('click', () => fileInput.click());
+    
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            uploadArea.classList.add('has-file');
+            uploadArea.querySelector('p').textContent = `✓ ${e.target.files[0].name}`;
+        }
+    });
+    
+    uploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadArea.style.borderColor = '#007bff';
+    });
+    
+    uploadArea.addEventListener('dragleave', () => {
+        uploadArea.style.borderColor = '#ddd';
+    });
+    
+    uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            fileInput.files = files;
+            uploadArea.classList.add('has-file');
+            uploadArea.querySelector('p').textContent = `✓ ${files[0].name}`;
+        }
+        uploadArea.style.borderColor = '#ddd';
+    });
+}
+
+// Setup all upload areas
+setupUploadArea('style-ref-upload', 'style-ref-file');
+setupUploadArea('color-ref-upload', 'color-ref-file');
+setupUploadArea('anim-start-frame-upload', 'anim-start-frame');
+setupUploadArea('loop-video-upload', 'loop-video-file');
+setupUploadArea('keyer-video-upload', 'keyer-video-file');
+setupUploadArea('remove-bg-upload', 'remove-bg-file');
+
+// ===== VIDEO PREVIEW HANDLERS =====
+document.getElementById('loop-video-file').addEventListener('change', (e) => {
+    if (e.target.files.length > 0) {
+        const file = e.target.files[0];
+        const url = URL.createObjectURL(file);
+        const video = document.getElementById('loop-video-preview');
+        video.src = url;
+        document.getElementById('loop-video-preview-container').classList.add('active');
+    }
+});
+
+document.getElementById('keyer-video-file').addEventListener('change', (e) => {
+    if (e.target.files.length > 0) {
+        const file = e.target.files[0];
+        const url = URL.createObjectURL(file);
+        const video = document.getElementById('keyer-video-preview');
+        video.src = url;
+        document.getElementById('keyer-video-preview-container').classList.add('active');
+    }
+});
+
+// ===== SLIDER VALUE UPDATES =====
+function updateSliderValue(sliderId) {
+    const slider = document.getElementById(`keyer-${sliderId}`);
+    const valueSpan = document.getElementById(`${sliderId}-value`);
+    valueSpan.textContent = slider.value;
+}
+
+function updateColorPreview() {
+    // Get slider values
+    const hue = parseInt(document.getElementById('keyer-hue').value);
+    const sat = parseInt(document.getElementById('keyer-sat').value);
+    const val = parseInt(document.getElementById('keyer-val').value);
+    
+    // Convert to percentages for HSL (CSS format)
+    // OpenCV HSV: H(0-180), S(0-255), V(0-255)
+    // CSS HSL: H(0-360), S(0-100%), L(0-100%)
+    const hueCSS = hue * 2; // Convert 0-180 to 0-360
+    const satCSS = (sat / 255) * 100; // Convert 0-255 to 0-100%
+    const lightCSS = (val / 255) * 50; // Convert 0-255 to 0-100% (using 50% as base)
+    
+    // Update preview box
+    const preview = document.getElementById('color-preview');
+    preview.style.background = `hsl(${hueCSS}, ${satCSS}%, ${lightCSS + 25}%)`; // +25 to make it brighter
+    
+    // Update text
+    const text = document.getElementById('color-preview-text');
+    text.textContent = `HSV: (${hue}, ${sat}, ${val})`;
+    
+    console.log('Color preview updated:', { hue, sat, val, hueCSS, satCSS, lightCSS });
+}
+
+// ===== SMART POLLING SYSTEM =====
+function hashJobs(jobs) {
+    // Create a simple hash of job data to detect changes
+    return jobs.map(j => `${j.id}-${j.status}-${j.result_data ? '1' : '0'}`).join('|');
+}
+
+function hasActiveJobs(jobs) {
+    // Check if any jobs are actively processing
+    const activeStatuses = ['queued', 'processing', 'keying_queued', 'keying_processing', 'waiting_for_analysis', 'waiting_for_children'];
+    return jobs.some(job => activeStatuses.includes(job.status));
+}
+
+function adjustPollSpeed(jobs) {
+    let newSpeed;
+    
+    if (jobs.length === 0) {
+        // No jobs - poll slowly
+        newSpeed = 10000; // 10 seconds
+    } else if (hasActiveJobs(jobs)) {
+        // Active jobs - poll frequently
+        newSpeed = 2000; // 2 seconds
+    } else {
+        // All jobs complete/failed - poll moderately
+        newSpeed = 5000; // 5 seconds
+    }
+    
+    // Only restart interval if speed changed
+    if (newSpeed !== currentPollSpeed) {
+        currentPollSpeed = newSpeed;
+        startPolling();
+    }
+}
+
+// ===== JOB QUEUE MANAGEMENT =====
+function loadJobs() {
+    fetch('/api/jobs')
+        .then(res => res.json())
+        .then(data => {
+            let jobs = Array.isArray(data) ? data : (data.jobs || []);
+            
+            // Filter out internal jobs, animation prompting jobs, and internal stitching jobs
+            jobs = jobs.filter(job => {
+                // Hide animation_prompting jobs
+                if (job.job_type === 'animation_prompting') return false;
+                
+                // Hide video_stitching jobs that are part of boomerang automation (have a parent)
+                // Keep animation jobs visible so users can stitch them manually
+                if (job.job_type === 'video_stitching' && job.parent_job_id) return false;
+                
+                // Hide internal analysis jobs
+                try {
+                    const inputData = JSON.parse(job.input_data || '{}');
+                    return !inputData.internal;
+                } catch {
+                    return true;
+                }
+            });
+            
+            // Check if data actually changed
+            const newHash = hashJobs(jobs);
+            if (newHash !== lastJobHash) {
+                lastJobHash = newHash;
+                allJobs = jobs;
+                renderJobs();
+                updateQueueCount();
+            }
+            
+            // Adjust polling speed based on job activity
+            adjustPollSpeed(jobs);
+        })
+        .catch(err => console.error('Error loading jobs:', err));
+}
+
+function startPolling() {
+    // Clear existing interval
+    if (pollInterval) {
+        clearInterval(pollInterval);
+    }
+    
+    // Start new interval with current speed
+    pollInterval = setInterval(loadJobs, currentPollSpeed);
+    console.log(`Polling interval set to ${currentPollSpeed}ms`);
+}
+
+function renderJobs() {
+    const container = document.getElementById('job-queue-container');
+    if (allJobs.length === 0) {
+        container.innerHTML = '<p style="text-align: center; color: #999; padding: 40px;">No jobs yet. Create one using the tools!</p>';
+        return;
+    }
+    
+    container.innerHTML = allJobs.map(job => renderJobCard(job)).join('');
+}
+
+function renderJobCard(job) {
+    const isProcessing = ['processing', 'keying_processing'].includes(job.status);
+    const statusClass = `status-${job.status.split('_')[0]}`;
+    
+    // Determine if this is a video or image job
+    const isVideoJob = ['animation', 'boomerang_automation', 'video_stitching'].includes(job.job_type);
+    
+    // Get thumbnail and media URL
+    let thumbnail = '';
+    let mediaUrl = '';
+    let hasViewableMedia = false;
+    let isKeyedVideo = false;
+    
+    // Prefer keyed result over original for display
+    if ((job.status === 'completed' || job.status === 'pending_review')) {
+        if (job.keyed_result_data) {
+            mediaUrl = job.keyed_result_data;
+            thumbnail = job.keyed_result_data;
+            hasViewableMedia = true;
+            isKeyedVideo = true;
+        } else if (job.result_data) {
+            mediaUrl = job.result_data;
+            thumbnail = job.result_data;
+            hasViewableMedia = true;
+        }
+    } else if (job.input_data) {
+        try {
+            const inputData = JSON.parse(job.input_data);
+            if (inputData.image_url) thumbnail = inputData.image_url;
+            else if (inputData.image_path) thumbnail = inputData.image_path;
+        } catch {}
+    }
+    
+    // Generate thumbnail HTML based on media type
+    let thumbnailHtml = '';
+    if (hasViewableMedia && isVideoJob) {
+        // Video thumbnail - autoplay and loop continuously
+        // Add checkerboard background for keyed videos
+        const bgStyle = isKeyedVideo ? `background-image: linear-gradient(45deg, #ddd 25%, transparent 25%), linear-gradient(-45deg, #ddd 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ddd 75%), linear-gradient(-45deg, transparent 75%, #ddd 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0px; background-color: #fff;` : '';
+        thumbnailHtml = `<video src="${thumbnail}" class="job-thumbnail clickable-thumbnail" 
+                               onclick="openMediaViewer(${job.id})" 
+                               style="${bgStyle}"
+                               muted loop autoplay playsinline></video>`;
+    } else if (thumbnail) {
+        // Image thumbnail
+        const clickable = hasViewableMedia ? 'clickable-thumbnail' : '';
+        const onclick = hasViewableMedia ? `onclick="openMediaViewer(${job.id})"` : '';
+        thumbnailHtml = `<img src="${thumbnail}" class="job-thumbnail ${clickable}" ${onclick} alt="${job.job_type}">`;
+    } else {
+        thumbnailHtml = `<div class="job-thumbnail" style="background: #f0f0f0; display: flex; align-items: center; justify-content: center; color: #999;">No preview</div>`;
+    }
+    
+    // Generate action buttons based on job type
+    const actions = getJobActions(job);
+    
+    return `
+        <div class="job-card ${selectedJobs.has(job.id) ? 'selected' : ''}" data-job-id="${job.id}">
+            ${!isProcessing ? `
+                <div class="job-checkbox">
+                    <input type="checkbox" ${selectedJobs.has(job.id) ? 'checked' : ''} 
+                           onchange="toggleJobSelection(${job.id})">
+                </div>
+            ` : ''}
+            ${thumbnailHtml}
+            <div class="job-info">
+                <div class="job-header">
+                    <span class="job-type">${formatJobType(job.job_type)}</span>
+                    <span class="job-status ${statusClass}">${job.status}</span>
+                </div>
+                <div class="job-prompt">${job.prompt || 'No prompt'}</div>
+                <div class="job-actions">
+                    ${actions}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function formatJobType(jobType) {
+    const map = {
+        'image_generation': 'Image',
+        'animation': 'Animation',
+        'boomerang_automation': 'Animation Loop',
+        'video_stitching': 'Stitched Video',
+        'background_removal': 'Transparent Image',
+        'keying_queued': 'Keyed Video',
+        'keying_processing': 'Keyed Video'
+    };
+    return map[jobType] || jobType;
+}
+
+function getJobActions(job) {
+    const actions = [];
+    
+    // Common actions for completed jobs
+    if (job.status === 'completed') {
+        if (job.job_type === 'image_generation') {
+            actions.push(`<button class="job-action-btn" onclick="regenerateJob(${job.id})">Regenerate</button>`);
+            actions.push(`<button class="job-action-btn" onclick="editJob(${job.id})">Edit</button>`);
+            actions.push(`<button class="job-action-btn" onclick="animateImage(${job.id})">Animate</button>`);
+            actions.push(`<button class="job-action-btn" onclick="removeBgFromJob(${job.id})">Remove Bg</button>`);
+        }
+        
+        if (job.job_type === 'animation') {
+            actions.push(`<button class="job-action-btn" onclick="regenerateJob(${job.id})">Regenerate</button>`);
+            actions.push(`<button class="job-action-btn" onclick="editJob(${job.id})">Edit</button>`);
+            actions.push(`<button class="job-action-btn" onclick="selectForStitch(${job.id})">Stitch</button>`);
+            actions.push(`<button class="job-action-btn" onclick="createLoopFromJob(${job.id})">Loop Creator</button>`);
+            
+            // Show keying buttons
+            if (!job.keyed_result_data) {
+                // Original video - show auto key and manual key options
+                actions.push(`<button class="job-action-btn" onclick="autoKeyJob(${job.id})">Auto Key</button>`);
+                actions.push(`<button class="job-action-btn" onclick="manualKeyJob(${job.id})">Key</button>`);
+            } else {
+                // Keyed video - show download and re-key options
+                actions.push(`<button class="job-action-btn" onclick="downloadKeyed(${job.id})">Download Keyed</button>`);
+                actions.push(`<button class="job-action-btn" onclick="reKeyJob(${job.id})">Re-Key</button>`);
+            }
+        }
+        
+        if (job.job_type === 'boomerang_automation') {
+            actions.push(`<button class="job-action-btn" onclick="selectForStitch(${job.id})">Stitch</button>`);
+            
+            if (!job.keyed_result_data) {
+                actions.push(`<button class="job-action-btn" onclick="autoKeyJob(${job.id})">Auto Key</button>`);
+                actions.push(`<button class="job-action-btn" onclick="manualKeyJob(${job.id})">Key</button>`);
+            } else {
+                actions.push(`<button class="job-action-btn" onclick="downloadKeyed(${job.id})">Download Keyed</button>`);
+                actions.push(`<button class="job-action-btn" onclick="reKeyJob(${job.id})">Re-Key</button>`);
+            }
+        }
+        
+        if (job.job_type === 'background_removal') {
+            actions.push(`<button class="job-action-btn" onclick="downloadJob(${job.id})">Download</button>`);
+            actions.push(`<button class="job-action-btn" onclick="animateImage(${job.id})">Animate</button>`);
+        }
+    }
+    
+    return actions.join('');
+}
+
+function updateQueueCount() {
+    document.getElementById('queue-count').textContent = `${allJobs.length} job${allJobs.length !== 1 ? 's' : ''}`;
+}
+
+// ===== JOB SELECTION =====
+function toggleJobSelection(jobId) {
+    if (selectedJobs.has(jobId)) {
+        selectedJobs.delete(jobId);
+    } else {
+        selectedJobs.add(jobId);
+    }
+    
+    // Update UI
+    const deleteBar = document.getElementById('delete-bar');
+    if (selectedJobs.size > 0) {
+        deleteBar.classList.add('visible');
+    } else {
+        deleteBar.classList.remove('visible');
+    }
+    
+    renderJobs();
+}
+
+// ===== IMAGE GENERATION =====
+function generateImage() {
+    const formData = new FormData();
+    formData.append('object_prompt', document.getElementById('img-object-prompt').value);
+    formData.append('style_prompt', document.getElementById('img-style-prompt').value);
+    formData.append('aspect_ratio', document.getElementById('img-aspect-ratio').value);
+    
+    // Add style/color refs if uploaded
+    const styleRef = document.getElementById('style-ref-file').files[0];
+    const colorRef = document.getElementById('color-ref-file').files[0];
+    if (styleRef) formData.append('style_ref_image', styleRef);
+    if (colorRef) formData.append('color_ref_image', colorRef);
+    
+    // Add selected models
+    const models = Array.from(document.querySelectorAll('input[name="image-model"]:checked')).map(el => el.value);
+    models.forEach(model => formData.append('modelId', model));
+    
+    if (models.length === 0) {
+        alert('Please select at least one image model');
+        return;
+    }
+    
+    fetch('/image-tool', { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                loadJobs();
+                alert('Image generation started!');
+            } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+            }
+        });
+}
+
+// ===== ANIMATION GENERATION =====
+function generateAnimation() {
+    const formData = new FormData();
+    
+    const startFrame = document.getElementById('anim-start-frame').files[0];
+    const hiddenImageUrl = document.querySelector('input[name="image_url_from_job"]');
+    
+    if (!startFrame && !hiddenImageUrl) {
+        alert('Please upload a start frame or select from an existing job');
+        return;
+    }
+    
+    const prompt = document.getElementById('anim-prompt').value.trim();
+    if (!prompt) {
+        alert('Please enter an animation prompt');
+        return;
+    }
+    
+    if (startFrame) {
+        formData.append('start_frame', startFrame);
+    } else if (hiddenImageUrl) {
+        formData.append('image_url', hiddenImageUrl.value);
+    }
+    
+    formData.append('prompt', prompt);
+    formData.append('negative_prompt', document.getElementById('anim-neg-prompt').value);
+    formData.append('background', document.querySelector('input[name="anim-background"]:checked').value);
+    formData.append('seamless_loop', document.getElementById('anim-seamless-loop').checked);
+    
+    const models = Array.from(document.querySelectorAll('input[name="anim-model"]:checked')).map(el => el.value);
+    models.forEach(model => formData.append('video_model', model));
+    
+    if (models.length === 0) {
+        alert('Please select at least one animation model');
+        return;
+    }
+    
+    fetch('/generate-animation', { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                loadJobs();
+                console.log('Animation job created successfully');
+                
+                // Clear the form
+                document.getElementById('anim-start-frame').value = '';
+                document.getElementById('anim-start-frame-upload').classList.remove('has-file');
+                document.getElementById('anim-start-frame-upload').querySelector('p').textContent = 'Upload Start Frame';
+                if (hiddenImageUrl) hiddenImageUrl.remove();
+            } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => {
+            console.error('Animation generation error:', err);
+            alert('Failed to submit animation job');
+        });
+}
+
+// ===== LOOP CREATOR =====
+let extractedFrameA = null;
+let extractedFrameB = null;
+
+function loopPrevFrame() {
+    const video = document.getElementById('loop-video-preview');
+    video.currentTime = Math.max(0, video.currentTime - 1/30);
+}
+
+function loopNextFrame() {
+    const video = document.getElementById('loop-video-preview');
+    video.currentTime = Math.min(video.duration, video.currentTime + 1/30);
+}
+
+function captureVideoFrame(video) {
+    // Create a canvas to capture the current frame
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    // Convert canvas to blob
+    return new Promise((resolve) => {
+        canvas.toBlob((blob) => {
+            resolve(blob);
+        }, 'image/png');
+    });
+}
+
+async function extractFrameA() {
+    const video = document.getElementById('loop-video-preview');
+    if (!video.src) {
+        alert('Please load a video first');
+        return;
+    }
+    
+    try {
+        extractedFrameA = await captureVideoFrame(video);
+        alert(`✅ Frame A extracted at ${video.currentTime.toFixed(2)}s`);
+        console.log('Frame A extracted:', extractedFrameA);
+    } catch (err) {
+        console.error('Failed to extract frame A:', err);
+        alert('Failed to extract frame A');
+    }
+}
+
+async function extractFrameB() {
+    const video = document.getElementById('loop-video-preview');
+    if (!video.src) {
+        alert('Please load a video first');
+        return;
+    }
+    
+    try {
+        extractedFrameB = await captureVideoFrame(video);
+        alert(`✅ Frame B extracted at ${video.currentTime.toFixed(2)}s`);
+        console.log('Frame B extracted:', extractedFrameB);
+    } catch (err) {
+        console.error('Failed to extract frame B:', err);
+        alert('Failed to extract frame B');
+    }
+}
+
+function createLoop() {
+    // Validate inputs
+    if (!extractedFrameA || !extractedFrameB) {
+        alert('Please extract both Frame A and Frame B first');
+        return;
+    }
+    
+    const prompt = document.getElementById('loop-anim-prompt').value.trim();
+    if (!prompt) {
+        alert('Please enter an animation prompt');
+        return;
+    }
+    
+    const negativePrompt = document.getElementById('loop-neg-prompt').value.trim();
+    const background = document.querySelector('input[name="loop-background"]:checked').value;
+    const videoModel = document.querySelector('input[name="loop-model"]:checked').value;
+    
+    // Create FormData
+    const formData = new FormData();
+    formData.append('prompt', prompt);
+    formData.append('negative_prompt', negativePrompt);
+    formData.append('background', background);
+    formData.append('video_model', videoModel);
+    formData.append('boomerang_automation', 'true');
+    formData.append('start_frame', extractedFrameA, 'frame_a.png');
+    formData.append('end_frame', extractedFrameB, 'frame_b.png');
+    
+    // Add model-specific parameters
+    if (videoModel.includes('kling')) {
+        formData.append('kling_duration', '5');
+        formData.append('kling_mode', 'pro');
+    } else if (videoModel.includes('seedance')) {
+        formData.append('seedance_duration', '5');
+        formData.append('seedance_resolution', '1080p');
+        formData.append('seedance_aspect_ratio', '1:1');
+    }
+    
+    // Submit the loop creation job
+    fetch('/generate-animation', {
+        method: 'POST',
+        body: formData
+    })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                alert('✅ A-B-A Loop animation queued! Check the job log.');
+                loadJobs();
+                
+                // Reset extracted frames
+                extractedFrameA = null;
+                extractedFrameB = null;
+            } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => {
+            console.error('Loop creation error:', err);
+            alert('Failed to submit loop creation job');
+        });
+}
+
+// ===== VIDEO KEYER =====
+function keyerPrevFrame() {
+    const video = document.getElementById('keyer-video-preview');
+    video.currentTime = Math.max(0, video.currentTime - 1/30);
+}
+
+function keyerNextFrame() {
+    const video = document.getElementById('keyer-video-preview');
+    video.currentTime = Math.min(video.duration, video.currentTime + 1/30);
+}
+
+function previewKeying() {
+    try {
+        const video = document.getElementById('keyer-video-preview');
+        if (!video || !video.src) {
+            alert('Please load a video first');
+            return;
+        }
+        
+        if (!video.videoWidth || !video.videoHeight) {
+            alert('Video not ready. Please wait for video to load.');
+            return;
+        }
+        
+        console.log('Starting preview with video dimensions:', video.videoWidth, 'x', video.videoHeight);
+        
+        // Pause video for stable preview
+        video.pause();
+        
+        // Get or create canvas
+        let canvas = document.getElementById('keying-preview-canvas');
+        if (!canvas) {
+            canvas = document.createElement('canvas');
+            canvas.id = 'keying-preview-canvas';
+            canvas.className = 'video-preview'; // Use same class as video for consistent sizing
+            canvas.style.position = 'absolute';
+            canvas.style.top = '0';
+            canvas.style.left = '0';
+            canvas.style.width = '100%';
+            canvas.style.maxHeight = '400px'; // Same as video max-height
+            canvas.style.objectFit = 'contain';
+            canvas.style.pointerEvents = 'none';
+            canvas.style.zIndex = '10';
+            
+            // Ensure parent has relative positioning
+            const container = video.parentElement;
+            const currentPos = window.getComputedStyle(container).position;
+            if (currentPos === 'static') {
+                container.style.position = 'relative';
+            }
+            
+            // Insert canvas after video
+            video.parentElement.appendChild(canvas);
+            console.log('Canvas created and appended');
+        }
+        
+        // Set canvas dimensions to match video
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        
+        const ctx = canvas.getContext('2d');
+        
+        // Clear canvas first
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Draw current video frame
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        // Get image data for processing
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        
+        // Get keying parameters
+        // Convert from OpenCV scale to standard scale for comparison with rgbToHsv output
+        // Slider: H(0-180), S(0-255), V(0-255)
+        // rgbToHsv returns: H(0-360), S(0-100), V(0-100)
+        const hueCenter = parseInt(document.getElementById('keyer-hue').value) * 2; // 0-180 -> 0-360
+        const hueTolerance = parseInt(document.getElementById('keyer-hue-tol').value) * 2; // 0-180 -> 0-360
+        const satMin = (parseInt(document.getElementById('keyer-sat').value) / 255) * 100; // 0-255 -> 0-100
+        const valMin = (parseInt(document.getElementById('keyer-val').value) / 255) * 100; // 0-255 -> 0-100
+        
+        console.log('Keying params (converted to 0-360/0-100 scale):', { hueCenter, hueTolerance, satMin, valMin });
+        
+        // Process each pixel
+        let keyed = 0;
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            
+            // Convert RGB to HSV
+            const hsv = rgbToHsv(r, g, b);
+            
+            // Check if pixel matches the key color
+            const hueDiff = Math.abs(hsv.h - hueCenter);
+            const hueMatch = hueDiff <= hueTolerance || (360 - hueDiff) <= hueTolerance;
+            const satMatch = hsv.s >= satMin;
+            const valMatch = hsv.v >= valMin;
+            
+            // If pixel matches, make it transparent
+            if (hueMatch && satMatch && valMatch) {
+                data[i + 3] = 0; // Make fully transparent
+                keyed++;
+            }
+        }
+        
+        console.log('Keyed pixels:', keyed, 'out of', data.length / 4, `(${(keyed / (data.length / 4) * 100).toFixed(1)}%)`);
+        
+        // Put processed image back
+        ctx.putImageData(imageData, 0, 0);
+        
+        // Hide video, show canvas
+        video.style.opacity = '0';
+        canvas.style.display = 'block';
+        
+        console.log('✅ Preview applied successfully - canvas visible, video hidden');
+    } catch (error) {
+        console.error('❌ Preview error:', error);
+        alert('Preview failed: ' + error.message);
+    }
+}
+
+// Helper function to convert RGB to HSV
+function rgbToHsv(r, g, b) {
+    r /= 255;
+    g /= 255;
+    b /= 255;
+    
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const diff = max - min;
+    
+    let h = 0;
+    if (diff !== 0) {
+        if (max === r) {
+            h = 60 * (((g - b) / diff) % 6);
+        } else if (max === g) {
+            h = 60 * (((b - r) / diff) + 2);
+        } else {
+            h = 60 * (((r - g) / diff) + 4);
+        }
+    }
+    if (h < 0) h += 360;
+    
+    const s = max === 0 ? 0 : (diff / max) * 100;
+    const v = max * 100;
+    
+    return { h, s, v };
+}
+
+function resetPreview() {
+    // Remove the preview canvas overlay
+    const canvas = document.getElementById('keying-preview-canvas');
+    if (canvas) {
+        canvas.style.display = 'none';
+        canvas.remove();
+        console.log('Preview canvas removed');
+    }
+    
+    // Restore video visibility
+    const video = document.getElementById('keyer-video-preview');
+    if (video) {
+        video.style.opacity = '1';
+    }
+    
+    // Reset all sliders to defaults
+    document.getElementById('keyer-hue').value = 60;
+    document.getElementById('keyer-hue-tol').value = 25;
+    document.getElementById('keyer-sat').value = 80;
+    document.getElementById('keyer-val').value = 80;
+    document.getElementById('keyer-erode').value = 2;
+    document.getElementById('keyer-dilate').value = 2;
+    document.getElementById('keyer-blur').value = 5;
+    document.getElementById('keyer-spill').value = 5;
+    
+    // Update displayed values
+    ['hue', 'hue-tol', 'sat', 'val', 'erode', 'dilate', 'blur', 'spill'].forEach(id => updateSliderValue(id));
+    
+    console.log('✅ Preview reset - video restored');
+}
+
+function processKeying() {
+    if (!currentKeyingJobId) {
+        alert('No video loaded for keying. Please click "Key" on an animation job first.');
+        return;
+    }
+    
+    // Get all keying parameters from sliders
+    const settings = {
+        hue_center: parseInt(document.getElementById('keyer-hue').value),
+        hue_tolerance: parseInt(document.getElementById('keyer-hue-tol').value),
+        saturation_min: parseInt(document.getElementById('keyer-sat').value),
+        value_min: parseInt(document.getElementById('keyer-val').value),
+        erode: parseInt(document.getElementById('keyer-erode').value),
+        dilate: parseInt(document.getElementById('keyer-dilate').value),
+        blur: parseInt(document.getElementById('keyer-blur').value),
+        spill: parseInt(document.getElementById('keyer-spill').value)
+    };
+    
+    console.log('Processing keying with settings:', settings, 'for job:', currentKeyingJobId);
+    
+    // Submit keying job
+    const formData = new FormData();
+    formData.append('keying_settings', JSON.stringify(settings));
+    
+    fetch(`/manual-key/${currentKeyingJobId}`, {
+        method: 'POST',
+        body: formData
+    })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                alert('✅ Keying job queued! Check the job log for progress.');
+                loadJobs();
+                currentKeyingJobId = null; // Reset
+            } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => {
+            console.error('Keying processing error:', err);
+            alert('Failed to submit keying job');
+        });
+}
+
+// ===== REMOVE BACKGROUND =====
+function removeBackground() {
+    const file = document.getElementById('remove-bg-file').files[0];
+    if (!file) {
+        alert('Please upload an image');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('image', file);
+    
+    fetch('/remove-background', { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                loadJobs();
+                console.log('Background removal job created successfully');
+            } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => {
+            console.error('Background removal error:', err);
+            alert('Failed to submit background removal job');
+        });
+}
+
+// ===== JOB ACTIONS =====
+function regenerateJob(jobId) {
+    fetch(`/api/regenerate-job/${jobId}`, { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                loadJobs();
+                alert('Job regenerated!');
+            } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+            }
+        });
+}
+
+function editJob(jobId) {
+    fetch(`/api/edit-job/${jobId}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                const job = data.job;
+                const inputData = job.input_data;
+                
+                if (job.job_type === 'image_generation') {
+                    switchTool('image-generator');
+                    document.getElementById('img-object-prompt').value = inputData.object_prompt || '';
+                    document.getElementById('img-style-prompt').value = inputData.style_prompt || '';
+                    document.getElementById('img-aspect-ratio').value = inputData.aspect_ratio || '1:1';
+                    
+                    // Select models
+                    document.querySelectorAll('input[name="image-model"]').forEach(el => {
+                        el.checked = el.value === inputData.modelId;
+                    });
+                } else if (job.job_type === 'animation') {
+                    switchTool('animation');
+                    document.getElementById('anim-prompt').value = inputData.prompt || '';
+                    document.getElementById('anim-neg-prompt').value = inputData.negative_prompt || '';
+                    
+                    // Select background
+                    const background = inputData.background || 'as-is';
+                    document.querySelector(`input[name="anim-background"][value="${background}"]`).checked = true;
+                    
+                    // Select models
+                    document.querySelectorAll('input[name="anim-model"]').forEach(el => {
+                        el.checked = el.value === inputData.video_model;
+                    });
+                }
+            } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+            }
+        });
+}
+
+function animateImage(jobId) {
+    const job = allJobs.find(j => j.id === jobId);
+    if (!job || !job.result_data) {
+        alert('Cannot animate: job has no result image');
+        return;
+    }
+    
+    // Switch to animation tool and populate with image
+    switchTool('animation');
+    
+    // Create a hidden input to pass the image URL
+    const form = document.querySelector('#tool-animation');
+    let hiddenInput = form.querySelector('input[name="image_url_from_job"]');
+    if (!hiddenInput) {
+        hiddenInput = document.createElement('input');
+        hiddenInput.type = 'hidden';
+        hiddenInput.name = 'image_url_from_job';
+        form.appendChild(hiddenInput);
+    }
+    hiddenInput.value = job.result_data;
+    
+    // Show preview
+    const uploadArea = document.getElementById('anim-start-frame-upload');
+    uploadArea.classList.add('has-file');
+    uploadArea.querySelector('p').textContent = `✓ Using image from job #${jobId}`;
+}
+
+function removeBgFromJob(jobId) {
+    const job = allJobs.find(j => j.id === jobId);
+    if (!job || !job.result_data) {
+        alert('Cannot remove background: job has no result image');
+        return;
+    }
+    
+    // Submit background removal job
+    const formData = new FormData();
+    formData.append('image_url', job.result_data);
+    formData.append('parent_job_id', jobId);
+    
+    fetch('/remove-background', { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                loadJobs();
+                console.log('Background removal job created from job #' + jobId);
+            } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => {
+            console.error('Background removal error:', err);
+            alert('Failed to submit background removal job');
+        });
+}
+
+function createLoopFromJob(jobId) {
+    const job = allJobs.find(j => j.id === jobId);
+    if (!job || !job.result_data) {
+        alert('Cannot create loop: job has no result video');
+        return;
+    }
+    
+    // Switch to loop creator tool
+    switchTool('loop-creator');
+    
+    // Load the video into the preview
+    const videoPreview = document.getElementById('loop-video-preview');
+    const videoPreviewContainer = document.getElementById('loop-video-preview-container');
+    
+    if (videoPreview && videoPreviewContainer) {
+        videoPreview.src = job.result_data + '?t=' + Date.now(); // Cache busting
+        videoPreviewContainer.classList.add('active'); // Show the video preview
+        
+        // Load and play the video
+        videoPreview.load();
+        videoPreview.addEventListener('loadeddata', function playOnce() {
+            videoPreview.play().catch(err => console.error('Video play error:', err));
+            videoPreview.removeEventListener('loadeddata', playOnce);
+        });
+        
+        console.log('Video loaded into loop creator:', job.result_data);
+    } else {
+        console.error('Loop creator video preview elements not found');
+    }
+}
+
+function autoKeyJob(jobId) {
+    fetch(`/auto-key-video/${jobId}`, { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                loadJobs();
+                alert('Auto-keying started!');
+            } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+            }
+        });
+}
+
+function manualKeyJob(jobId) {
+    const job = allJobs.find(j => j.id === jobId);
+    if (!job || !job.result_data) {
+        alert('Cannot key: job has no result video');
+        return;
+    }
+    
+    // Track which job we're keying
+    currentKeyingJobId = jobId;
+    
+    // Switch to keyer tool
+    switchTool('keyer');
+    
+    // Load the video into the keyer preview
+    const videoPreview = document.getElementById('keyer-video-preview');
+    const videoPreviewContainer = document.getElementById('keyer-video-preview-container');
+    
+    if (videoPreview && videoPreviewContainer) {
+        videoPreview.src = job.result_data + '?t=' + Date.now(); // Cache busting
+        videoPreviewContainer.classList.add('active'); // Show the video preview
+        
+        // Load and play the video
+        videoPreview.load();
+        videoPreview.addEventListener('loadeddata', function playOnce() {
+            videoPreview.play().catch(err => console.error('Video play error:', err));
+            videoPreview.removeEventListener('loadeddata', playOnce);
+        });
+        
+        console.log('Video loaded into keyer:', job.result_data, 'Job ID:', jobId);
+    } else {
+        console.error('Keyer video preview elements not found');
+    }
+}
+
+function reKeyJob(jobId) {
+    // Re-key means we want to key the ORIGINAL video again, not the keyed result
+    // So we use the same function as manualKeyJob, which loads job.result_data (the original)
+    manualKeyJob(jobId);
+    alert('💡 Tip: The original video is loaded. Adjust the keying parameters and click "Save & Process" to re-key with new settings.');
+}
+
+function downloadJob(jobId) {
+    const job = allJobs.find(j => j.id === jobId);
+    if (job && job.result_data) {
+        window.open(job.result_data, '_blank');
+    }
+}
+
+function downloadKeyed(jobId) {
+    const job = allJobs.find(j => j.id === jobId);
+    if (job && job.keyed_result_data) {
+        window.open(job.keyed_result_data, '_blank');
+    }
+}
+
+function selectForStitch(jobId) {
+    const job = allJobs.find(j => j.id === jobId);
+    if (!job || !job.result_data) {
+        alert('Cannot stitch: job has no result video');
+        return;
+    }
+    
+    // Add to stitch selection
+    stitchSelection.push({
+        id: jobId,
+        url: job.result_data,
+        prompt: job.prompt
+    });
+    
+    // If we have 2 videos, perform the stitch
+    if (stitchSelection.length === 1) {
+        alert(`✅ First video selected: "${job.prompt}"\n\nNow select the second video to stitch.`);
+    } else if (stitchSelection.length === 2) {
+        performStitch();
+    } else {
+        // More than 2, reset and start over
+        stitchSelection = [{
+            id: jobId,
+            url: job.result_data,
+            prompt: job.prompt
+        }];
+        alert(`✅ First video selected: "${job.prompt}"\n\nNow select the second video to stitch.`);
+    }
+}
+
+function performStitch() {
+    const video1 = stitchSelection[0];
+    const video2 = stitchSelection[1];
+    
+    // Confirm the stitch
+    const confirmed = confirm(
+        `Stitch these videos?\n\n` +
+        `Video 1: ${video1.prompt}\n` +
+        `Video 2: ${video2.prompt}\n\n` +
+        `They will be stitched in this order.`
+    );
+    
+    if (!confirmed) {
+        stitchSelection = [];
+        return;
+    }
+    
+    // Create stitch job via API
+    const formData = new FormData();
+    formData.append('video_a_url', video1.url);
+    formData.append('video_b_url', video2.url);
+    formData.append('prompt', `Stitched: ${video1.prompt} + ${video2.prompt}`);
+    
+    fetch('/stitch-videos', {
+        method: 'POST',
+        body: formData
+    })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                alert('✅ Video stitching job queued!');
+                loadJobs();
+                stitchSelection = []; // Reset selection
+            } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+                stitchSelection = []; // Reset selection
+            }
+        })
+        .catch(err => {
+            console.error('Stitch error:', err);
+            alert('Failed to submit stitch job');
+            stitchSelection = []; // Reset selection
+        });
+}
+
+function getAnimationIdea() {
+    const startFrame = document.getElementById('anim-start-frame').files[0];
+    const hiddenImageUrl = document.querySelector('input[name="image_url_from_job"]');
+    
+    if (!startFrame && !hiddenImageUrl) {
+        alert('Please upload a start frame first');
+        return;
+    }
+    
+    // Find the "Get Idea" button and add loading animation
+    const getIdeaBtn = document.getElementById('get-idea-btn');
+    if (!getIdeaBtn) {
+        console.error('Get Idea button not found');
+        return;
+    }
+    const originalText = getIdeaBtn.textContent;
+    getIdeaBtn.textContent = 'Thinking...';
+    getIdeaBtn.classList.add('btn-loading');
+    
+    const formData = new FormData();
+    if (startFrame) {
+        formData.append('image', startFrame);
+    } else if (hiddenImageUrl) {
+        formData.append('image_url', hiddenImageUrl.value);
+    }
+    
+    fetch('/get-animation-idea', { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                // Poll for result
+                const jobId = data.job_id;
+                const checkResult = setInterval(() => {
+                    fetch(`/api/job-status/${jobId}`)
+                        .then(res => res.json())
+                        .then(status => {
+                            if (status.status === 'completed' && status.result_data) {
+                                clearInterval(checkResult);
+                                document.getElementById('anim-prompt').value = status.result_data;
+                                
+                                // Reset button to original state
+                                getIdeaBtn.textContent = originalText;
+                                getIdeaBtn.classList.remove('btn-loading');
+                            } else if (status.status === 'failed') {
+                                clearInterval(checkResult);
+                                alert('Failed to generate animation idea');
+                                
+                                // Reset button to original state
+                                getIdeaBtn.textContent = originalText;
+                                getIdeaBtn.classList.remove('btn-loading');
+                            }
+                        });
+                }, 2000);
+            } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+                
+                // Reset button to original state
+                getIdeaBtn.textContent = originalText;
+                getIdeaBtn.classList.remove('btn-loading');
+            }
+        })
+        .catch(err => {
+            console.error('Animation idea error:', err);
+            alert('Failed to get animation idea');
+            
+            // Reset button to original state
+            getIdeaBtn.textContent = originalText;
+            getIdeaBtn.classList.remove('btn-loading');
+        });
+}
+
+// ===== DELETE ACTIONS =====
+function deleteSelected() {
+    if (selectedJobs.size === 0) return;
+    
+    if (confirm(`Delete ${selectedJobs.size} selected job(s)?`)) {
+        const jobIds = Array.from(selectedJobs);
+        fetch('/api/batch-delete-items', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: jobIds })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                selectedJobs.clear();
+                document.getElementById('delete-bar').classList.remove('visible');
+                loadJobs();
+            } else {
+                alert('Error deleting jobs');
+            }
+        });
+    }
+}
+
+function deleteAll() {
+    if (confirm('Delete ALL jobs from the queue? This cannot be undone!')) {
+        fetch('/api/clear-all-jobs', { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    selectedJobs.clear();
+                    document.getElementById('delete-bar').classList.remove('visible');
+                    loadJobs();
+                } else {
+                    alert('Error clearing jobs');
+                }
+            });
+    }
+}
+
+// ===== MEDIA VIEWER MODAL =====
+function openMediaViewer(jobId) {
+    // Find the job and all viewable jobs (both completed and pending_review)
+    viewableJobs = allJobs.filter(job => 
+        (job.status === 'completed' || job.status === 'pending_review') && job.result_data
+    );
+    
+    const currentJobIndex = viewableJobs.findIndex(job => job.id === jobId);
+    if (currentJobIndex === -1) {
+        console.error('Job not found or not viewable');
+        return;
+    }
+    
+    mediaViewerIndex = currentJobIndex;
+    showMediaAtIndex(mediaViewerIndex);
+    
+    document.getElementById('media-viewer-modal').classList.add('active');
+}
+
+function showMediaAtIndex(index) {
+    if (index < 0 || index >= viewableJobs.length) return;
+    
+    const job = viewableJobs[index];
+    const isVideoJob = ['animation', 'boomerang_automation', 'video_stitching'].includes(job.job_type);
+    
+    const modalImage = document.getElementById('modal-image');
+    const modalVideo = document.getElementById('modal-video');
+    const counter = document.getElementById('modal-counter');
+    const jobType = document.getElementById('modal-job-type');
+    
+    // Update counter and job type
+    counter.textContent = `${index + 1} / ${viewableJobs.length}`;
+    jobType.textContent = formatJobType(job.job_type);
+    
+    console.log(`Showing job ${job.id}, type: ${job.job_type}, isVideo: ${isVideoJob}, url: ${job.result_data}`);
+    
+    if (isVideoJob) {
+        // Show video
+        modalImage.style.display = 'none';
+        modalVideo.pause(); // Pause before changing source
+        modalVideo.style.display = 'block';
+        modalVideo.src = job.result_data + '?t=' + Date.now(); // Cache busting
+        modalVideo.load();
+        
+        // Play video once loaded
+        modalVideo.addEventListener('loadeddata', function playOnce() {
+            modalVideo.play().catch(err => console.error('Video play error:', err));
+            modalVideo.removeEventListener('loadeddata', playOnce);
+        });
+    } else {
+        // Show image
+        modalVideo.style.display = 'none';
+        modalVideo.pause();
+        modalVideo.src = '';
+        modalImage.style.display = 'block';
+        modalImage.src = job.result_data;
+    }
+}
+
+function closeMediaViewer(event) {
+    // Only close if clicking the background or close button
+    if (event && event.target.id !== 'media-viewer-modal' && !event.target.classList.contains('media-modal-close')) {
+        return;
+    }
+    
+    const modal = document.getElementById('media-viewer-modal');
+    modal.classList.remove('active');
+    
+    // Stop video playback
+    const modalVideo = document.getElementById('modal-video');
+    modalVideo.pause();
+    modalVideo.src = '';
+}
+
+function navigateMedia(direction, event) {
+    event.stopPropagation();
+    
+    mediaViewerIndex += direction;
+    
+    // Loop around
+    if (mediaViewerIndex < 0) {
+        mediaViewerIndex = viewableJobs.length - 1;
+    } else if (mediaViewerIndex >= viewableJobs.length) {
+        mediaViewerIndex = 0;
+    }
+    
+    showMediaAtIndex(mediaViewerIndex);
+}
+
+// Keyboard navigation for media viewer
+document.addEventListener('keydown', (e) => {
+    const modal = document.getElementById('media-viewer-modal');
+    if (!modal.classList.contains('active')) return;
+    
+    if (e.key === 'Escape') {
+        closeMediaViewer({ target: modal });
+    } else if (e.key === 'ArrowLeft') {
+        navigateMedia(-1, e);
+    } else if (e.key === 'ArrowRight') {
+        navigateMedia(1, e);
+    }
+});
+
+// ===== PAGE VISIBILITY DETECTION =====
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        // Page hidden - slow down polling significantly
+        if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = setInterval(loadJobs, 30000); // Poll every 30 seconds when hidden
+            console.log('Page hidden - polling slowed to 30s');
+        }
+    } else {
+        // Page visible again - restore smart polling
+        console.log('Page visible - restoring smart polling');
+        loadJobs(); // Immediate update
+        startPolling(); // Resume normal polling
+    }
+});
+
+// ===== INITIALIZATION =====
+document.addEventListener('DOMContentLoaded', () => {
+    loadJobs(); // Initial load
+    startPolling(); // Start smart polling
+    updateColorPreview(); // Initialize color preview
+});
+</script>
+
+{% endblock %}
+

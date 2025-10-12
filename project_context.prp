@@ -16,12 +16,13 @@ This is a comprehensive Flask-based web application for AI-powered media creatio
 - **Video Processing**: FFmpeg for stitching, OpenCV for frame extraction/chroma keying
 
 ## Critical Files
-- `app.py`: Main Flask application (803 lines) - routes, database, API endpoints
-- `worker.py`: Background job processor (625 lines) - AI API calls, job processing
-- `video_processor.py`: Video utilities (205 lines) - stitching, chroma keying
-- `templates/index.html`: Main UI (1350 lines) - dashboard, job log, interactive features
-- `templates/fine_tune.html`: Chroma keying interface
-- `templates/animation_step.html`: Animation creation form
+- `app.py`: Main Flask application - routes, database, API endpoints, analysis integration
+- `worker.py`: Background job processor - AI API calls, job processing, analysis completion checks
+- `video_processor.py`: Video utilities - stitching, chroma keying with HSV conversion
+- `templates/index_v2.html`: **New Modern UI** (2400+ lines) - complete redesign with tool switching, inline actions, smart polling
+- `templates/index.html`: Legacy UI (deprecated, kept for reference)
+- `templates/fine_tune.html`: Legacy chroma keying interface (deprecated)
+- `templates/animation_step.html`: Legacy animation form (deprecated)
 
 ## Key Features Implemented
 ✅ **Multi-model image generation** (Leonardo, OpenAI)
@@ -153,6 +154,67 @@ This is a comprehensive Flask-based web application for AI-powered media creatio
 - **Port Conflict Resolution**: Cleaned up duplicate processes on port 5001 before restart
 - **Dependencies Installed**: boto3, botocore, s3transfer, jmespath, python-dateutil, six
 
+## Complete UI Overhaul (October 12, 2025) - Production Ready 🎨
+- **New Frontend Template**: `index_v2.html` with modern, streamlined design
+- **Tool Switching System**: Top toolbar with dedicated buttons for each tool (Image, Animation, Loop Creator, Keyer, Remove Bg)
+- **Inline Job Actions**: All actions visible in compact horizontal rows (no expand/collapse)
+- **Smart Job Cards**: Context-aware action buttons (Edit, Regenerate, Animate, Key, Stitch, Download)
+- **Loop Creator Tool**: Dedicated interface with frame extraction, A→B→A automation
+- **Background Analysis Integration**: Style/color analysis runs in background, results auto-merge into image prompts
+- **Floating Delete Bar**: Batch operations UI that appears when jobs are selected
+- **Full-Screen Media Viewer**: Navigate images/videos with arrow keys, cache-busting for fresh content
+- **Smart Polling System**: Adaptive refresh (2s active, 5s idle, 10s hidden tab)
+- **Manual Stitching**: Select two animations, automatic prompt handling
+- **Keyer Improvements**: 
+  - Fixed HSV scale conversion (OpenCV 0-180 → Standard 0-360)
+  - Visual color preview box with live HSV display
+  - Real-time preview with HTML5 Canvas
+  - Auto-load video when pressing "Key" button on animation jobs
+  - Re-Key functionality to process original video with new settings
+- **Keyed Video Display**: Checkerboard thumbnails, "Download Keyed" button
+- **Auto-Key Always Available**: Works for all backgrounds, defaults to green screen
+- **Multi-Image Generation**: Each image gets immediate job entry
+- **Animation Status Fix**: Jobs set to `completed` immediately (no pending_review)
+- **Background Job Filtering**: Internal jobs (style_analysis, palette_analysis, video_stitching children) hidden from queue
+- **Job Action Enhancements**:
+  - **Edit**: Loads job parameters into tool for modification
+  - **Regenerate**: One-click regeneration with new seed
+  - **Animate**: Sends image to animation tool
+  - **Remove Bg**: Sends image to background removal tool
+  - **Auto Key**: Immediate keying with intelligent color detection
+  - **Key**: Opens manual keyer with video pre-loaded
+  - **Stitch**: Add to stitching selection (2 jobs required)
+  - **Loop Creator**: Pre-fills video for frame extraction
+  - **Download**: Direct file download
+  - **Download Keyed**: Download transparent version
+  - **Re-Key**: Process original video again with new settings
+
+**Backend Changes:**
+- `app.py`: New endpoints `/api/edit-job`, `/api/regenerate-job`, `/manual-key/<job_id>`, `/stitch-videos`
+- `app.py`: Image generation route updated to handle style/color reference uploads
+- `app.py`: Animation route updated to handle start/end frame uploads
+- `app.py`: Auto-key modified to work with all backgrounds
+- `worker.py`: Added `check_for_analysis_completion()` to monitor and update waiting image jobs
+- `worker.py`: Animation status set to `completed` for immediate action button display
+- `worker.py`: Enhanced keying queue handling
+
+**UI/UX Improvements:**
+- Shimmer loading animation for "Get Idea" button
+- Auto-playing video thumbnails with `autoplay playsinline loop muted`
+- Cache-busting for modal video playback
+- Model IDs properly connected to UI checkboxes
+- Removed all "to be implemented" placeholders
+- Fixed animation prompting job visibility (hidden from queue)
+- Fixed media viewer modal for both images and videos
+- Fixed keyer preview layout (canvas overlay, no slider coverage)
+- Added color preview with HSV → HSL conversion for CSS display
+
+**Scale Conversion Fix:**
+- Keying preview was comparing mismatched scales (slider 0-180 vs rgbToHsv 0-360)
+- Added proper conversion: `hueCenter = sliderValue * 2`
+- Fixed saturation/value: `(sliderValue / 255) * 100`
+- Hue 60 now correctly keys green (120° standard), not orange
+
 ## Job Types & Workflow
 1. `image_generation`: Create images via AI models
 2. `animation`: Convert images to videos
@@ -235,4 +297,8 @@ python3 worker.py                      # Terminal 2: Background processor (optio
 |- **Worker Cleanup**: Eliminated 18 duplicate worker processes that were consuming resources
 |- **Database Integrity**: Updated stuck boomerang automation job to prevent frontend loading issues
 
-**Status**: The application is production-ready with advanced workflow automation. All major features and workflows are fully functional. Latest stability update (October 5, 2025 PM) includes critical bug fixes for database integrity, resource management, race conditions, subprocess control, and frontend syntax errors - all issues resolved and tested. Earlier enhancements (October 5, 2025 AM) include streamlined UX with non-intrusive notifications, improved button readability, advanced color sampler with inverted thresholds, bidirectional erode/dilate controls (-5 to +5), uploaded video keying support, enhanced palette analysis prompting, fixed image modal navigation, and comprehensive keying tool improvements. Previous update (October 4, 2025) included comprehensive auto-keying workflow with intelligent background detection, visual status indicators, side-by-side comparison, inline video keyer with color sampler, and automatic playback. October 3, 2025 update included complete overhaul of style/palette analysis tools with GPT-4o Vision integration.
+**Status**: The application has undergone a complete UI transformation and is production-ready with modern, streamlined workflows. 
+
+**Latest Update (October 12, 2025)**: Complete UI overhaul with `index_v2.html` featuring tool switching, inline job actions, Loop Creator, smart polling, background analysis integration, keyer scale conversion fixes, and comprehensive action buttons. All major features working: image generation with background analysis, animation creation, ABA loops, manual stitching, auto/manual keying with real-time preview, and batch operations.
+
+**Previous Updates**: October 5, 2025 PM (critical stability fixes), October 5, 2025 AM (UX improvements), October 4, 2025 (auto-keying workflow), October 3, 2025 (GPT-4o Vision integration), October 8-9, 2025 (cloud deployment + S3 integration).

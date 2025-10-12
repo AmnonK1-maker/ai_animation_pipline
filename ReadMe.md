@@ -1,6 +1,6 @@
 # 🎬 AI Media Workflow Dashboard
 
-A comprehensive Flask-based application for AI-powered image generation, animation creation, and video processing with advanced chroma keying capabilities.
+A comprehensive Flask-based application for AI-powered image generation, animation creation, and video processing with advanced chroma keying capabilities. **Now featuring a completely redesigned modern UI with streamlined workflows!**
 
 ## ✨ Key Features
 
@@ -8,35 +8,43 @@ A comprehensive Flask-based application for AI-powered image generation, animati
 - **Leonardo AI**: Multiple models (Diffusion XL, Vision XL, etc.)
 - **OpenAI**: DALL-E integration
 - **ByteDance Seedream**: Advanced AI image generation
-- **Style Analysis**: AI-powered color palette and style extraction
+- **Intelligent Style Analysis**: Automatic background style and color analysis using reference images
+- **Smart Prompting**: AI suggestions for animation ideas based on uploaded images
 
 ### 🎭 **Advanced Animation Workflow** 
 - **Multiple Models**: Kling v2.1, Seedance-1-Pro
-- **Boomerang Automation**: Automatic A→B→A loop creation with consistent backgrounds
-- **Frame Extraction**: Video scrubbing with precise frame selection
-- **Seamless Loops**: Automatic loop detection and processing
+- **Loop Creator Tool**: Dedicated interface for creating perfect A→B→A boomerang loops
+- **Frame Extraction**: Video scrubbing with precise frame-by-frame control
+- **Automatic ABA Generation**: Creates two animations and stitches them seamlessly
+- **Manual Stitching**: Select any two animations to stitch together
+- **Background Management**: Smart background detection (green/blue screen, as-is, or uploaded)
 
 ### 🎞️ **Professional Video Processing**
-- **Auto-Key Feature**: One-click automatic chroma keying based on animation background (green/blue screen)
-- **Manual Chroma Keying**: Advanced fine-tuning with real-time preview and color sampler tool
-- **Smart Keying Workflow**: Save settings to `pending_process`, batch process when ready
-- **Side-by-Side Comparison**: View original and keyed videos simultaneously with download options
-- **Video Stitching**: Optimized A-B-A loop stitching with aspect ratio preservation and timeout protection
+- **Auto-Key Feature**: One-click automatic chroma keying with intelligent color detection
+- **Manual Keyer Tool**: Advanced HSV controls with real-time preview and color sampler
+- **Fixed Scale Conversion**: Proper OpenCV (0-180) to standard HSV (0-360) conversion
+- **Visual Color Preview**: Live preview of target keying color with HSV values
+- **Re-Key Functionality**: Process original videos with new settings anytime
+- **Transparent Thumbnails**: Checkerboard background for keyed video previews
+- **Download Options**: Separate buttons for original and keyed versions
 - **Background Removal**: BRIA AI-powered transparent image generation
-- **Performance Optimized**: Fast preset, CRF 18 encoding with 5-minute timeout for reliability
 
-### 🎯 **Intelligent Workflow Management**
-- **Job Queue System**: Background processing with real-time status updates
-- **Auto-Pause Refresh**: Smart UI that pauses when viewing job details
-- **Enhanced Batch Operations**: Multi-select delete, video stitching (any two videos)
-- **Job Management Tools**: Re-stitch, re-key, retry failed jobs with one click
-- **Universal Selectability**: All jobs (except actively processing) have checkboxes
-- **Model Name Mapping**: Human-readable model names instead of IDs
+### 🎯 **Modern UI & Workflow**
+- **Tool Switching System**: Clean top toolbar for accessing different tools
+- **Inline Job Actions**: Edit, Regenerate, Animate, Key, Stitch - all visible in job cards
+- **Smart Polling System**: Adaptive refresh rates (2s/5s/10s) based on activity
+- **Floating Delete Bar**: Batch operations with "Delete Selected" and "Delete All"
+- **Full-Screen Media Viewer**: Navigate through images and videos with arrow keys
+- **Background Jobs**: Style/color analysis runs invisibly, results auto-merge into prompts
+- **Instant Multi-Image Creation**: Multiple image jobs appear immediately in queue
+- **One-Click Regeneration**: Regenerate with new seed or edit parameters
 
-### 📚 **Media Library & Management**
-- **Visual Job Log**: Thumbnails, previews, and action buttons for each job
-- **Search & Filter**: Find content by prompts, models, or job types
-- **Library Gallery**: Organized view of all generated assets
+### 📚 **Enhanced Job Management**
+- **Compact Job Cards**: All information visible at a glance
+- **Action Buttons**: Context-aware buttons based on job type and status
+- **Job Selection**: Click to select, batch delete, or stitch multiple jobs
+- **Status Indicators**: Visual feedback for queued, processing, completed, and failed jobs
+- **Thumbnail Previews**: Auto-playing video thumbnails with hover controls
 
 ## 🏗️ Technical Architecture
 
