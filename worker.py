@@ -287,7 +287,7 @@ def handle_replicate_openai_generation(job):
     try:
         print(f"-> Starting OpenAI via Replicate generation for job {job['id']}...")
         input_data = json.loads(job['input_data'])
-        full_prompt = f"{input_data['object_prompt']}, in the style of {input_data['style_prompt']}"
+        full_prompt = f"{input_data['object_prompt']}, in the style of {input_data['style_prompt']}, on a transparent background"
         api_input = {"prompt": full_prompt, "openai_api_key": OPENAI_API_KEY, "background": "transparent", "quality": "high", "output_format": "png", "aspect_ratio": "1:1"}
         print("   ...calling openai/gpt-image-1 on Replicate.")
         output = replicate.run("openai/gpt-image-1", input=api_input)
@@ -426,16 +426,17 @@ def handle_openai_vision_analysis(job):
         if not os.path.exists(image_path): return None, f"Image file not found at {image_path}"
         
         # Determine the appropriate user message based on job type
+        # For vision models, combine system prompt with user message for better instruction following
         if job['job_type'] == 'style_analysis':
-            user_message = "Analyze the style of this image in detail. Describe the artistic style, techniques, colors, composition, and any notable visual elements."
+            user_message = f"{system_prompt}\n\nNow analyze this image's visual style following the guidelines above."
         elif job['job_type'] == 'palette_analysis':
-            user_message = "Analyze the color palette of this image. Identify the dominant colors and provide their descriptions."
+            user_message = f"{system_prompt}\n\nNow analyze the color palette of this image."
         else:  # animation_prompting
-            user_message = "Analyze this image and provide animation ideas following the format above."
+            user_message = f"{system_prompt}\n\nNow provide animation ideas for this image."
         
         print(f"   ...calling OpenAI GPT-4o Vision API")
-        print(f"   ...system prompt: {system_prompt[:100]}...")
-        print(f"   ...user message: {user_message[:100]}...")
+        print(f"   ...combined prompt length: {len(user_message)}")
+        print(f"   ...user message preview: {user_message[:150]}...")
         
         # Encode image to base64
         import base64
@@ -443,13 +444,10 @@ def handle_openai_vision_analysis(job):
             base64_image = base64.b64encode(image_file.read()).decode('utf-8')
         
         # Use OpenAI's GPT-4o Vision model directly
+        # Note: For vision models, instructions work better in the user message with the image
         response = openai_client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {
-                    "role": "system",
-                    "content": system_prompt
-                },
                 {
                     "role": "user",
                     "content": [
@@ -466,7 +464,7 @@ def handle_openai_vision_analysis(job):
                     ]
                 }
             ],
-            max_tokens=1000,
+            max_tokens=600,  # Reduced to ensure shorter responses (under 1200 chars for Leonardo)
             temperature=0.7
         )
         
@@ -652,8 +650,12 @@ def check_for_completed_automations(conn):
             if len(video_paths) == 2:
                 prompt = f"Stitched Loop: {meta_job['prompt']}"
                 stitch_input_data = json.dumps({"video_a_path": video_paths[0], "video_b_path": video_paths[1]})
-                cursor.execute("INSERT INTO jobs (job_type, status, created_at, prompt, input_data, parent_job_id) VALUES (?, ?, ?, ?, ?, ?)", ('video_stitching', 'queued', datetime.now(), prompt, stitch_input_data, meta_job['id']))
-                cursor.execute("UPDATE jobs SET status = 'stitching' WHERE id = ?", (meta_job['id'],))
+                # Create stitching job with current timestamp
+                stitch_timestamp = datetime.now()
+                cursor.execute("INSERT INTO jobs (job_type, status, created_at, prompt, input_data, parent_job_id) VALUES (?, ?, ?, ?, ?, ?)", ('video_stitching', 'queued', stitch_timestamp, prompt, stitch_input_data, meta_job['id']))
+                # Update parent job status and timestamp to be 1 second after stitching job so it appears above in queue
+                parent_timestamp = stitch_timestamp + timedelta(seconds=1)
+                cursor.execute("UPDATE jobs SET status = 'stitching', created_at = ? WHERE id = ?", (parent_timestamp, meta_job['id']))
                 conn.commit()
                 print(f"   ...queued stitching job for raw videos: {video_paths}")
             else:

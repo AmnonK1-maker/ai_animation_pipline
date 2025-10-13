@@ -25,18 +25,21 @@ This is a comprehensive Flask-based web application for AI-powered media creatio
 - `templates/animation_step.html`: Legacy animation form (deprecated)
 
 ## Key Features Implemented
-✅ **Multi-model image generation** (Leonardo, OpenAI)
-✅ **Animation creation** (Kling v2.1, Seedance-1-Pro) 
+✅ **Multi-model image generation** (Leonardo with style presets, OpenAI with auto-transparency)
+✅ **Animation creation** (Kling v2.1, Seedance-1-Pro) with image preview
 ✅ **Boomerang automation** (A→B→A loops with consistent backgrounds)
-✅ **Video frame extraction** with scrubbing modal
-✅ **Advanced chroma keying** with real-time preview
+✅ **Video frame extraction** with scrubbing modal and extracted frame display
+✅ **Advanced chroma keying** with real-time preview, zoom/pan, color sampler
 ✅ **Optimized video stitching** (CRF 18, fast preset with 5-min timeout)
 ✅ **Intelligent auto-pause** refresh when viewing job details
-✅ **Enhanced batch operations** (multi-select delete, video stitching)
-✅ **Visual job log** with thumbnails, action buttons, model names
-✅ **Job management tools** (re-stitch, re-key, retry failed jobs)
+✅ **Enhanced batch operations** (multi-select, select all, invert selection, delete, video stitching)
+✅ **Visual job log** with thumbnails, processing animations, action buttons, model names
+✅ **Job management tools** (re-stitch, re-key, retry failed jobs, priority queue for keying)
 ✅ **Universal job selectability** (all jobs except actively processing)
 ✅ **Aspect ratio preservation** in video stitching
+✅ **Transparency display** (grid background for keyed videos in thumbnails and modal)
+✅ **Art Style Forensics** analyzer with optimized 900-character prompts
+✅ **Reference image loading** when editing previous jobs
 
 ## Recent Major Fixes (All Working)
 - Fixed A-B-A loop automation: consistent background preprocessing for both frames
@@ -159,18 +162,25 @@ This is a comprehensive Flask-based web application for AI-powered media creatio
 - **Tool Switching System**: Top toolbar with dedicated buttons for each tool (Image, Animation, Loop Creator, Keyer, Remove Bg)
 - **Inline Job Actions**: All actions visible in compact horizontal rows (no expand/collapse)
 - **Smart Job Cards**: Context-aware action buttons (Edit, Regenerate, Animate, Key, Stitch, Download)
-- **Loop Creator Tool**: Dedicated interface with frame extraction, A→B→A automation
+- **Loop Creator Tool**: Dedicated interface with frame extraction, A→B→A automation, extracted frame preview
 - **Background Analysis Integration**: Style/color analysis runs in background, results auto-merge into image prompts
-- **Floating Delete Bar**: Batch operations UI that appears when jobs are selected
-- **Full-Screen Media Viewer**: Navigate images/videos with arrow keys, cache-busting for fresh content
+- **Floating Delete Bar**: Batch operations UI with Select All/Invert Selection features
+- **Full-Screen Media Viewer**: Navigate images/videos with arrow keys, transparency grid, cache-busting for fresh content
 - **Smart Polling System**: Adaptive refresh (2s active, 5s idle, 10s hidden tab)
 - **Manual Stitching**: Select two animations, automatic prompt handling
+- **Processing Animations**: Visual spinner overlay on job thumbnails during processing
+- **Reference Image Previews**: Style and palette images display with dynamic aspect ratio in upload boxes
 - **Keyer Improvements**: 
   - Fixed HSV scale conversion (OpenCV 0-180 → Standard 0-360)
   - Visual color preview box with live HSV display
   - Real-time preview with HTML5 Canvas
   - Auto-load video when pressing "Key" button on animation jobs
   - Re-Key functionality to process original video with new settings
+  - Zoom & Pan controls (0.5x-4x) with constrained boundaries
+  - Grid overlay with customizable size and color
+  - Color sampler: click-to-sample HSV values from video
+  - Flat dark gray background for professional appearance
+  - Hand cursor for panning when zoomed in
 - **Keyed Video Display**: Checkerboard thumbnails, "Download Keyed" button
 - **Auto-Key Always Available**: Works for all backgrounds, defaults to green screen
 - **Multi-Image Generation**: Each image gets immediate job entry
@@ -287,6 +297,43 @@ python3 worker.py                      # Terminal 2: Background processor (optio
 ✅ Error handling: Timeout protection, stuck process detection, worker auto-restart
 ✅ Complete keying workflow: Both animations and stitched videos support full keying pipeline
 
+## Enhanced UI/UX & Video Keying Tools (October 13, 2025) - All Working 🎨
+- **Processing Animations**: Added spinner overlay to job thumbnails for visual feedback during `queued`, `processing`, `keying_queued`, `keying_processing`, `waiting_for_children`, `stitching`, `waiting_for_analysis` states
+- **Reference Image Display**: Style and palette analysis images now display directly in upload boxes with dynamic aspect ratio (flex layout, height auto)
+- **Art Style Forensics Analyzer**: Updated system prompt to structured format with Drawing/Photography/3D branches, limited to 900 characters for Leonardo model compatibility
+- **Extracted Frame Preview**: Frames A and B display in Loop Creator tool below video using object URLs from canvas-captured blobs
+- **Keying Job Priority**: Auto-key and manual-key jobs update `created_at` timestamp to jump to top of queue for immediate processing
+- **Universal Keying**: Key/Auto Key buttons added to `video_stitching` and `video_upload` job types alongside animations
+- **ABA Thumbnail Cache-Busting**: Video thumbnails append `?t=${Date.now()}` to force refresh after keying operations
+- **Video Keyer Auto-Replace**: Calls `resetPreview()` and `resetKeyerZoom()` when loading new video to clear previous state
+- **Zoom & Pan Controls**: 
+  - Zoom In/Out buttons (0.5x to 4x range)
+  - Reset Zoom button
+  - Constrained panning calculations to keep video within frame boundaries
+  - Hand cursor for panning when zoomed in
+  - `mousemove` event tracking for dragging functionality
+- **Grid Overlay**: Grid Size (select) and Grid Color (color input) controls for alignment assistance
+- **Color Sampler Tool**: 
+  - Click-to-sample button toggles crosshair cursor
+  - Click on video captures pixel RGB, converts to HSV
+  - Automatically updates keying sliders with sampled values
+  - `rgbToHsv()` helper function for color conversion
+- **Animation Tool Image Preview**: Start frame image displays in upload box before generation (matches style analyzer UX)
+- **Batch Selection Tools**: "Select All" and "Invert Selection" buttons added to floating delete bar
+- **Transparency Display**: 
+  - Modal images with `.has-transparency` class show checkerboard background
+  - Keyed videos in modal get transparency grid via `job.keyed_result_data` detection
+  - Checkerboard pattern: `linear-gradient` with 20px tiles
+- **Edit Job Enhancement**: 
+  - `/api/edit-job` endpoint fetches `style_ref_image_path` and `color_ref_image_path` from parent analysis jobs
+  - JavaScript `editJob()` function loads reference images into preview `<img>` tags
+  - Fixed element ID references: `style-ref-preview-img` and `color-ref-preview-img`
+- **Leonardo Style Presets**: Dropdown menu `<select id="img-preset-style">` with various style options (cinematic, anime, photorealistic, etc.)
+- **ChatGPT Transparency**: `handle_replicate_openai_generation()` in worker.py appends ", on a transparent background" to all prompts
+- **Keying Tool UX**: Background changed from black to flat dark gray (`#2a2a2a`) for professional appearance
+- **Media Viewer Grid**: Keyed videos display with checkerboard background via `.has-transparency` class in modal
+- **Zoom Constraint Fix**: Improved `applyKeyerZoom()` to properly calculate `maxPanX/Y` based on scaled dimensions and constrain within boundaries
+
 ## Critical Bug Fixes & Stability Improvements (October 5, 2025) - All Resolved
 |- **Frame Extraction ID Issue**: Fixed SQLite ID manipulation bug by using future timestamps instead of manual ID assignment
 |- **Animation File Handle Leak**: Added try-finally blocks to ensure `end_file_obj` is properly closed in all error paths
@@ -299,6 +346,6 @@ python3 worker.py                      # Terminal 2: Background processor (optio
 
 **Status**: The application has undergone a complete UI transformation and is production-ready with modern, streamlined workflows. 
 
-**Latest Update (October 12, 2025)**: Complete UI overhaul with `index_v2.html` featuring tool switching, inline job actions, Loop Creator, smart polling, background analysis integration, keyer scale conversion fixes, and comprehensive action buttons. All major features working: image generation with background analysis, animation creation, ABA loops, manual stitching, auto/manual keying with real-time preview, and batch operations.
+**Latest Update (October 13, 2025)**: Enhanced UI/UX and video keying tools with processing animations, reference image previews, Art Style Forensics analyzer (900 char limit), extracted frame display, keying job priority queue, universal keying support for all video types, cache-busting for thumbnails, advanced video keyer (zoom/pan/grid/color sampler), batch selection tools, transparency display, edit job enhancements, Leonardo style presets, ChatGPT transparency support, zoom constraint fixes, and keying tool UX improvements.
 
-**Previous Updates**: October 5, 2025 PM (critical stability fixes), October 5, 2025 AM (UX improvements), October 4, 2025 (auto-keying workflow), October 3, 2025 (GPT-4o Vision integration), October 8-9, 2025 (cloud deployment + S3 integration).
+**Previous Updates**: October 12, 2025 (complete UI overhaul), October 5, 2025 PM (critical stability fixes), October 5, 2025 AM (UX improvements), October 4, 2025 (auto-keying workflow), October 3, 2025 (GPT-4o Vision integration), October 8-9, 2025 (cloud deployment + S3 integration).

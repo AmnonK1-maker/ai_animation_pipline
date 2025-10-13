@@ -5,27 +5,33 @@ A comprehensive Flask-based application for AI-powered image generation, animati
 ## ✨ Key Features
 
 ### 🎨 **Multi-Model Image Generation**
-- **Leonardo AI**: Multiple models (Diffusion XL, Vision XL, etc.)
-- **OpenAI**: DALL-E integration
+- **Leonardo AI**: Multiple models with style preset dropdown (Diffusion XL, Vision XL, etc.)
+- **OpenAI**: DALL-E integration with automatic transparent background
 - **ByteDance Seedream**: Advanced AI image generation
-- **Intelligent Style Analysis**: Automatic background style and color analysis using reference images
+- **Intelligent Style Analysis**: Art Style Forensics analyzer with optimized prompts (under 900 characters)
 - **Smart Prompting**: AI suggestions for animation ideas based on uploaded images
+- **Reference Image Display**: Style and palette images show directly in upload boxes with dynamic sizing
 
 ### 🎭 **Advanced Animation Workflow** 
 - **Multiple Models**: Kling v2.1, Seedance-1-Pro
-- **Loop Creator Tool**: Dedicated interface for creating perfect A→B→A boomerang loops
-- **Frame Extraction**: Video scrubbing with precise frame-by-frame control
+- **Loop Creator Tool**: Dedicated interface for creating perfect A→B→A boomerang loops with extracted frame preview
+- **Frame Extraction**: Video scrubbing with precise frame-by-frame control, frames A & B display in tool
 - **Automatic ABA Generation**: Creates two animations and stitches them seamlessly
 - **Manual Stitching**: Select any two animations to stitch together
 - **Background Management**: Smart background detection (green/blue screen, as-is, or uploaded)
+- **Image Preview**: Selected start frame displays in animation tool before generation
 
 ### 🎞️ **Professional Video Processing**
-- **Auto-Key Feature**: One-click automatic chroma keying with intelligent color detection
-- **Manual Keyer Tool**: Advanced HSV controls with real-time preview and color sampler
+- **Auto-Key Feature**: One-click automatic chroma keying for all videos (animations, stitched, uploaded)
+- **Manual Keyer Tool**: Advanced HSV controls with real-time preview and click-to-sample color picker
+- **Zoom & Pan Controls**: Zoom in/out (0.5x-4x), reset zoom, constrained panning within frame boundaries
+- **Grid Overlay**: Customizable grid size and color for precise alignment
+- **Color Sampler**: Click anywhere on video to automatically set HSV keying values
 - **Fixed Scale Conversion**: Proper OpenCV (0-180) to standard HSV (0-360) conversion
 - **Visual Color Preview**: Live preview of target keying color with HSV values
 - **Re-Key Functionality**: Process original videos with new settings anytime
-- **Transparent Thumbnails**: Checkerboard background for keyed video previews
+- **Priority Processing**: Keying jobs automatically jump to top of queue
+- **Transparent Display**: Checkerboard background for keyed videos in thumbnails and modal viewer
 - **Download Options**: Separate buttons for original and keyed versions
 - **Background Removal**: BRIA AI-powered transparent image generation
 
@@ -33,18 +39,22 @@ A comprehensive Flask-based application for AI-powered image generation, animati
 - **Tool Switching System**: Clean top toolbar for accessing different tools
 - **Inline Job Actions**: Edit, Regenerate, Animate, Key, Stitch - all visible in job cards
 - **Smart Polling System**: Adaptive refresh rates (2s/5s/10s) based on activity
-- **Floating Delete Bar**: Batch operations with "Delete Selected" and "Delete All"
-- **Full-Screen Media Viewer**: Navigate through images and videos with arrow keys
+- **Floating Delete Bar**: Batch operations with "Select All", "Invert Selection", and "Delete All"
+- **Full-Screen Media Viewer**: Navigate through images and videos with arrow keys, transparency grid for keyed content
 - **Background Jobs**: Style/color analysis runs invisibly, results auto-merge into prompts
 - **Instant Multi-Image Creation**: Multiple image jobs appear immediately in queue
 - **One-Click Regeneration**: Regenerate with new seed or edit parameters
+- **Processing Animation**: Visual spinner overlay on thumbnails for jobs in progress
+- **Reference Image Previews**: Style and palette images display with dynamic aspect ratio in upload boxes
 
 ### 📚 **Enhanced Job Management**
 - **Compact Job Cards**: All information visible at a glance
 - **Action Buttons**: Context-aware buttons based on job type and status
-- **Job Selection**: Click to select, batch delete, or stitch multiple jobs
+- **Job Selection**: Click to select, batch delete, stitch, or invert selection
 - **Status Indicators**: Visual feedback for queued, processing, completed, and failed jobs
-- **Thumbnail Previews**: Auto-playing video thumbnails with hover controls
+- **Thumbnail Previews**: Auto-playing video thumbnails with hover controls and cache-busting
+- **Priority Queue**: Keying jobs automatically jump to top of queue for immediate processing
+- **Edit Job Loading**: Reference images automatically load when editing previous jobs
 
 ## 🏗️ Technical Architecture
 
@@ -355,6 +365,24 @@ kling_app/
 - ✅ **Path Handling**: Fixed image path construction and URL normalization for better reliability
 - ✅ **API Response Handling**: Enhanced JavaScript to handle both array and object response formats from /api/jobs
 - ✅ **Worker Process Management**: Improved worker restart and code update handling
+
+### Enhanced UI/UX & Video Keying Tools (October 13, 2025)
+- ✅ **Processing Animations**: Spinner overlay on thumbnails for jobs in progress states
+- ✅ **Reference Image Previews**: Style/palette images display with dynamic aspect ratio in upload boxes
+- ✅ **Style Analysis Optimization**: Art Style Forensics analyzer prompt limited to 900 characters for Leonardo compatibility
+- ✅ **Extracted Frames Display**: Frames A and B now visible in Loop Creator tool below video
+- ✅ **Keying Job Priority**: Auto-key and manual-key jobs jump to top of queue for immediate processing
+- ✅ **Universal Keying Support**: Key/Auto Key buttons added to stitched videos and uploaded videos
+- ✅ **ABA Thumbnail Fix**: Cache-busting prevents frozen thumbnails after keying
+- ✅ **Video Keyer Improvements**: Auto-replace video preview, zoom controls, grid customization, color sampler
+- ✅ **Animation Tool Preview**: Selected start frame displays before generation
+- ✅ **Batch Selection Tools**: Select All and Invert Selection added to delete functionality
+- ✅ **Transparency Display**: Grid background for transparent images/videos in modal viewer
+- ✅ **Edit Job Enhancement**: Reference images automatically load when editing jobs
+- ✅ **Leonardo Style Presets**: Dropdown menu for Leonardo model style options
+- ✅ **ChatGPT Transparency**: Automatic "on a transparent background" appended to prompts
+- ✅ **Zoom Constraint Fix**: Video zoom properly constrained within frame boundaries with pan limits
+- ✅ **Keying Tool UX**: Flat dark gray background, hand cursor for panning when zoomed
 
 ### Analysis Tools Enhancement (October 3, 2025)
 - ✅ **Style & Palette Analyzers**: Fixed display of analysis results and thumbnails in job queue

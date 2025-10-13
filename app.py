@@ -282,10 +282,14 @@ def auto_key_video(job_id):
                 
             print(f"-> Auto-keying {bg_color} background for job {job_id} ({job['job_type']}) - queuing for immediate processing")
             
-            cursor.execute("UPDATE jobs SET status = ?, keying_settings = ? WHERE id = ?", ('keying_queued', json.dumps(settings), job_id))
+            # Update with new timestamp to jump to top of queue
+            cursor.execute(
+                "UPDATE jobs SET status = ?, keying_settings = ?, created_at = ? WHERE id = ?", 
+                ('keying_queued', json.dumps(settings), datetime.now(), job_id)
+            )
             conn.commit()
             
-            print(f"   ...auto-key settings saved and queued: {settings}")
+            print(f"   ...auto-key settings saved and queued (jumped to top of queue): {settings}")
         
         return jsonify({"success": True, "message": f"Auto-key ({bg_display}) queued for processing!"})
     except Exception as e:
@@ -318,13 +322,14 @@ def manual_key_video(job_id):
                 return jsonify({"success": False, "error": "Job has no video to key"}), 400
             
             # Update job with keying settings and set status to keying_queued
+            # Also update timestamp to jump to top of queue
             cursor.execute(
-                "UPDATE jobs SET status = ?, keying_settings = ? WHERE id = ?",
-                ('keying_queued', json.dumps(settings), job_id)
+                "UPDATE jobs SET status = ?, keying_settings = ?, created_at = ? WHERE id = ?",
+                ('keying_queued', json.dumps(settings), datetime.now(), job_id)
             )
             conn.commit()
             
-            print(f"-> Manual keying queued for job {job_id} with settings: {settings}")
+            print(f"-> Manual keying queued for job {job_id} (jumped to top of queue) with settings: {settings}")
         
         return jsonify({"success": True, "message": "Manual keying job queued for processing"})
     except Exception as e:
@@ -562,12 +567,55 @@ def image_tool():
             s3_key = f"uploads/{filename}"
             style_image_url = save_uploaded_file(style_ref_image, s3_key)
             
-            style_system_prompt = """Analyze the visual style of this image. Focus on:
-- Art medium (e.g., digital painting, watercolor, 3D render, photography)
-- Rendering style (e.g., realistic, stylized, minimalist, detailed)
-- Lighting and atmosphere
-- Composition and framing choices
-Keep it concise and actionable for image generation."""
+            style_system_prompt = """You are an Art Style Forensics analyzer.
+Your task is to describe the artistic style, technique, and visual language of an image so that an AI image model can reproduce its style.
+
+🚫 Do NOT:
+- Mention the subject matter or content.
+- Mention color names.
+- Describe camera, lens, or lighting.
+
+🎨 Focus ONLY on:
+- How the image looks made (medium, materials, process).
+- The surface, forms, composition, and visual treatment.
+
+🔀 Style Branches
+
+1. Drawing / Print / Painting
+Always assume variable line width.
+Describe medium, technique, surface textures, composition, tonal handling, mood, and negatives (what to avoid).
+
+2. Photography
+State "no line work; object style analysis applied."
+Focus on:
+- Movement/genre (brutalist, art deco, minimalist, etc.)
+- Form language (modular, curved, abstract, etc.)
+- Surface/material qualities (rough, polished, matte, etc.)
+- Geometry & composition (symmetry, rhythm, repetition)
+Then add tone, mood, and negatives.
+
+3. 3D Render
+State "no line work; 3D render style analysis applied."
+Focus on:
+- Rendering technique (flat toon, PBR, wireframe, low-poly, etc.)
+- Surface/material treatment (smooth, glossy, matte, procedural, etc.)
+- Geometry language (blocky, organic, parametric, etc.)
+- Visual finish (anti-aliased, gradients, etc.)
+Then add tone, mood, and negatives.
+
+🧩 Output Format (Always in This Order)
+Medium
+Technique/Process
+Line & Stroke Analysis (or note "no line work")
+Textures & Surface
+Composition & Shapes
+Palette/Tone (no color words)
+Mood/Atmosphere (1–3 short adjectives)
+Negative Cues for Recreation (what to avoid)
+
+✅ Final Rule
+Write a concise summary under 900 characters total.
+Use short, clear sentences and section headers exactly as listed above."""
             
             style_input_data = json.dumps({
                 "image_path": style_image_url,
@@ -863,11 +911,6 @@ def upload_video():
     return jsonify({"success": True, "video_path": video_url})
 
 # --- API Endpoints ---
-# app.py - Corrected Code
-
-# app.py - New, More Robust Function
-
-# app.py - Final, robust version
 
 @app.route("/api/jobs")
 def api_jobs_log():
@@ -1097,21 +1140,52 @@ def edit_job(job_id):
     """Get job data for editing - returns input_data and prompt to populate the tool"""
     try:
         with get_db_connection() as conn:
-            job = conn.execute(
+            cursor = conn.cursor()
+            job = cursor.execute(
                 "SELECT id, job_type, prompt, input_data, result_data FROM jobs WHERE id = ?", 
                 (job_id,)
             ).fetchone()
         
-        if not job:
-            return jsonify({"success": False, "error": "Job not found"}), 404
-        
-        job_dict = dict(job)
-        # Parse input_data JSON string back to dict
-        if job_dict.get('input_data'):
-            try:
-                job_dict['input_data'] = json.loads(job_dict['input_data'])
-            except:
-                pass
+            if not job:
+                return jsonify({"success": False, "error": "Job not found"}), 404
+            
+            job_dict = dict(job)
+            # Parse input_data JSON string back to dict
+            if job_dict.get('input_data'):
+                try:
+                    job_dict['input_data'] = json.loads(job_dict['input_data'])
+                except:
+                    pass
+            
+            # For image_generation jobs, fetch style and color reference images from analysis jobs
+            if job_dict['job_type'] == 'image_generation' and job_dict.get('input_data'):
+                input_data = job_dict['input_data']
+                
+                # Get style reference image if style_analysis_job_id exists
+                if input_data.get('style_analysis_job_id'):
+                    style_job = cursor.execute(
+                        "SELECT input_data FROM jobs WHERE id = ?", 
+                        (input_data['style_analysis_job_id'],)
+                    ).fetchone()
+                    if style_job:
+                        try:
+                            style_input = json.loads(style_job['input_data'])
+                            job_dict['input_data']['style_ref_image_path'] = style_input.get('image_path')
+                        except:
+                            pass
+                
+                # Get color reference image if color_analysis_job_id exists
+                if input_data.get('color_analysis_job_id'):
+                    color_job = cursor.execute(
+                        "SELECT input_data FROM jobs WHERE id = ?", 
+                        (input_data['color_analysis_job_id'],)
+                    ).fetchone()
+                    if color_job:
+                        try:
+                            color_input = json.loads(color_job['input_data'])
+                            job_dict['input_data']['color_ref_image_path'] = color_input.get('image_path')
+                        except:
+                            pass
         
         return jsonify({"success": True, "job": job_dict})
         

@@ -291,6 +291,40 @@
         flex-shrink: 0;
     }
     
+    .thumbnail-wrapper {
+        position: relative;
+        width: 120px;
+        height: 120px;
+        flex-shrink: 0;
+    }
+    
+    .processing-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
+    }
+    
+    .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid rgba(255, 255, 255, 0.3);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+    
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+    
     .job-info {
         flex: 1;
         min-width: 0;
@@ -445,6 +479,34 @@
         background: #0056b3;
     }
     
+    /* ===== VIDEO PREVIEW CONTAINER ===== */
+    .video-preview-container {
+        display: none;
+        position: relative;
+        width: 100%;
+        max-width: 100%;
+        background: #2a2a2a;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        overflow: hidden;
+        cursor: grab;
+    }
+    
+    .video-preview-container.active {
+        display: block;
+    }
+    
+    .video-preview-container.panning {
+        cursor: grabbing;
+    }
+    
+    .video-preview {
+        width: 100%;
+        display: block;
+        max-height: 400px;
+        object-fit: contain;
+    }
+    
     /* ===== KEYING CONTROLS ===== */
     .keying-controls {
         display: grid;
@@ -543,6 +605,17 @@
         max-height: 90vh;
         object-fit: contain;
         border-radius: 8px;
+    }
+    
+    .modal-media.has-transparency {
+        background-image: 
+            linear-gradient(45deg, #808080 25%, transparent 25%),
+            linear-gradient(-45deg, #808080 25%, transparent 25%),
+            linear-gradient(45deg, transparent 75%, #808080 75%),
+            linear-gradient(-45deg, transparent 75%, #808080 75%);
+        background-size: 20px 20px;
+        background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+        background-color: #404040;
     }
     
     .media-modal-close {
@@ -667,16 +740,18 @@
             
             <div class="form-group">
                 <label class="form-label">Upload Style Reference:</label>
-                <div class="upload-area" id="style-ref-upload">
-                    <p>Click or drag to upload style reference image</p>
+                <div class="upload-area" id="style-ref-upload" style="position: relative; cursor: pointer; padding: 0; min-height: 120px; display: flex; align-items: center; justify-content: center;">
+                    <p id="style-ref-placeholder" style="padding: 20px; margin: 0;">Click or drag to upload style reference image</p>
+                    <img id="style-ref-preview-img" style="display: none; width: 100%; height: auto; display: block;">
                     <input type="file" id="style-ref-file" accept="image/*" style="display: none;">
                 </div>
             </div>
             
             <div class="form-group">
                 <label class="form-label">Upload Color Reference:</label>
-                <div class="upload-area" id="color-ref-upload">
-                    <p>Click or drag to upload color reference image</p>
+                <div class="upload-area" id="color-ref-upload" style="position: relative; cursor: pointer; padding: 0; min-height: 120px; display: flex; align-items: center; justify-content: center;">
+                    <p id="color-ref-placeholder" style="padding: 20px; margin: 0;">Click or drag to upload color reference image</p>
+                    <img id="color-ref-preview-img" style="display: none; width: 100%; height: auto; display: block;">
                     <input type="file" id="color-ref-file" accept="image/*" style="display: none;">
                 </div>
             </div>
@@ -713,6 +788,25 @@
             </div>
             
             <div class="form-group">
+                <label class="form-label">Leonardo Style Preset (Leonardo models only):</label>
+                <select class="form-select" id="img-preset-style">
+                    <option value="NONE">None</option>
+                    <option value="CINEMATIC">Cinematic</option>
+                    <option value="CREATIVE">Creative</option>
+                    <option value="DYNAMIC">Dynamic</option>
+                    <option value="ENVIRONMENT">Environment</option>
+                    <option value="GENERAL">General</option>
+                    <option value="ILLUSTRATION">Illustration</option>
+                    <option value="PHOTOGRAPHY">Photography</option>
+                    <option value="RAYTRACED">Raytraced</option>
+                    <option value="RENDER_3D">3D Render</option>
+                    <option value="SKETCH_BW">B&W Sketch</option>
+                    <option value="SKETCH_COLOR">Color Sketch</option>
+                    <option value="VIBRANT">Vibrant</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
                 <label class="form-label">Dimensions:</label>
                 <select class="form-select" id="img-aspect-ratio">
                     <option value="1:1">1:1 (Square)</option>
@@ -731,8 +825,9 @@
             <h2 class="tool-title">Animation Generator</h2>
             
             <div class="form-group">
-                <div class="upload-area" id="anim-start-frame-upload">
-                    <p>Upload Start Frame</p>
+                <div class="upload-area" id="anim-start-frame-upload" style="cursor: pointer;">
+                    <img id="anim-frame-preview" style="display: none; max-width: 100%; height: auto; object-fit: contain;" />
+                    <p id="anim-frame-placeholder">Upload Start Frame</p>
                     <input type="file" id="anim-start-frame" accept="image/*" style="display: none;">
                 </div>
             </div>
@@ -812,6 +907,26 @@
                 </div>
             </div>
             
+            <!-- Extracted Frames Preview -->
+            <div id="extracted-frames-container" style="display: none; margin-top: 15px; margin-bottom: 15px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div>
+                        <label class="form-label" style="margin-bottom: 5px;">Frame A:</label>
+                        <div id="frame-a-preview" style="width: 100%; aspect-ratio: 16/9; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+                            <img id="frame-a-img" style="width: 100%; height: 100%; object-fit: contain; display: none;">
+                            <span id="frame-a-placeholder" style="color: #999;">No frame extracted</span>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="form-label" style="margin-bottom: 5px;">Frame B:</label>
+                        <div id="frame-b-preview" style="width: 100%; aspect-ratio: 16/9; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+                            <img id="frame-b-img" style="width: 100%; height: 100%; object-fit: contain; display: none;">
+                            <span id="frame-b-placeholder" style="color: #999;">No frame extracted</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
             <div class="form-group mt-20">
                 <label class="form-label">Animation Prompt:</label>
                 <textarea class="form-textarea" id="loop-anim-prompt" placeholder="Describe the animation..."></textarea>
@@ -878,6 +993,9 @@
                         <div style="font-weight: 600; margin-bottom: 8px;">Target Color Preview:</div>
                         <div id="color-preview" style="width: 100px; height: 50px; margin: 0 auto; border: 2px solid #333; border-radius: 8px; background: hsl(60, 100%, 50%);"></div>
                         <div style="margin-top: 5px; font-size: 12px; color: #666;" id="color-preview-text">HSV: (60, 100%, 100%)</div>
+                        <button class="frame-btn" onclick="toggleColorSampler()" id="color-sampler-btn" style="margin-top: 10px; background: #28a745;">
+                            🎨 Pick Color from Video
+                        </button>
                     </div>
                     
                     <div class="slider-group">
@@ -943,6 +1061,32 @@
                     <button class="frame-btn" onclick="previewKeying()">Preview</button>
                     <button class="frame-btn" onclick="resetPreview()">Reset Preview</button>
                 </div>
+                
+                <div class="frame-controls" style="margin-top: 10px;">
+                    <button class="frame-btn" onclick="zoomInKeyer()">🔍 Zoom In</button>
+                    <button class="frame-btn" onclick="zoomOutKeyer()">🔍 Zoom Out</button>
+                    <button class="frame-btn" onclick="resetKeyerZoom()">Reset Zoom</button>
+                </div>
+                
+                <div style="margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 8px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                        <div>
+                            <label class="form-label" style="margin-bottom: 5px;">Grid Size:</label>
+                            <select id="keyer-grid-size" class="form-input" onchange="updateKeyerGrid()">
+                                <option value="0">No Grid</option>
+                                <option value="20">20px</option>
+                                <option value="40">40px</option>
+                                <option value="60">60px</option>
+                                <option value="80">80px</option>
+                                <option value="100">100px</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label" style="margin-bottom: 5px;">Grid Color:</label>
+                            <input type="color" id="keyer-grid-color" class="form-input" value="#ff0000" onchange="updateKeyerGrid()" style="height: 40px;">
+                        </div>
+                    </div>
+                </div>
             </div>
             
             <button class="btn-primary" onclick="processKeying()">Save & Process</button>
@@ -979,6 +1123,8 @@
 
 <!-- FLOATING DELETE BAR -->
 <div class="delete-bar" id="delete-bar">
+    <button class="delete-btn" style="background: #6c757d; color: white;" onclick="selectAll()">Select All</button>
+    <button class="delete-btn" style="background: #6c757d; color: white;" onclick="invertSelection()">Invert Selection</button>
     <button class="delete-btn delete-btn-selected" onclick="deleteSelected()">Delete Selected</button>
     <button class="delete-btn delete-btn-all" onclick="deleteAll()">Delete All</button>
 </div>
@@ -1073,18 +1219,76 @@ function setupUploadArea(uploadId, fileInputId) {
             fileInput.files = files;
             uploadArea.classList.add('has-file');
             uploadArea.querySelector('p').textContent = `✓ ${files[0].name}`;
+            // Trigger change event for image preview
+            fileInput.dispatchEvent(new Event('change'));
         }
         uploadArea.style.borderColor = '#ddd';
     });
 }
 
-// Setup all upload areas
-setupUploadArea('style-ref-upload', 'style-ref-file');
-setupUploadArea('color-ref-upload', 'color-ref-file');
-setupUploadArea('anim-start-frame-upload', 'anim-start-frame');
+// Setup upload areas (most with file preview)
 setupUploadArea('loop-video-upload', 'loop-video-file');
 setupUploadArea('keyer-video-upload', 'keyer-video-file');
 setupUploadArea('remove-bg-upload', 'remove-bg-file');
+
+// Setup animation frame upload with image preview (like style/color refs)
+setupImageReferenceUpload('anim-start-frame', 'anim-start-frame-upload', 'anim-frame-preview', 'anim-frame-placeholder');
+
+// ===== IMAGE PREVIEW HANDLERS FOR STYLE/COLOR REFERENCES =====
+function setupImageReferenceUpload(fileInputId, uploadAreaId, previewImgId, placeholderId) {
+    const fileInput = document.getElementById(fileInputId);
+    const uploadArea = document.getElementById(uploadAreaId);
+    const previewImg = document.getElementById(previewImgId);
+    const placeholder = document.getElementById(placeholderId);
+    
+    // Handle click to open file dialog
+    uploadArea.addEventListener('click', () => {
+        fileInput.click();
+    });
+    
+    // Handle file selection
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                previewImg.src = event.target.result;
+                previewImg.style.display = 'block';
+                placeholder.style.display = 'none';
+                uploadArea.classList.add('has-file');
+                
+                // Remove min-height and let image size dictate box height
+                uploadArea.style.minHeight = '0';
+                uploadArea.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+    
+    // Handle drag and drop
+    uploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadArea.style.borderColor = '#007bff';
+    });
+    
+    uploadArea.addEventListener('dragleave', () => {
+        uploadArea.style.borderColor = '#ddd';
+    });
+    
+    uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            fileInput.files = files;
+            // Trigger change event
+            fileInput.dispatchEvent(new Event('change'));
+        }
+        uploadArea.style.borderColor = '#ddd';
+    });
+}
+
+setupImageReferenceUpload('style-ref-file', 'style-ref-upload', 'style-ref-preview-img', 'style-ref-placeholder');
+setupImageReferenceUpload('color-ref-file', 'color-ref-upload', 'color-ref-preview-img', 'color-ref-placeholder');
 
 // ===== VIDEO PREVIEW HANDLERS =====
 document.getElementById('loop-video-file').addEventListener('change', (e) => {
@@ -1266,12 +1470,15 @@ function renderJobCard(job) {
     }
     
     // Generate thumbnail HTML based on media type
-    let thumbnailHtml = '';
+    let thumbnailContent = '';
     if (hasViewableMedia && isVideoJob) {
         // Video thumbnail - autoplay and loop continuously
         // Add checkerboard background for keyed videos
+        // Add cache-busting timestamp to ensure video updates after keying
+        const cacheBuster = `?t=${Date.now()}`;
+        const thumbnailUrl = thumbnail + cacheBuster;
         const bgStyle = isKeyedVideo ? `background-image: linear-gradient(45deg, #ddd 25%, transparent 25%), linear-gradient(-45deg, #ddd 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ddd 75%), linear-gradient(-45deg, transparent 75%, #ddd 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0px; background-color: #fff;` : '';
-        thumbnailHtml = `<video src="${thumbnail}" class="job-thumbnail clickable-thumbnail" 
+        thumbnailContent = `<video src="${thumbnailUrl}" class="job-thumbnail clickable-thumbnail" 
                                onclick="openMediaViewer(${job.id})" 
                                style="${bgStyle}"
                                muted loop autoplay playsinline></video>`;
@@ -1279,10 +1486,22 @@ function renderJobCard(job) {
         // Image thumbnail
         const clickable = hasViewableMedia ? 'clickable-thumbnail' : '';
         const onclick = hasViewableMedia ? `onclick="openMediaViewer(${job.id})"` : '';
-        thumbnailHtml = `<img src="${thumbnail}" class="job-thumbnail ${clickable}" ${onclick} alt="${job.job_type}">`;
+        thumbnailContent = `<img src="${thumbnail}" class="job-thumbnail ${clickable}" ${onclick} alt="${job.job_type}">`;
     } else {
-        thumbnailHtml = `<div class="job-thumbnail" style="background: #f0f0f0; display: flex; align-items: center; justify-content: center; color: #999;">No preview</div>`;
+        thumbnailContent = `<div class="job-thumbnail" style="background: #f0f0f0; display: flex; align-items: center; justify-content: center; color: #999;">No preview</div>`;
     }
+    
+    // Wrap thumbnail with processing overlay if job is processing
+    const processingStates = ['queued', 'processing', 'keying_queued', 'keying_processing', 'waiting_for_children', 'stitching', 'waiting_for_analysis'];
+    const showProcessing = processingStates.includes(job.status);
+    const thumbnailHtml = showProcessing ? `
+        <div class="thumbnail-wrapper">
+            ${thumbnailContent}
+            <div class="processing-overlay">
+                <div class="spinner"></div>
+            </div>
+        </div>
+    ` : thumbnailContent;
     
     // Generate action buttons based on job type
     const actions = getJobActions(job);
@@ -1369,6 +1588,30 @@ function getJobActions(job) {
             actions.push(`<button class="job-action-btn" onclick="downloadJob(${job.id})">Download</button>`);
             actions.push(`<button class="job-action-btn" onclick="animateImage(${job.id})">Animate</button>`);
         }
+        
+        if (job.job_type === 'video_stitching') {
+            actions.push(`<button class="job-action-btn" onclick="selectForStitch(${job.id})">Stitch</button>`);
+            
+            // Show keying buttons for stitched videos
+            if (!job.keyed_result_data) {
+                actions.push(`<button class="job-action-btn" onclick="autoKeyJob(${job.id})">Auto Key</button>`);
+                actions.push(`<button class="job-action-btn" onclick="manualKeyJob(${job.id})">Key</button>`);
+            } else {
+                actions.push(`<button class="job-action-btn" onclick="downloadKeyed(${job.id})">Download Keyed</button>`);
+                actions.push(`<button class="job-action-btn" onclick="reKeyJob(${job.id})">Re-Key</button>`);
+            }
+        }
+        
+        if (job.job_type === 'video_upload') {
+            // Show keying buttons for uploaded videos
+            if (!job.keyed_result_data) {
+                actions.push(`<button class="job-action-btn" onclick="autoKeyJob(${job.id})">Auto Key</button>`);
+                actions.push(`<button class="job-action-btn" onclick="manualKeyJob(${job.id})">Key</button>`);
+            } else {
+                actions.push(`<button class="job-action-btn" onclick="downloadKeyed(${job.id})">Download Keyed</button>`);
+                actions.push(`<button class="job-action-btn" onclick="reKeyJob(${job.id})">Re-Key</button>`);
+            }
+        }
     }
     
     return actions.join('');
@@ -1397,12 +1640,48 @@ function toggleJobSelection(jobId) {
     renderJobs();
 }
 
+function selectAll() {
+    // Select all non-processing jobs
+    const processingStates = ['processing', 'keying_processing'];
+    allJobs.forEach(job => {
+        if (!processingStates.includes(job.status)) {
+            selectedJobs.add(job.id);
+        }
+    });
+    renderJobs();
+}
+
+function invertSelection() {
+    // Invert selection for all non-processing jobs
+    const processingStates = ['processing', 'keying_processing'];
+    allJobs.forEach(job => {
+        if (!processingStates.includes(job.status)) {
+            if (selectedJobs.has(job.id)) {
+                selectedJobs.delete(job.id);
+            } else {
+                selectedJobs.add(job.id);
+            }
+        }
+    });
+    
+    // Update UI
+    const deleteBar = document.getElementById('delete-bar');
+    if (selectedJobs.size > 0) {
+        deleteBar.classList.add('visible');
+    } else {
+        deleteBar.classList.remove('visible');
+    }
+    
+    renderJobs();
+}
+
 // ===== IMAGE GENERATION =====
 function generateImage() {
     const formData = new FormData();
     formData.append('object_prompt', document.getElementById('img-object-prompt').value);
     formData.append('style_prompt', document.getElementById('img-style-prompt').value);
     formData.append('aspect_ratio', document.getElementById('img-aspect-ratio').value);
+    formData.append('presetStyle', document.getElementById('img-preset-style').value);
     
     // Add style/color refs if uploaded
     const styleRef = document.getElementById('style-ref-file').files[0];
@@ -1477,8 +1756,9 @@ function generateAnimation() {
                 
                 // Clear the form
                 document.getElementById('anim-start-frame').value = '';
-                document.getElementById('anim-start-frame-upload').classList.remove('has-file');
-                document.getElementById('anim-start-frame-upload').querySelector('p').textContent = 'Upload Start Frame';
+                document.getElementById('anim-frame-preview').style.display = 'none';
+                document.getElementById('anim-frame-placeholder').style.display = 'block';
+                document.getElementById('anim-frame-placeholder').textContent = 'Upload Start Frame';
                 if (hiddenImageUrl) hiddenImageUrl.remove();
             } else {
                 alert('Error: ' + (data.error || 'Unknown error'));
@@ -1529,11 +1809,24 @@ async function extractFrameA() {
     
     try {
         extractedFrameA = await captureVideoFrame(video);
-        alert(`✅ Frame A extracted at ${video.currentTime.toFixed(2)}s`);
+        
+        // Display the extracted frame in the preview
+        const frameImg = document.getElementById('frame-a-img');
+        const framePlaceholder = document.getElementById('frame-a-placeholder');
+        const container = document.getElementById('extracted-frames-container');
+        
+        // Create object URL from blob for display
+        const frameUrl = URL.createObjectURL(extractedFrameA);
+        frameImg.src = frameUrl;
+        frameImg.style.display = 'block';
+        framePlaceholder.style.display = 'none';
+        container.style.display = 'block';
+        
+        showUserFriendlyError(`✅ Frame A extracted at ${video.currentTime.toFixed(2)}s`, false);
         console.log('Frame A extracted:', extractedFrameA);
     } catch (err) {
         console.error('Failed to extract frame A:', err);
-        alert('Failed to extract frame A');
+        showUserFriendlyError('Failed to extract frame A', true);
     }
 }
 
@@ -1546,11 +1839,24 @@ async function extractFrameB() {
     
     try {
         extractedFrameB = await captureVideoFrame(video);
-        alert(`✅ Frame B extracted at ${video.currentTime.toFixed(2)}s`);
+        
+        // Display the extracted frame in the preview
+        const frameImg = document.getElementById('frame-b-img');
+        const framePlaceholder = document.getElementById('frame-b-placeholder');
+        const container = document.getElementById('extracted-frames-container');
+        
+        // Create object URL from blob for display
+        const frameUrl = URL.createObjectURL(extractedFrameB);
+        frameImg.src = frameUrl;
+        frameImg.style.display = 'block';
+        framePlaceholder.style.display = 'none';
+        container.style.display = 'block';
+        
+        showUserFriendlyError(`✅ Frame B extracted at ${video.currentTime.toFixed(2)}s`, false);
         console.log('Frame B extracted:', extractedFrameB);
     } catch (err) {
         console.error('Failed to extract frame B:', err);
-        alert('Failed to extract frame B');
+        showUserFriendlyError('Failed to extract frame B', true);
     }
 }
 
@@ -1624,6 +1930,254 @@ function keyerPrevFrame() {
 function keyerNextFrame() {
     const video = document.getElementById('keyer-video-preview');
     video.currentTime = Math.min(video.duration, video.currentTime + 1/30);
+}
+
+// ===== KEYER ZOOM AND PAN CONTROLS =====
+let keyerZoomLevel = 1.0;
+let keyerPanX = 0;
+let keyerPanY = 0;
+let keyerIsPanning = false;
+let keyerPanStartX = 0;
+let keyerPanStartY = 0;
+let keyerGridSize = 0;
+let keyerGridColor = '#ff0000';
+let colorSamplerActive = false;
+
+function zoomInKeyer() {
+    keyerZoomLevel = Math.min(keyerZoomLevel + 0.25, 4.0);
+    applyKeyerZoom();
+}
+
+function zoomOutKeyer() {
+    keyerZoomLevel = Math.max(keyerZoomLevel - 0.25, 0.5);
+    applyKeyerZoom();
+}
+
+function resetKeyerZoom() {
+    keyerZoomLevel = 1.0;
+    keyerPanX = 0;
+    keyerPanY = 0;
+    applyKeyerZoom();
+}
+
+function applyKeyerZoom() {
+    const video = document.getElementById('keyer-video-preview');
+    const canvas = document.getElementById('keying-preview-canvas');
+    const container = document.getElementById('keyer-video-preview-container');
+    
+    if (!video || !container) return;
+    
+    // When zoom is 1x or less, reset to center with no pan
+    if (keyerZoomLevel <= 1) {
+        keyerPanX = 0;
+        keyerPanY = 0;
+        keyerZoomLevel = 1; // Ensure exactly 1
+    } else {
+        // Get the natural video dimensions
+        const videoWidth = video.videoWidth;
+        const videoHeight = video.videoHeight;
+        
+        if (!videoWidth || !videoHeight) {
+            console.warn('Video dimensions not available yet');
+            return;
+        }
+        
+        // Calculate the actual displayed dimensions (accounting for object-fit: contain)
+        const containerWidth = container.offsetWidth;
+        const containerHeight = container.offsetHeight;
+        const videoAspect = videoWidth / videoHeight;
+        const containerAspect = containerWidth / containerHeight;
+        
+        let displayedWidth, displayedHeight;
+        if (videoAspect > containerAspect) {
+            // Video is wider - width matches container
+            displayedWidth = containerWidth;
+            displayedHeight = containerWidth / videoAspect;
+        } else {
+            // Video is taller - height matches container
+            displayedHeight = containerHeight;
+            displayedWidth = containerHeight * videoAspect;
+        }
+        
+        // The video element itself renders at displayed size
+        // When zoomed, the content grows but we want to keep it within the visible container
+        // Maximum pan offset is when the edge of the zoomed content reaches the container edge
+        
+        // After scaling, the content size is: displayedWidth * keyerZoomLevel
+        // The overflow on each side is: (displayedWidth * keyerZoomLevel - displayedWidth) / 2
+        // But since we're using translate AFTER scale, we need to divide by zoom
+        const maxPanX = Math.max(0, (displayedWidth * (keyerZoomLevel - 1)) / 2);
+        const maxPanY = Math.max(0, (displayedHeight * (keyerZoomLevel - 1)) / 2);
+        
+        // Constrain pan within bounds
+        keyerPanX = Math.max(-maxPanX, Math.min(maxPanX, keyerPanX));
+        keyerPanY = Math.max(-maxPanY, Math.min(maxPanY, keyerPanY));
+        
+        console.log('Keyer zoom:', {
+            zoom: keyerZoomLevel,
+            displayedSize: { w: displayedWidth, h: displayedHeight },
+            maxPan: { x: maxPanX, y: maxPanY },
+            pan: { x: keyerPanX, y: keyerPanY }
+        });
+    }
+    
+    // Apply transform: scale first, then translate in the scaled coordinate system
+    const transform = `scale(${keyerZoomLevel}) translate(${keyerPanX / keyerZoomLevel}px, ${keyerPanY / keyerZoomLevel}px)`;
+    
+    if (video) {
+        video.style.transform = transform;
+        video.style.transformOrigin = 'center center';
+    }
+    
+    if (canvas) {
+        canvas.style.transform = transform;
+        canvas.style.transformOrigin = 'center center';
+    }
+}
+
+// Setup pan/drag functionality for keyer preview
+const keyerPreviewContainer = document.getElementById('keyer-video-preview-container');
+if (keyerPreviewContainer) {
+    keyerPreviewContainer.addEventListener('mousedown', (e) => {
+        if (keyerZoomLevel > 1.0) {
+            keyerIsPanning = true;
+            keyerPanStartX = e.clientX - keyerPanX;
+            keyerPanStartY = e.clientY - keyerPanY;
+            keyerPreviewContainer.classList.add('panning');
+            e.preventDefault();
+        }
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+        if (keyerIsPanning) {
+            keyerPanX = e.clientX - keyerPanStartX;
+            keyerPanY = e.clientY - keyerPanStartY;
+            applyKeyerZoom(); // This will constrain the pan
+            e.preventDefault();
+        }
+    });
+    
+    document.addEventListener('mouseup', () => {
+        if (keyerIsPanning) {
+            keyerIsPanning = false;
+            keyerPreviewContainer.classList.remove('panning');
+        }
+    });
+    
+    // Update cursor based on zoom level
+    keyerPreviewContainer.addEventListener('mouseenter', () => {
+        if (keyerZoomLevel > 1.0) {
+            keyerPreviewContainer.style.cursor = 'grab';
+        } else {
+            keyerPreviewContainer.style.cursor = 'default';
+        }
+    });
+}
+
+function updateKeyerGrid() {
+    const gridSize = parseInt(document.getElementById('keyer-grid-size').value);
+    const gridColor = document.getElementById('keyer-grid-color').value;
+    
+    keyerGridSize = gridSize;
+    keyerGridColor = gridColor;
+    
+    const container = document.getElementById('keyer-video-preview-container');
+    
+    if (gridSize > 0) {
+        // Create grid overlay
+        container.style.backgroundImage = `
+            linear-gradient(${gridColor} 1px, transparent 1px),
+            linear-gradient(90deg, ${gridColor} 1px, transparent 1px)
+        `;
+        container.style.backgroundSize = `${gridSize}px ${gridSize}px`;
+        container.style.backgroundPosition = 'center center';
+    } else {
+        // Remove grid
+        container.style.backgroundImage = 'none';
+    }
+    
+    console.log('Keyer grid updated:', gridSize, gridColor);
+}
+
+// ===== COLOR SAMPLER =====
+function toggleColorSampler() {
+    colorSamplerActive = !colorSamplerActive;
+    const btn = document.getElementById('color-sampler-btn');
+    const video = document.getElementById('keyer-video-preview');
+    
+    if (colorSamplerActive) {
+        btn.style.background = '#dc3545';
+        btn.textContent = '❌ Cancel Color Picker';
+        video.style.cursor = 'crosshair';
+    } else {
+        btn.style.background = '#28a745';
+        btn.textContent = '🎨 Pick Color from Video';
+        video.style.cursor = '';
+    }
+}
+
+function sampleColorFromVideo(event) {
+    if (!colorSamplerActive) return;
+    
+    const video = document.getElementById('keyer-video-preview');
+    if (!video || !video.videoWidth || !video.videoHeight) {
+        alert('Video not ready');
+        return;
+    }
+    
+    // Get click position relative to video element
+    const rect = video.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    
+    // Convert to video coordinates (accounting for object-fit: contain)
+    const scaleX = video.videoWidth / rect.width;
+    const scaleY = video.videoHeight / rect.height;
+    const videoX = Math.floor(x * scaleX);
+    const videoY = Math.floor(y * scaleY);
+    
+    // Create a temporary canvas to sample the pixel
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0);
+    
+    // Get pixel data
+    const pixel = ctx.getImageData(videoX, videoY, 1, 1).data;
+    const r = pixel[0];
+    const g = pixel[1];
+    const b = pixel[2];
+    
+    // Convert RGB to HSV
+    const hsv = rgbToHsv(r, g, b);
+    
+    // Convert HSV to OpenCV scale (H: 0-180, S: 0-255, V: 0-255)
+    const hue = Math.round(hsv.h / 2); // 0-360 -> 0-180
+    const sat = Math.round((hsv.s / 100) * 255); // 0-100 -> 0-255
+    const val = Math.round((hsv.v / 100) * 255); // 0-100 -> 0-255
+    
+    // Update sliders
+    document.getElementById('keyer-hue').value = hue;
+    document.getElementById('keyer-sat').value = sat;
+    document.getElementById('keyer-val').value = val;
+    
+    // Update displays
+    updateSliderValue('hue');
+    updateSliderValue('sat');
+    updateSliderValue('val');
+    updateColorPreview();
+    
+    // Deactivate sampler
+    toggleColorSampler();
+    
+    console.log('Sampled color:', { r, g, b, hsv, hue, sat, val });
+}
+
+// Add click handler to video for color sampling
+const keyerVideo = document.getElementById('keyer-video-preview');
+if (keyerVideo) {
+    keyerVideo.addEventListener('click', sampleColorFromVideo);
 }
 
 function previewKeying() {
@@ -1723,6 +2277,178 @@ function previewKeying() {
         
         console.log('Keyed pixels:', keyed, 'out of', data.length / 4, `(${(keyed / (data.length / 4) * 100).toFixed(1)}%)`);
         
+        // Apply post-processing effects
+        const erode = parseInt(document.getElementById('keyer-erode').value);
+        const dilate = parseInt(document.getElementById('keyer-dilate').value);
+        const blur = parseInt(document.getElementById('keyer-blur').value);
+        const spill = parseInt(document.getElementById('keyer-spill').value);
+        
+        console.log('Post-processing params:', { erode, dilate, blur, spill });
+        
+        // Apply erode (shrink transparent areas)
+        if (erode > 0) {
+            for (let iter = 0; iter < erode; iter++) {
+                const tempData = new Uint8ClampedArray(data);
+                for (let y = 1; y < canvas.height - 1; y++) {
+                    for (let x = 1; x < canvas.width - 1; x++) {
+                        const idx = (y * canvas.width + x) * 4;
+                        if (data[idx + 3] < 128) { // If pixel is transparent or semi-transparent
+                            // Check neighbors
+                            const neighbors = [
+                                ((y - 1) * canvas.width + x) * 4,
+                                ((y + 1) * canvas.width + x) * 4,
+                                (y * canvas.width + (x - 1)) * 4,
+                                (y * canvas.width + (x + 1)) * 4
+                            ];
+                            for (let n of neighbors) {
+                                if (data[n + 3] > 128) {
+                                    tempData[n + 3] = Math.max(0, tempData[n + 3] - 60);
+                                }
+                            }
+                        }
+                    }
+                }
+                data.set(tempData);
+            }
+        } else if (erode < 0) {
+            // Negative erode = dilate transparent areas
+            const iterations = Math.abs(erode);
+            for (let iter = 0; iter < iterations; iter++) {
+                const tempData = new Uint8ClampedArray(data);
+                for (let y = 1; y < canvas.height - 1; y++) {
+                    for (let x = 1; x < canvas.width - 1; x++) {
+                        const idx = (y * canvas.width + x) * 4;
+                        if (data[idx + 3] > 128) { // If pixel is opaque
+                            // Check neighbors
+                            const neighbors = [
+                                ((y - 1) * canvas.width + x) * 4,
+                                ((y + 1) * canvas.width + x) * 4,
+                                (y * canvas.width + (x - 1)) * 4,
+                                (y * canvas.width + (x + 1)) * 4
+                            ];
+                            for (let n of neighbors) {
+                                if (data[n + 3] < 128) {
+                                    tempData[n + 3] = 0;
+                                }
+                            }
+                        }
+                    }
+                }
+                data.set(tempData);
+            }
+        }
+        
+        // Apply dilate (grow solid areas / shrink transparent areas)
+        if (dilate > 0) {
+            for (let iter = 0; iter < dilate; iter++) {
+                const tempData = new Uint8ClampedArray(data);
+                for (let y = 1; y < canvas.height - 1; y++) {
+                    for (let x = 1; x < canvas.width - 1; x++) {
+                        const idx = (y * canvas.width + x) * 4;
+                        if (data[idx + 3] > 128) { // If pixel is opaque
+                            // Check neighbors and make them more opaque
+                            const neighbors = [
+                                ((y - 1) * canvas.width + x) * 4,
+                                ((y + 1) * canvas.width + x) * 4,
+                                (y * canvas.width + (x - 1)) * 4,
+                                (y * canvas.width + (x + 1)) * 4
+                            ];
+                            for (let n of neighbors) {
+                                if (data[n + 3] < 255) {
+                                    tempData[n + 3] = Math.min(255, tempData[n + 3] + 60);
+                                }
+                            }
+                        }
+                    }
+                }
+                data.set(tempData);
+            }
+        } else if (dilate < 0) {
+            // Negative dilate = erode solid areas
+            const iterations = Math.abs(dilate);
+            for (let iter = 0; iter < iterations; iter++) {
+                const tempData = new Uint8ClampedArray(data);
+                for (let y = 1; y < canvas.height - 1; y++) {
+                    for (let x = 1; x < canvas.width - 1; x++) {
+                        const idx = (y * canvas.width + x) * 4;
+                        if (data[idx + 3] < 128) { // If pixel is transparent
+                            // Check neighbors
+                            const neighbors = [
+                                ((y - 1) * canvas.width + x) * 4,
+                                ((y + 1) * canvas.width + x) * 4,
+                                (y * canvas.width + (x - 1)) * 4,
+                                (y * canvas.width + (x + 1)) * 4
+                            ];
+                            for (let n of neighbors) {
+                                if (data[n + 3] > 0) {
+                                    tempData[n + 3] = 255;
+                                }
+                            }
+                        }
+                    }
+                }
+                data.set(tempData);
+            }
+        }
+        
+        // Apply edge blur
+        if (blur > 0) {
+            const tempData = new Uint8ClampedArray(data);
+            for (let y = blur; y < canvas.height - blur; y++) {
+                for (let x = blur; x < canvas.width - blur; x++) {
+                    const idx = (y * canvas.width + x) * 4;
+                    const alpha = data[idx + 3];
+                    
+                    // Only blur edges (where alpha is between 0 and 255)
+                    if (alpha > 0 && alpha < 255) {
+                        let sumAlpha = 0;
+                        let count = 0;
+                        
+                        // Sample surrounding pixels
+                        for (let dy = -blur; dy <= blur; dy++) {
+                            for (let dx = -blur; dx <= blur; dx++) {
+                                const nIdx = ((y + dy) * canvas.width + (x + dx)) * 4;
+                                sumAlpha += data[nIdx + 3];
+                                count++;
+                            }
+                        }
+                        
+                        tempData[idx + 3] = Math.round(sumAlpha / count);
+                    }
+                }
+            }
+            data.set(tempData);
+        }
+        
+        // Apply spill suppression (reduce key color in remaining pixels)
+        if (spill > 0) {
+            const spillStrength = spill / 20; // Normalize to 0-1
+            for (let i = 0; i < data.length; i += 4) {
+                if (data[i + 3] > 0) { // Only process non-transparent pixels
+                    const r = data[i];
+                    const g = data[i + 1];
+                    const b = data[i + 2];
+                    const hsv = rgbToHsv(r, g, b);
+                    
+                    // If pixel is close to key hue, desaturate it
+                    const hueDiff = Math.abs(hsv.h - hueCenter);
+                    const hueDistance = Math.min(hueDiff, 360 - hueDiff);
+                    
+                    if (hueDistance < hueTolerance * 2) {
+                        const suppressionAmount = (1 - hueDistance / (hueTolerance * 2)) * spillStrength;
+                        // Reduce saturation
+                        hsv.s = hsv.s * (1 - suppressionAmount);
+                        
+                        // Convert back to RGB
+                        const rgb = hsvToRgb(hsv.h, hsv.s, hsv.v);
+                        data[i] = rgb.r;
+                        data[i + 1] = rgb.g;
+                        data[i + 2] = rgb.b;
+                    }
+                }
+            }
+        }
+        
         // Put processed image back
         ctx.putImageData(imageData, 0, 0);
         
@@ -1763,6 +2489,38 @@ function rgbToHsv(r, g, b) {
     const v = max * 100;
     
     return { h, s, v };
+}
+
+// Helper function to convert HSV to RGB
+function hsvToRgb(h, s, v) {
+    // h: 0-360, s: 0-100, v: 0-100
+    s = s / 100;
+    v = v / 100;
+    
+    const c = v * s;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = v - c;
+    
+    let r, g, b;
+    if (h >= 0 && h < 60) {
+        r = c; g = x; b = 0;
+    } else if (h >= 60 && h < 120) {
+        r = x; g = c; b = 0;
+    } else if (h >= 120 && h < 180) {
+        r = 0; g = c; b = x;
+    } else if (h >= 180 && h < 240) {
+        r = 0; g = x; b = c;
+    } else if (h >= 240 && h < 300) {
+        r = x; g = 0; b = c;
+    } else {
+        r = c; g = 0; b = x;
+    }
+    
+    return {
+        r: Math.round((r + m) * 255),
+        g: Math.round((g + m) * 255),
+        b: Math.round((b + m) * 255)
+    };
 }
 
 function resetPreview() {
@@ -1894,11 +2652,36 @@ function editJob(jobId) {
                     document.getElementById('img-object-prompt').value = inputData.object_prompt || '';
                     document.getElementById('img-style-prompt').value = inputData.style_prompt || '';
                     document.getElementById('img-aspect-ratio').value = inputData.aspect_ratio || '1:1';
+                    document.getElementById('img-preset-style').value = inputData.presetStyle || 'NONE';
                     
                     // Select models
                     document.querySelectorAll('input[name="image-model"]').forEach(el => {
                         el.checked = el.value === inputData.modelId;
                     });
+                    
+                    // Load style reference image if available
+                    if (inputData.style_ref_image_path) {
+                        const stylePreviewImg = document.getElementById('style-ref-preview-img');
+                        const stylePlaceholder = document.getElementById('style-ref-placeholder');
+                        if (stylePreviewImg && stylePlaceholder) {
+                            stylePreviewImg.src = '/' + inputData.style_ref_image_path.replace(/^\//, '');
+                            stylePreviewImg.style.display = 'block';
+                            stylePlaceholder.style.display = 'none';
+                            console.log('Loaded style ref:', inputData.style_ref_image_path);
+                        }
+                    }
+                    
+                    // Load color reference image if available
+                    if (inputData.color_ref_image_path) {
+                        const colorPreviewImg = document.getElementById('color-ref-preview-img');
+                        const colorPlaceholder = document.getElementById('color-ref-placeholder');
+                        if (colorPreviewImg && colorPlaceholder) {
+                            colorPreviewImg.src = '/' + inputData.color_ref_image_path.replace(/^\//, '');
+                            colorPreviewImg.style.display = 'block';
+                            colorPlaceholder.style.display = 'none';
+                            console.log('Loaded color ref:', inputData.color_ref_image_path);
+                        }
+                    }
                 } else if (job.job_type === 'animation') {
                     switchTool('animation');
                     document.getElementById('anim-prompt').value = inputData.prompt || '';
@@ -1912,6 +2695,32 @@ function editJob(jobId) {
                     document.querySelectorAll('input[name="anim-model"]').forEach(el => {
                         el.checked = el.value === inputData.video_model;
                     });
+                    
+                    // Load start frame image if available
+                    if (inputData.image_url || inputData.image_path) {
+                        const imageUrl = inputData.image_url || inputData.image_path;
+                        
+                        // Create/update hidden input for image URL
+                        const form = document.querySelector('#tool-animation');
+                        let hiddenInput = form.querySelector('input[name="image_url_from_job"]');
+                        if (!hiddenInput) {
+                            hiddenInput = document.createElement('input');
+                            hiddenInput.type = 'hidden';
+                            hiddenInput.name = 'image_url_from_job';
+                            form.appendChild(hiddenInput);
+                        }
+                        hiddenInput.value = imageUrl;
+                        
+                        // Show image preview
+                        const previewImg = document.getElementById('anim-frame-preview');
+                        const placeholder = document.getElementById('anim-frame-placeholder');
+                        if (previewImg && placeholder) {
+                            previewImg.src = '/' + imageUrl.replace(/^\//, '');
+                            previewImg.style.display = 'block';
+                            placeholder.style.display = 'none';
+                            console.log('Loaded animation start frame:', imageUrl);
+                        }
+                    }
                 }
             } else {
                 alert('Error: ' + (data.error || 'Unknown error'));
@@ -1940,10 +2749,12 @@ function animateImage(jobId) {
     }
     hiddenInput.value = job.result_data;
     
-    // Show preview
-    const uploadArea = document.getElementById('anim-start-frame-upload');
-    uploadArea.classList.add('has-file');
-    uploadArea.querySelector('p').textContent = `✓ Using image from job #${jobId}`;
+    // Show image preview
+    const previewImg = document.getElementById('anim-frame-preview');
+    const placeholder = document.getElementById('anim-frame-placeholder');
+    previewImg.src = '/' + job.result_data.replace(/^\//, '');
+    previewImg.style.display = 'block';
+    placeholder.style.display = 'none';
 }
 
 function removeBgFromJob(jobId) {
@@ -2031,12 +2842,25 @@ function manualKeyJob(jobId) {
     // Switch to keyer tool
     switchTool('keyer');
     
+    // Reset preview state before loading new video
+    resetPreview();
+    
+    // Reset zoom if zoom functions exist
+    if (typeof resetKeyerZoom === 'function') {
+        resetKeyerZoom();
+    }
+    
     // Load the video into the keyer preview
     const videoPreview = document.getElementById('keyer-video-preview');
     const videoPreviewContainer = document.getElementById('keyer-video-preview-container');
     
     if (videoPreview && videoPreviewContainer) {
-        videoPreview.src = job.result_data + '?t=' + Date.now(); // Cache busting
+        // Reset video state
+        videoPreview.pause();
+        videoPreview.currentTime = 0;
+        
+        // Load new video with cache busting
+        videoPreview.src = job.result_data + '?t=' + Date.now();
         videoPreviewContainer.classList.add('active'); // Show the video preview
         
         // Load and play the video
@@ -2228,7 +3052,7 @@ function deleteSelected() {
         fetch('/api/batch-delete-items', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ items: jobIds })
+            body: JSON.stringify({ job_ids: jobIds })
         })
         .then(res => res.json())
         .then(data => {
@@ -2237,8 +3061,11 @@ function deleteSelected() {
                 document.getElementById('delete-bar').classList.remove('visible');
                 loadJobs();
             } else {
-                alert('Error deleting jobs');
+                alert('Error deleting jobs: ' + (data.error || 'Unknown error'));
             }
+        })
+        .catch(err => {
+            alert('Error deleting jobs: ' + err.message);
         });
     }
 }
@@ -2262,8 +3089,9 @@ function deleteAll() {
 // ===== MEDIA VIEWER MODAL =====
 function openMediaViewer(jobId) {
     // Find the job and all viewable jobs (both completed and pending_review)
+    // Include jobs with either result_data or keyed_result_data
     viewableJobs = allJobs.filter(job => 
-        (job.status === 'completed' || job.status === 'pending_review') && job.result_data
+        (job.status === 'completed' || job.status === 'pending_review') && (job.result_data || job.keyed_result_data)
     );
     
     const currentJobIndex = viewableJobs.findIndex(job => job.id === jobId);
@@ -2293,15 +3121,25 @@ function showMediaAtIndex(index) {
     counter.textContent = `${index + 1} / ${viewableJobs.length}`;
     jobType.textContent = formatJobType(job.job_type);
     
-    console.log(`Showing job ${job.id}, type: ${job.job_type}, isVideo: ${isVideoJob}, url: ${job.result_data}`);
+    // Prefer keyed_result_data if available, otherwise use result_data
+    const mediaUrl = job.keyed_result_data || job.result_data;
+    
+    console.log(`Showing job ${job.id}, type: ${job.job_type}, isVideo: ${isVideoJob}, url: ${mediaUrl}, keyed: ${!!job.keyed_result_data}`);
     
     if (isVideoJob) {
         // Show video
         modalImage.style.display = 'none';
         modalVideo.pause(); // Pause before changing source
         modalVideo.style.display = 'block';
-        modalVideo.src = job.result_data + '?t=' + Date.now(); // Cache busting
+        modalVideo.src = mediaUrl + '?t=' + Date.now(); // Cache busting
         modalVideo.load();
+        
+        // Add transparency grid for keyed videos
+        if (job.keyed_result_data) {
+            modalVideo.classList.add('has-transparency');
+        } else {
+            modalVideo.classList.remove('has-transparency');
+        }
         
         // Play video once loaded
         modalVideo.addEventListener('loadeddata', function playOnce() {
@@ -2314,7 +3152,14 @@ function showMediaAtIndex(index) {
         modalVideo.pause();
         modalVideo.src = '';
         modalImage.style.display = 'block';
-        modalImage.src = job.result_data;
+        modalImage.src = mediaUrl;
+        
+        // Add transparency grid for PNG images
+        if (mediaUrl && mediaUrl.toLowerCase().endsWith('.png')) {
+            modalImage.classList.add('has-transparency');
+        } else {
+            modalImage.classList.remove('has-transparency');
+        }
     }
 }
 
@@ -2331,6 +3176,11 @@ function closeMediaViewer(event) {
     const modalVideo = document.getElementById('modal-video');
     modalVideo.pause();
     modalVideo.src = '';
+    modalVideo.classList.remove('has-transparency');
+    
+    // Clean up image transparency class
+    const modalImage = document.getElementById('modal-image');
+    modalImage.classList.remove('has-transparency');
 }
 
 function navigateMedia(direction, event) {
