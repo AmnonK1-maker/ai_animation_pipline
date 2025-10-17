@@ -12,6 +12,8 @@ import base64
 import traceback
 import subprocess
 import signal
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from replicate.exceptions import ReplicateError
 from dotenv import load_dotenv
@@ -25,6 +27,10 @@ load_dotenv()
 LEONARDO_API_KEY = os.environ.get("LEONARDO_API_KEY")
 REPLICATE_API_KEY = os.environ.get("REPLICATE_API_KEY")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+
+# Parallel processing configuration
+MAX_CONCURRENT_JOBS = int(os.environ.get("MAX_CONCURRENT_JOBS", "3"))  # Process up to 3 jobs simultaneously
+print(f"Worker: Configured for {MAX_CONCURRENT_JOBS} concurrent jobs")
 
 # Set REPLICATE_API_TOKEN for the replicate library
 if REPLICATE_API_KEY:
@@ -755,127 +761,186 @@ def process_job(job, conn):
     elif job_type == 'animation' and status in ['queued', 'processing']: return handle_animation(job)
     else: return None, f"Unknown job type/status: {job_type}/{status}"
 
-def main():
-    print("Starting worker...")
-    last_cleanup = time.time()
-    
-    while True:
-        job = None
+def process_single_job_worker(job):
+    """
+    Process a single job in a worker thread.
+    This function handles the entire lifecycle of job processing.
+    """
+    job_id = job['id']
+    try:
+        print(f"[Thread-{threading.current_thread().name}] Processing job {job_id}...")
+        
+        # Process the job
+        result_data, error_message = None, None
         try:
-            # Kill stuck ffmpeg processes every 30 seconds
-            current_time = time.time()
-            if current_time - last_cleanup > 30:
-                kill_stuck_ffmpeg_processes()
-                last_cleanup = current_time
-            
             with get_db_connection() as conn:
-                check_for_completed_automations(conn)
-                check_for_analysis_completion(conn)  # Check if analysis jobs are complete
+                result_data, error_message = process_job(dict(job), conn)
+        except Exception as e:
+            print(f"[Thread-{threading.current_thread().name}] Unhandled exception during job {job_id} processing: {e}")
+            traceback.print_exc()
+            error_message = f"Unhandled worker exception: {e}"
+
+        # Update job status in database
+        try:
+            with get_db_connection() as conn:
                 cursor = conn.cursor()
-                job = cursor.execute("SELECT * FROM jobs WHERE status = 'keying_queued' ORDER BY created_at ASC LIMIT 1").fetchone()
-                if job:
-                    cursor.execute("UPDATE jobs SET status = 'keying_processing' WHERE id = ?", (job['id'],))
+                if error_message is not None:
+                    new_status = 'failed'
+                    cursor.execute("UPDATE jobs SET status = ?, error_message = ? WHERE id = ?", (new_status, str(error_message), job_id))
+                elif job['status'] in ['keying_queued', 'keying_processing']:
+                    # Handle keying completion BEFORE checking job_type
+                    new_status = 'completed'
+                    cursor.execute("UPDATE jobs SET status = ?, keyed_result_data = ? WHERE id = ?", (new_status, result_data, job_id))
+                elif job['job_type'] == 'boomerang_automation':
+                    # This is for initial boomerang setup, not keying
+                    new_status = result_data # This should be 'waiting_for_children'
+                    cursor.execute("UPDATE jobs SET status = ? WHERE id = ?", (new_status, job_id))
+                elif job['status'] in ['queued', 'processing']:
+                    # For animations that are part of boomerang automation, complete them automatically
+                    if job['job_type'] == 'animation' and job['parent_job_id']:
+                        try:
+                            parent_job = cursor.execute("SELECT job_type FROM jobs WHERE id = ?", (job['parent_job_id'],)).fetchone()
+                            if parent_job and parent_job['job_type'] == 'boomerang_automation':
+                                new_status = 'completed'  # Complete without keying for boomerang automation
+                                print(f"   ...auto-completing animation job {job_id} (part of boomerang automation #{job['parent_job_id']})")
+                                cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job_id))
+                            else:
+                                new_status = 'pending_review'  # Regular workflow needs review
+                                print(f"   ...setting animation job {job_id} to pending_review (parent type: {parent_job['job_type'] if parent_job else 'None'})")
+                                cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job_id))
+                        except Exception as e:
+                            print(f"   ...error checking parent job for {job_id}: {e}, defaulting to completed")
+                            new_status = 'completed'  # Safe default for boomerang children
+                            cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job_id))
+                    # For stitching jobs that are part of boomerang automation, update the parent with the result
+                    elif job['job_type'] == 'video_stitching' and job['parent_job_id']:
+                        try:
+                            parent_job = cursor.execute("SELECT job_type FROM jobs WHERE id = ?", (job['parent_job_id'],)).fetchone()
+                            if parent_job and parent_job['job_type'] == 'boomerang_automation':
+                                new_status = 'completed'  # Complete the stitching job
+                                print(f"   ...completing stitching job {job_id} (part of boomerang automation #{job['parent_job_id']})")
+                                cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job_id))
+                                # Update the parent boomerang automation job with the stitched result
+                                print(f"   ...updating parent boomerang job #{job['parent_job_id']} with stitched result")
+                                cursor.execute("UPDATE jobs SET status = 'completed', result_data = ? WHERE id = ?", (result_data, job['parent_job_id']))
+                            else:
+                                new_status = 'pending_review'  # Regular stitching workflow needs review
+                                cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job_id))
+                        except Exception as e:
+                            print(f"   ...error checking parent job for stitching {job_id}: {e}, defaulting to pending_review")
+                            new_status = 'pending_review'
+                            cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job_id))
+                    else:
+                        # Mark all jobs as completed (animations no longer need review)
+                        new_status = 'completed'
+                        cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job_id))
+                else: # Default case for completion
+                    new_status = 'completed'
+                    cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job_id))
+
+                conn.commit()
+                print(f"[Thread-{threading.current_thread().name}] Job {job_id} finished with status: {new_status}")
+        except Exception as db_error:
+            print(f"[Thread-{threading.current_thread().name}] Database error updating job {job_id}: {db_error}")
+            # Try to at least mark the job as failed if we can't update it properly
+            try:
+                with get_db_connection() as conn:
+                    conn.cursor().execute("UPDATE jobs SET status = 'failed', error_message = ? WHERE id = ?", (f"Database update error: {db_error}", job_id))
                     conn.commit()
-                    # Fetch the job again with updated status
-                    job = cursor.execute("SELECT * FROM jobs WHERE id = ?", (job['id'],)).fetchone()
-                else:
-                    job = cursor.execute("SELECT * FROM jobs WHERE status = 'queued' ORDER BY created_at ASC LIMIT 1").fetchone()
-                    if job:
-                        cursor.execute("UPDATE jobs SET status = 'processing' WHERE id = ?", (job['id'],))
-                        conn.commit()
-                        # Fetch the job again with updated status
-                        job = cursor.execute("SELECT * FROM jobs WHERE id = ?", (job['id'],)).fetchone()
+            except Exception as final_error:
+                print(f"[Thread-{threading.current_thread().name}] Could not even mark job {job_id} as failed: {final_error}")
+                
+    except Exception as e:
+        print(f"[Thread-{threading.current_thread().name}] FATAL ERROR processing job {job_id}: {e}")
+        traceback.print_exc()
+        try:
+            with get_db_connection() as conn:
+                conn.cursor().execute("UPDATE jobs SET status = 'failed', error_message = ? WHERE id = ?", (f"Fatal worker error: {e}", job_id))
+                conn.commit()
+        except Exception as db_e:
+            print(f"[Thread-{threading.current_thread().name}] Could not even update DB for failed job: {db_e}")
 
-            if job:
-                result_data, error_message = None, None
-                try:
-                    with get_db_connection() as conn:
-                        result_data, error_message = process_job(dict(job), conn)
-                except Exception as e:
-                    print(f"Unhandled exception during job {job['id']} processing: {e}")
-                    traceback.print_exc()
-                    error_message = f"Unhandled worker exception: {e}"
-
-                try:
+def main():
+    print("=" * 60)
+    print("Starting Multi-Threaded Worker")
+    print(f"Max concurrent jobs: {MAX_CONCURRENT_JOBS}")
+    print("=" * 60)
+    
+    last_cleanup = time.time()
+    executor = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_JOBS, thread_name_prefix="JobWorker")
+    active_futures = {}  # Maps future -> job_id for tracking
+    
+    try:
+        while True:
+            try:
+                # Kill stuck ffmpeg processes every 30 seconds
+                current_time = time.time()
+                if current_time - last_cleanup > 30:
+                    kill_stuck_ffmpeg_processes()
+                    last_cleanup = current_time
+                
+                # Check for completed automations and analysis in main thread
+                with get_db_connection() as conn:
+                    check_for_completed_automations(conn)
+                    check_for_analysis_completion(conn)
+                
+                # Clean up completed futures
+                completed_futures = [f for f in active_futures.keys() if f.done()]
+                for future in completed_futures:
+                    job_id = active_futures.pop(future)
+                    try:
+                        future.result()  # This will raise any exceptions that occurred
+                    except Exception as e:
+                        print(f"Future for job {job_id} raised exception: {e}")
+                
+                # Check if we have capacity for more jobs
+                if len(active_futures) < MAX_CONCURRENT_JOBS:
+                    # Try to fetch a new job
+                    job = None
                     with get_db_connection() as conn:
                         cursor = conn.cursor()
-                        if error_message is not None:
-                            new_status = 'failed'
-                            cursor.execute("UPDATE jobs SET status = ?, error_message = ? WHERE id = ?", (new_status, str(error_message), job['id']))
-                        elif job['job_type'] == 'boomerang_automation':
-                            new_status = result_data # This should be 'waiting_for_children'
-                            cursor.execute("UPDATE jobs SET status = ? WHERE id = ?", (new_status, job['id']))
-                        elif job['status'] in ['keying_queued', 'keying_processing']:
-                            new_status = 'completed'
-                            cursor.execute("UPDATE jobs SET status = ?, keyed_result_data = ? WHERE id = ?", (new_status, result_data, job['id']))
-                        elif job['status'] in ['queued', 'processing']:
-                            # For animations that are part of boomerang automation, complete them automatically
-                            if job['job_type'] == 'animation' and job['parent_job_id']:
-                                try:
-                                    parent_job = cursor.execute("SELECT job_type FROM jobs WHERE id = ?", (job['parent_job_id'],)).fetchone()
-                                    if parent_job and parent_job['job_type'] == 'boomerang_automation':
-                                        new_status = 'completed'  # Complete without keying for boomerang automation
-                                        print(f"   ...auto-completing animation job {job['id']} (part of boomerang automation #{job['parent_job_id']})")
-                                        cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job['id']))
-                                    else:
-                                        new_status = 'pending_review'  # Regular workflow needs review
-                                        print(f"   ...setting animation job {job['id']} to pending_review (parent type: {parent_job['job_type'] if parent_job else 'None'})")
-                                        cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job['id']))
-                                except Exception as e:
-                                    print(f"   ...error checking parent job for {job['id']}: {e}, defaulting to completed")
-                                    new_status = 'completed'  # Safe default for boomerang children
-                                    cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job['id']))
-                            # For stitching jobs that are part of boomerang automation, update the parent with the result
-                            elif job['job_type'] == 'video_stitching' and job['parent_job_id']:
-                                try:
-                                    parent_job = cursor.execute("SELECT job_type FROM jobs WHERE id = ?", (job['parent_job_id'],)).fetchone()
-                                    if parent_job and parent_job['job_type'] == 'boomerang_automation':
-                                        new_status = 'completed'  # Complete the stitching job
-                                        print(f"   ...completing stitching job {job['id']} (part of boomerang automation #{job['parent_job_id']})")
-                                        cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job['id']))
-                                        # Update the parent boomerang automation job with the stitched result
-                                        print(f"   ...updating parent boomerang job #{job['parent_job_id']} with stitched result")
-                                        cursor.execute("UPDATE jobs SET status = 'completed', result_data = ? WHERE id = ?", (result_data, job['parent_job_id']))
-                                    else:
-                                        new_status = 'pending_review'  # Regular stitching workflow needs review
-                                        cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job['id']))
-                                except Exception as e:
-                                    print(f"   ...error checking parent job for stitching {job['id']}: {e}, defaulting to pending_review")
-                                    new_status = 'pending_review'
-                                    cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job['id']))
-                            else:
-                                # Mark all jobs as completed (animations no longer need review)
-                                new_status = 'completed'
-                                cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job['id']))
-                        else: # Default case for completion
-                            new_status = 'completed'
-                            cursor.execute("UPDATE jobs SET status = ?, result_data = ? WHERE id = ?", (new_status, result_data, job['id']))
-
-                        conn.commit()
-                        print(f"Job {job['id']} finished.")
-                except Exception as db_error:
-                    print(f"Database error updating job {job['id']}: {db_error}")
-                    # Try to at least mark the job as failed if we can't update it properly
-                    try:
-                        with get_db_connection() as conn:
-                            conn.cursor().execute("UPDATE jobs SET status = 'failed', error_message = ? WHERE id = ?", (f"Database update error: {db_error}", job['id']))
+                        # Priority: keying jobs first
+                        job = cursor.execute("SELECT * FROM jobs WHERE status = 'keying_queued' ORDER BY created_at ASC LIMIT 1").fetchone()
+                        if job:
+                            cursor.execute("UPDATE jobs SET status = 'keying_processing' WHERE id = ?", (job['id'],))
                             conn.commit()
-                    except Exception as final_error:
-                        print(f"Could not even mark job {job['id']} as failed: {final_error}")
-            else:
-                print("No jobs found. Waiting...", end='\r')
+                            job = cursor.execute("SELECT * FROM jobs WHERE id = ?", (job['id'],)).fetchone()
+                        else:
+                            # Then regular queued jobs
+                            job = cursor.execute("SELECT * FROM jobs WHERE status = 'queued' ORDER BY created_at ASC LIMIT 1").fetchone()
+                            if job:
+                                cursor.execute("UPDATE jobs SET status = 'processing' WHERE id = ?", (job['id'],))
+                                conn.commit()
+                                job = cursor.execute("SELECT * FROM jobs WHERE id = ?", (job['id'],)).fetchone()
+                    
+                    if job:
+                        # Submit job to thread pool
+                        job_dict = dict(job)
+                        future = executor.submit(process_single_job_worker, job_dict)
+                        active_futures[future] = job['id']
+                        print(f"Submitted job {job['id']} to worker thread pool ({len(active_futures)}/{MAX_CONCURRENT_JOBS} active)")
+                
+                # Show status if no jobs are being processed
+                if len(active_futures) == 0:
+                    print("No jobs found. Waiting...", end='\r')
+                
+                # Sleep briefly to avoid tight loop
+                time.sleep(1)
+                
+            except Exception as e:
+                print(f"ERROR in worker's main loop: {e}")
+                traceback.print_exc()
                 time.sleep(5)
-        except Exception as e:
-            print(f"FATAL ERROR in worker's main loop: {e}")
-            traceback.print_exc()
-            if job:
-                try:
-                    with get_db_connection() as conn:
-                        conn.cursor().execute("UPDATE jobs SET status = 'failed', error_message = ? WHERE id = ?", (f"Fatal worker error: {e}", job['id']))
-                        conn.commit()
-                except Exception as db_e:
-                    print(f"   ...could not even update DB for failed job: {db_e}")
-            time.sleep(10)
+    
+    except KeyboardInterrupt:
+        print("\n\nShutting down worker...")
+        print("Waiting for active jobs to complete...")
+        executor.shutdown(wait=True)
+        print("Worker stopped cleanly.")
+    except Exception as e:
+        print(f"FATAL ERROR: {e}")
+        traceback.print_exc()
+        executor.shutdown(wait=False)
 
 if __name__ == "__main__":
     main()

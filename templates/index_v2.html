@@ -62,12 +62,19 @@
         right: 0;
         bottom: 0;
         display: flex;
+        justify-content: center;
+    }
+    
+    .main-wrapper {
+        display: flex;
+        width: 100%;
+        max-width: 1600px;
     }
     
     /* ===== LEFT TOOL PANEL ===== */
     .tool-panel {
         width: 40%;
-        max-width: 600px;
+        min-width: 400px;
         background: white;
         border-right: 2px solid #e0e0e0;
         overflow-y: auto;
@@ -328,6 +335,9 @@
     .job-info {
         flex: 1;
         min-width: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
     }
     
     .job-header {
@@ -363,14 +373,19 @@
         font-size: 13px;
         margin-bottom: 10px;
         overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        line-height: 1.4;
+        max-height: 2.8em;
     }
     
     .job-actions {
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
+        margin-top: auto;
+        padding-top: 8px;
     }
     
     .job-action-btn {
@@ -482,21 +497,29 @@
     /* ===== VIDEO PREVIEW CONTAINER ===== */
     .video-preview-container {
         display: none;
-        position: relative;
         width: 100%;
         max-width: 100%;
-        background: #2a2a2a;
+        background: white;
         border-radius: 8px;
         margin-bottom: 20px;
-        overflow: hidden;
-        cursor: grab;
     }
     
     .video-preview-container.active {
         display: block;
     }
     
-    .video-preview-container.panning {
+    /* Video viewing area */
+    .video-preview-wrapper {
+        position: relative;
+        width: 100%;
+        max-height: 400px;
+        overflow: hidden;
+        border-radius: 8px;
+        cursor: grab;
+        background: white;
+    }
+    
+    .video-preview-wrapper.panning {
         cursor: grabbing;
     }
     
@@ -505,6 +528,7 @@
         display: block;
         max-height: 400px;
         object-fit: contain;
+        position: relative;
     }
     
     /* ===== KEYING CONTROLS ===== */
@@ -727,6 +751,7 @@
 
 <!-- MAIN CONTAINER -->
 <div class="main-container">
+    <div class="main-wrapper">
     <!-- LEFT TOOL PANEL -->
     <div class="tool-panel">
         <!-- IMAGE GENERATOR TOOL -->
@@ -743,6 +768,7 @@
                 <div class="upload-area" id="style-ref-upload" style="position: relative; cursor: pointer; padding: 0; min-height: 120px; display: flex; align-items: center; justify-content: center;">
                     <p id="style-ref-placeholder" style="padding: 20px; margin: 0;">Click or drag to upload style reference image</p>
                     <img id="style-ref-preview-img" style="display: none; width: 100%; height: auto; display: block;">
+                    <button id="style-ref-remove" onclick="removeReferenceImage('style-ref')" style="display: none; position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border-radius: 50%; background: rgba(220,53,69,0.95); color: white; border: none; cursor: pointer; font-size: 16px; line-height: 1; padding: 0; box-shadow: 0 2px 4px rgba(0,0,0,0.2); z-index: 10;">&times;</button>
                     <input type="file" id="style-ref-file" accept="image/*" style="display: none;">
                 </div>
             </div>
@@ -752,6 +778,7 @@
                 <div class="upload-area" id="color-ref-upload" style="position: relative; cursor: pointer; padding: 0; min-height: 120px; display: flex; align-items: center; justify-content: center;">
                     <p id="color-ref-placeholder" style="padding: 20px; margin: 0;">Click or drag to upload color reference image</p>
                     <img id="color-ref-preview-img" style="display: none; width: 100%; height: auto; display: block;">
+                    <button id="color-ref-remove" onclick="removeReferenceImage('color-ref')" style="display: none; position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border-radius: 50%; background: rgba(220,53,69,0.95); color: white; border: none; cursor: pointer; font-size: 16px; line-height: 1; padding: 0; box-shadow: 0 2px 4px rgba(0,0,0,0.2); z-index: 10;">&times;</button>
                     <input type="file" id="color-ref-file" accept="image/*" style="display: none;">
                 </div>
             </div>
@@ -985,7 +1012,9 @@
             </div>
             
             <div class="video-preview-container" id="keyer-video-preview-container">
-                <video class="video-preview" id="keyer-video-preview" controls></video>
+                <div class="video-preview-wrapper" id="keyer-video-preview-wrapper">
+                    <video class="video-preview" id="keyer-video-preview" controls></video>
+                </div>
                 
                 <div class="keying-controls">
                     <!-- Color Preview Box -->
@@ -1030,28 +1059,28 @@
                         <div class="slider-label">
                             <span>Choke/Erode: <span id="erode-value">2</span></span>
                         </div>
-                        <input type="range" class="slider" id="keyer-erode" min="-5" max="5" value="2" oninput="updateSliderValue('erode')">
+                        <input type="range" class="slider" id="keyer-erode" min="-5" max="5" value="2" oninput="updateSliderValue('erode'); debouncedPreviewKeying();">
                     </div>
                     
                     <div class="slider-group">
                         <div class="slider-label">
                             <span>Soften/Dilate: <span id="dilate-value">2</span></span>
                         </div>
-                        <input type="range" class="slider" id="keyer-dilate" min="-5" max="5" value="2" oninput="updateSliderValue('dilate')">
+                        <input type="range" class="slider" id="keyer-dilate" min="-5" max="5" value="2" oninput="updateSliderValue('dilate'); debouncedPreviewKeying();">
                     </div>
                     
                     <div class="slider-group">
                         <div class="slider-label">
                             <span>Edge Blur: <span id="blur-value">5</span></span>
                         </div>
-                        <input type="range" class="slider" id="keyer-blur" min="0" max="15" value="5" oninput="updateSliderValue('blur')">
+                        <input type="range" class="slider" id="keyer-blur" min="0" max="15" value="5" oninput="updateSliderValue('blur'); debouncedPreviewKeying();">
                     </div>
                     
                     <div class="slider-group">
                         <div class="slider-label">
                             <span>Spill Suppression: <span id="spill-value">5</span></span>
                         </div>
-                        <input type="range" class="slider" id="keyer-spill" min="0" max="20" value="5" oninput="updateSliderValue('spill')">
+                        <input type="range" class="slider" id="keyer-spill" min="0" max="20" value="5" oninput="updateSliderValue('spill'); debouncedPreviewKeying();">
                     </div>
                 </div>
                 
@@ -1066,26 +1095,6 @@
                     <button class="frame-btn" onclick="zoomInKeyer()">🔍 Zoom In</button>
                     <button class="frame-btn" onclick="zoomOutKeyer()">🔍 Zoom Out</button>
                     <button class="frame-btn" onclick="resetKeyerZoom()">Reset Zoom</button>
-                </div>
-                
-                <div style="margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 8px;">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
-                        <div>
-                            <label class="form-label" style="margin-bottom: 5px;">Grid Size:</label>
-                            <select id="keyer-grid-size" class="form-input" onchange="updateKeyerGrid()">
-                                <option value="0">No Grid</option>
-                                <option value="20">20px</option>
-                                <option value="40">40px</option>
-                                <option value="60">60px</option>
-                                <option value="80">80px</option>
-                                <option value="100">100px</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="form-label" style="margin-bottom: 5px;">Grid Color:</label>
-                            <input type="color" id="keyer-grid-color" class="form-input" value="#ff0000" onchange="updateKeyerGrid()" style="height: 40px;">
-                        </div>
-                    </div>
                 </div>
             </div>
             
@@ -1119,7 +1128,8 @@
             <!-- Jobs will be dynamically inserted here -->
         </div>
     </div>
-</div>
+    </div> <!-- end main-wrapper -->
+</div> <!-- end main-container -->
 
 <!-- FLOATING DELETE BAR -->
 <div class="delete-bar" id="delete-bar">
@@ -1162,6 +1172,7 @@ let pollInterval = null;
 let currentPollSpeed = 3000; // Start at 3 seconds
 let mediaViewerIndex = 0;
 let viewableJobs = [];
+let previewDebounceTimer = null; // For debouncing preview updates
 
 // ===== TOOL SWITCHING =====
 document.querySelectorAll('.tool-btn').forEach(btn => {
@@ -1240,9 +1251,12 @@ function setupImageReferenceUpload(fileInputId, uploadAreaId, previewImgId, plac
     const uploadArea = document.getElementById(uploadAreaId);
     const previewImg = document.getElementById(previewImgId);
     const placeholder = document.getElementById(placeholderId);
+    const removeBtn = document.getElementById(fileInputId.replace('-file', '-remove'));
     
     // Handle click to open file dialog
-    uploadArea.addEventListener('click', () => {
+    uploadArea.addEventListener('click', (e) => {
+        // Don't trigger file dialog if clicking the remove button
+        if (e.target.tagName === 'BUTTON') return;
         fileInput.click();
     });
     
@@ -1256,6 +1270,7 @@ function setupImageReferenceUpload(fileInputId, uploadAreaId, previewImgId, plac
                 previewImg.style.display = 'block';
                 placeholder.style.display = 'none';
                 uploadArea.classList.add('has-file');
+                if (removeBtn) removeBtn.style.display = 'block';
                 
                 // Remove min-height and let image size dictate box height
                 uploadArea.style.minHeight = '0';
@@ -1290,6 +1305,32 @@ function setupImageReferenceUpload(fileInputId, uploadAreaId, previewImgId, plac
 setupImageReferenceUpload('style-ref-file', 'style-ref-upload', 'style-ref-preview-img', 'style-ref-placeholder');
 setupImageReferenceUpload('color-ref-file', 'color-ref-upload', 'color-ref-preview-img', 'color-ref-placeholder');
 
+// Remove reference image function
+function removeReferenceImage(type) {
+    const fileInput = document.getElementById(`${type}-file`);
+    const previewImg = document.getElementById(`${type}-preview-img`);
+    const placeholder = document.getElementById(`${type}-placeholder`);
+    const uploadArea = document.getElementById(`${type}-upload`);
+    const removeBtn = document.getElementById(`${type}-remove`);
+    
+    // Clear the file input
+    fileInput.value = '';
+    
+    // Hide preview and show placeholder
+    previewImg.style.display = 'none';
+    previewImg.src = '';
+    placeholder.style.display = 'block';
+    if (removeBtn) removeBtn.style.display = 'none';
+    
+    // Reset upload area styling
+    uploadArea.classList.remove('has-file');
+    uploadArea.style.minHeight = '120px';
+    uploadArea.style.display = 'flex';
+    
+    // Stop event propagation to prevent file dialog from opening
+    event.stopPropagation();
+}
+
 // ===== VIDEO PREVIEW HANDLERS =====
 document.getElementById('loop-video-file').addEventListener('change', (e) => {
     if (e.target.files.length > 0) {
@@ -1304,10 +1345,48 @@ document.getElementById('loop-video-file').addEventListener('change', (e) => {
 document.getElementById('keyer-video-file').addEventListener('change', (e) => {
     if (e.target.files.length > 0) {
         const file = e.target.files[0];
-        const url = URL.createObjectURL(file);
-        const video = document.getElementById('keyer-video-preview');
-        video.src = url;
-        document.getElementById('keyer-video-preview-container').classList.add('active');
+        
+        // Show loading message
+        const uploadArea = document.querySelector('#keyer-video-upload p');
+        const originalText = uploadArea.textContent;
+        uploadArea.textContent = 'Uploading video...';
+        
+        // Upload the video file to create a job
+        const formData = new FormData();
+        formData.append('video', file);
+        
+        fetch('/upload-video-for-keying', {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.job_id) {
+                // Set the job ID for keying
+                currentKeyingJobId = data.job_id;
+                
+                // Load the video into preview
+                const url = URL.createObjectURL(file);
+                const video = document.getElementById('keyer-video-preview');
+                video.src = url;
+                document.getElementById('keyer-video-preview-container').classList.add('active');
+                
+                uploadArea.textContent = '✓ Video uploaded successfully';
+                setTimeout(() => {
+                    uploadArea.textContent = originalText;
+                }, 2000);
+                
+                console.log('Video uploaded, job ID:', data.job_id);
+            } else {
+                alert('Error uploading video: ' + (data.error || 'Unknown error'));
+                uploadArea.textContent = originalText;
+            }
+        })
+        .catch(err => {
+            console.error('Video upload error:', err);
+            alert('Failed to upload video');
+            uploadArea.textContent = originalText;
+        });
     }
 });
 
@@ -1316,6 +1395,18 @@ function updateSliderValue(sliderId) {
     const slider = document.getElementById(`keyer-${sliderId}`);
     const valueSpan = document.getElementById(`${sliderId}-value`);
     valueSpan.textContent = slider.value;
+}
+
+function debouncedPreviewKeying() {
+    // Clear existing timer
+    if (previewDebounceTimer) {
+        clearTimeout(previewDebounceTimer);
+    }
+    
+    // Set new timer to run preview after 300ms of no slider changes
+    previewDebounceTimer = setTimeout(() => {
+        previewKeying();
+    }, 300);
 }
 
 function updateColorPreview() {
@@ -1441,7 +1532,7 @@ function renderJobCard(job) {
     const statusClass = `status-${job.status.split('_')[0]}`;
     
     // Determine if this is a video or image job
-    const isVideoJob = ['animation', 'boomerang_automation', 'video_stitching'].includes(job.job_type);
+    const isVideoJob = ['animation', 'boomerang_automation', 'video_stitching', 'video_upload'].includes(job.job_type);
     
     // Get thumbnail and media URL
     let thumbnail = '';
@@ -1703,9 +1794,9 @@ function generateImage() {
         .then(data => {
             if (data.success) {
                 loadJobs();
-                alert('Image generation started!');
+                console.log('✓ Image generation started');
             } else {
-                alert('Error: ' + (data.error || 'Unknown error'));
+                console.error('Error: ' + (data.error || 'Unknown error'));
             }
         });
 }
@@ -1734,9 +1825,24 @@ function generateAnimation() {
         formData.append('image_url', hiddenImageUrl.value);
     }
     
-    formData.append('prompt', prompt);
-    formData.append('negative_prompt', document.getElementById('anim-neg-prompt').value);
-    formData.append('background', document.querySelector('input[name="anim-background"]:checked').value);
+    // Get background selection
+    const background = document.querySelector('input[name="anim-background"]:checked').value;
+    
+    // Add background color instructions to prompt and negative prompt if green/blue screen selected
+    let finalPrompt = prompt;
+    let finalNegativePrompt = document.getElementById('anim-neg-prompt').value;
+    
+    if (background === 'green') {
+        finalPrompt = prompt + '. keep the green screen background unchanged';
+        finalNegativePrompt = finalNegativePrompt + (finalNegativePrompt ? ', ' : '') + 'change background color, alter background, different background';
+    } else if (background === 'blue') {
+        finalPrompt = prompt + '. keep the blue screen background unchanged';
+        finalNegativePrompt = finalNegativePrompt + (finalNegativePrompt ? ', ' : '') + 'change background color, alter background, different background';
+    }
+    
+    formData.append('prompt', finalPrompt);
+    formData.append('negative_prompt', finalNegativePrompt);
+    formData.append('background', background);
     formData.append('seamless_loop', document.getElementById('anim-seamless-loop').checked);
     
     const models = Array.from(document.querySelectorAll('input[name="anim-model"]:checked')).map(el => el.value);
@@ -1873,14 +1979,26 @@ function createLoop() {
         return;
     }
     
-    const negativePrompt = document.getElementById('loop-neg-prompt').value.trim();
+    let negativePrompt = document.getElementById('loop-neg-prompt').value.trim();
     const background = document.querySelector('input[name="loop-background"]:checked').value;
     const videoModel = document.querySelector('input[name="loop-model"]:checked').value;
     
+    // Add background color instructions if green/blue screen selected
+    let finalPrompt = prompt;
+    let finalNegativePrompt = negativePrompt;
+    
+    if (background === 'green') {
+        finalPrompt = prompt + '. keep the green screen background unchanged';
+        finalNegativePrompt = negativePrompt + (negativePrompt ? ', ' : '') + 'change background color, alter background, different background';
+    } else if (background === 'blue') {
+        finalPrompt = prompt + '. keep the blue screen background unchanged';
+        finalNegativePrompt = negativePrompt + (negativePrompt ? ', ' : '') + 'change background color, alter background, different background';
+    }
+    
     // Create FormData
     const formData = new FormData();
-    formData.append('prompt', prompt);
-    formData.append('negative_prompt', negativePrompt);
+    formData.append('prompt', finalPrompt);
+    formData.append('negative_prompt', finalNegativePrompt);
     formData.append('background', background);
     formData.append('video_model', videoModel);
     formData.append('boomerang_automation', 'true');
@@ -1905,14 +2023,14 @@ function createLoop() {
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                alert('✅ A-B-A Loop animation queued! Check the job log.');
+                console.log('✓ A-B-A Loop animation queued');
                 loadJobs();
                 
                 // Reset extracted frames
                 extractedFrameA = null;
                 extractedFrameB = null;
             } else {
-                alert('Error: ' + (data.error || 'Unknown error'));
+                console.error('Error: ' + (data.error || 'Unknown error'));
             }
         })
         .catch(err => {
@@ -1963,9 +2081,9 @@ function resetKeyerZoom() {
 function applyKeyerZoom() {
     const video = document.getElementById('keyer-video-preview');
     const canvas = document.getElementById('keying-preview-canvas');
-    const container = document.getElementById('keyer-video-preview-container');
+    const wrapper = document.getElementById('keyer-video-preview-wrapper');
     
-    if (!video || !container) return;
+    if (!video || !wrapper) return;
     
     // When zoom is 1x or less, reset to center with no pan
     if (keyerZoomLevel <= 1) {
@@ -1983,20 +2101,20 @@ function applyKeyerZoom() {
         }
         
         // Calculate the actual displayed dimensions (accounting for object-fit: contain)
-        const containerWidth = container.offsetWidth;
-        const containerHeight = container.offsetHeight;
+        const wrapperWidth = wrapper.offsetWidth;
+        const wrapperHeight = wrapper.offsetHeight;
         const videoAspect = videoWidth / videoHeight;
-        const containerAspect = containerWidth / containerHeight;
+        const wrapperAspect = wrapperWidth / wrapperHeight;
         
         let displayedWidth, displayedHeight;
-        if (videoAspect > containerAspect) {
-            // Video is wider - width matches container
-            displayedWidth = containerWidth;
-            displayedHeight = containerWidth / videoAspect;
+        if (videoAspect > wrapperAspect) {
+            // Video is wider - width matches wrapper
+            displayedWidth = wrapperWidth;
+            displayedHeight = wrapperWidth / videoAspect;
         } else {
-            // Video is taller - height matches container
-            displayedHeight = containerHeight;
-            displayedWidth = containerHeight * videoAspect;
+            // Video is taller - height matches wrapper
+            displayedHeight = wrapperHeight;
+            displayedWidth = wrapperHeight * videoAspect;
         }
         
         // The video element itself renders at displayed size
@@ -2036,14 +2154,14 @@ function applyKeyerZoom() {
 }
 
 // Setup pan/drag functionality for keyer preview
-const keyerPreviewContainer = document.getElementById('keyer-video-preview-container');
-if (keyerPreviewContainer) {
-    keyerPreviewContainer.addEventListener('mousedown', (e) => {
+const keyerPreviewWrapper = document.getElementById('keyer-video-preview-wrapper');
+if (keyerPreviewWrapper) {
+    keyerPreviewWrapper.addEventListener('mousedown', (e) => {
         if (keyerZoomLevel > 1.0) {
             keyerIsPanning = true;
             keyerPanStartX = e.clientX - keyerPanX;
             keyerPanStartY = e.clientY - keyerPanY;
-            keyerPreviewContainer.classList.add('panning');
+            keyerPreviewWrapper.classList.add('panning');
             e.preventDefault();
         }
     });
@@ -2060,43 +2178,45 @@ if (keyerPreviewContainer) {
     document.addEventListener('mouseup', () => {
         if (keyerIsPanning) {
             keyerIsPanning = false;
-            keyerPreviewContainer.classList.remove('panning');
+            keyerPreviewWrapper.classList.remove('panning');
         }
     });
     
     // Update cursor based on zoom level
-    keyerPreviewContainer.addEventListener('mouseenter', () => {
+    keyerPreviewWrapper.addEventListener('mouseenter', () => {
         if (keyerZoomLevel > 1.0) {
-            keyerPreviewContainer.style.cursor = 'grab';
+            keyerPreviewWrapper.style.cursor = 'grab';
         } else {
-            keyerPreviewContainer.style.cursor = 'default';
+            keyerPreviewWrapper.style.cursor = 'default';
         }
     });
 }
 
-function updateKeyerGrid() {
-    const gridSize = parseInt(document.getElementById('keyer-grid-size').value);
-    const gridColor = document.getElementById('keyer-grid-color').value;
+function updateKeyerBackground() {
+    const checkerSize = parseInt(document.getElementById('keyer-checker-size').value);
+    const lightColor = document.getElementById('keyer-checker-light').value;
+    const darkColor = document.getElementById('keyer-checker-dark').value;
     
-    keyerGridSize = gridSize;
-    keyerGridColor = gridColor;
+    const wrapper = document.getElementById('keyer-video-preview-wrapper');
     
-    const container = document.getElementById('keyer-video-preview-container');
-    
-    if (gridSize > 0) {
-        // Create grid overlay
-        container.style.backgroundImage = `
-            linear-gradient(${gridColor} 1px, transparent 1px),
-            linear-gradient(90deg, ${gridColor} 1px, transparent 1px)
-        `;
-        container.style.backgroundSize = `${gridSize}px ${gridSize}px`;
-        container.style.backgroundPosition = 'center center';
-    } else {
-        // Remove grid
-        container.style.backgroundImage = 'none';
+    if (!wrapper) {
+        console.error('Keyer video preview wrapper not found');
+        return;
     }
     
-    console.log('Keyer grid updated:', gridSize, gridColor);
+    // Create checkerboard pattern using CSS gradients
+    const halfSize = checkerSize / 2;
+    wrapper.style.backgroundImage = `
+        linear-gradient(45deg, ${darkColor} 25%, transparent 25%),
+        linear-gradient(-45deg, ${darkColor} 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, ${darkColor} 75%),
+        linear-gradient(-45deg, transparent 75%, ${darkColor} 75%)
+    `;
+    wrapper.style.backgroundSize = `${checkerSize}px ${checkerSize}px`;
+    wrapper.style.backgroundPosition = `0 0, 0 ${halfSize}px, ${halfSize}px -${halfSize}px, -${halfSize}px 0px`;
+    wrapper.style.backgroundColor = lightColor;
+    
+    console.log('Background checkerboard updated:', checkerSize, lightColor, darkColor);
 }
 
 // ===== COLOR SAMPLER =====
@@ -2213,15 +2333,9 @@ function previewKeying() {
             canvas.style.pointerEvents = 'none';
             canvas.style.zIndex = '10';
             
-            // Ensure parent has relative positioning
-            const container = video.parentElement;
-            const currentPos = window.getComputedStyle(container).position;
-            if (currentPos === 'static') {
-                container.style.position = 'relative';
-            }
-            
-            // Insert canvas after video
-            video.parentElement.appendChild(canvas);
+            // Insert canvas into the wrapper (sibling of video)
+            const wrapper = video.parentElement;
+            wrapper.appendChild(canvas);
             console.log('Canvas created and appended');
         }
         
@@ -2285,51 +2399,33 @@ function previewKeying() {
         
         console.log('Post-processing params:', { erode, dilate, blur, spill });
         
-        // Apply erode (shrink transparent areas)
-        if (erode > 0) {
-            for (let iter = 0; iter < erode; iter++) {
-                const tempData = new Uint8ClampedArray(data);
-                for (let y = 1; y < canvas.height - 1; y++) {
-                    for (let x = 1; x < canvas.width - 1; x++) {
-                        const idx = (y * canvas.width + x) * 4;
-                        if (data[idx + 3] < 128) { // If pixel is transparent or semi-transparent
-                            // Check neighbors
-                            const neighbors = [
-                                ((y - 1) * canvas.width + x) * 4,
-                                ((y + 1) * canvas.width + x) * 4,
-                                (y * canvas.width + (x - 1)) * 4,
-                                (y * canvas.width + (x + 1)) * 4
-                            ];
-                            for (let n of neighbors) {
-                                if (data[n + 3] > 128) {
-                                    tempData[n + 3] = Math.max(0, tempData[n + 3] - 60);
-                                }
-                            }
-                        }
-                    }
-                }
-                data.set(tempData);
-            }
-        } else if (erode < 0) {
-            // Negative erode = dilate transparent areas
+        // Apply erode (positive = choke/erode edges inward, negative = grow edges outward)
+        if (erode !== 0) {
             const iterations = Math.abs(erode);
             for (let iter = 0; iter < iterations; iter++) {
                 const tempData = new Uint8ClampedArray(data);
                 for (let y = 1; y < canvas.height - 1; y++) {
                     for (let x = 1; x < canvas.width - 1; x++) {
                         const idx = (y * canvas.width + x) * 4;
-                        if (data[idx + 3] > 128) { // If pixel is opaque
-                            // Check neighbors
-                            const neighbors = [
-                                ((y - 1) * canvas.width + x) * 4,
-                                ((y + 1) * canvas.width + x) * 4,
-                                (y * canvas.width + (x - 1)) * 4,
-                                (y * canvas.width + (x + 1)) * 4
-                            ];
-                            for (let n of neighbors) {
-                                if (data[n + 3] < 128) {
-                                    tempData[n + 3] = 0;
-                                }
+                        const alpha = data[idx + 3];
+                        
+                        // Get neighbor alphas
+                        const neighbors = [
+                            data[((y - 1) * canvas.width + x) * 4 + 3],
+                            data[((y + 1) * canvas.width + x) * 4 + 3],
+                            data[(y * canvas.width + (x - 1)) * 4 + 3],
+                            data[(y * canvas.width + (x + 1)) * 4 + 3]
+                        ];
+                        
+                        if (erode > 0) {
+                            // Choke: if any neighbor is transparent, reduce this pixel's alpha
+                            if (alpha > 0 && neighbors.some(n => n < 128)) {
+                                tempData[idx + 3] = Math.max(0, alpha - 80);
+                            }
+                        } else {
+                            // Grow: if any neighbor is opaque, increase this pixel's alpha
+                            if (alpha < 255 && neighbors.some(n => n > 128)) {
+                                tempData[idx + 3] = Math.min(255, alpha + 80);
                             }
                         }
                     }
@@ -2338,51 +2434,33 @@ function previewKeying() {
             }
         }
         
-        // Apply dilate (grow solid areas / shrink transparent areas)
-        if (dilate > 0) {
-            for (let iter = 0; iter < dilate; iter++) {
-                const tempData = new Uint8ClampedArray(data);
-                for (let y = 1; y < canvas.height - 1; y++) {
-                    for (let x = 1; x < canvas.width - 1; x++) {
-                        const idx = (y * canvas.width + x) * 4;
-                        if (data[idx + 3] > 128) { // If pixel is opaque
-                            // Check neighbors and make them more opaque
-                            const neighbors = [
-                                ((y - 1) * canvas.width + x) * 4,
-                                ((y + 1) * canvas.width + x) * 4,
-                                (y * canvas.width + (x - 1)) * 4,
-                                (y * canvas.width + (x + 1)) * 4
-                            ];
-                            for (let n of neighbors) {
-                                if (data[n + 3] < 255) {
-                                    tempData[n + 3] = Math.min(255, tempData[n + 3] + 60);
-                                }
-                            }
-                        }
-                    }
-                }
-                data.set(tempData);
-            }
-        } else if (dilate < 0) {
-            // Negative dilate = erode solid areas
+        // Apply dilate/soften (positive = soften/grow edges outward, negative = shrink edges inward)
+        if (dilate !== 0) {
             const iterations = Math.abs(dilate);
             for (let iter = 0; iter < iterations; iter++) {
                 const tempData = new Uint8ClampedArray(data);
                 for (let y = 1; y < canvas.height - 1; y++) {
                     for (let x = 1; x < canvas.width - 1; x++) {
                         const idx = (y * canvas.width + x) * 4;
-                        if (data[idx + 3] < 128) { // If pixel is transparent
-                            // Check neighbors
-                            const neighbors = [
-                                ((y - 1) * canvas.width + x) * 4,
-                                ((y + 1) * canvas.width + x) * 4,
-                                (y * canvas.width + (x - 1)) * 4,
-                                (y * canvas.width + (x + 1)) * 4
-                            ];
-                            for (let n of neighbors) {
-                                if (data[n + 3] > 0) {
-                                    tempData[n + 3] = 255;
-                                }
+                        const alpha = data[idx + 3];
+                        
+                        // Get neighbor alphas
+                        const neighbors = [
+                            data[((y - 1) * canvas.width + x) * 4 + 3],
+                            data[((y + 1) * canvas.width + x) * 4 + 3],
+                            data[(y * canvas.width + (x - 1)) * 4 + 3],
+                            data[(y * canvas.width + (x + 1)) * 4 + 3]
+                        ];
+                        
+                        if (dilate > 0) {
+                            // Soften/Grow: if any neighbor is opaque, increase this pixel's alpha
+                            if (alpha < 255 && neighbors.some(n => n > 128)) {
+                                tempData[idx + 3] = Math.min(255, alpha + 80);
+                            }
+                        } else {
+                            // Shrink: if any neighbor is transparent, reduce this pixel's alpha
+                            if (alpha > 0 && neighbors.some(n => n < 128)) {
+                                tempData[idx + 3] = Math.max(0, alpha - 80);
                             }
                         }
                     }
@@ -2394,19 +2472,32 @@ function previewKeying() {
         // Apply edge blur
         if (blur > 0) {
             const tempData = new Uint8ClampedArray(data);
-            for (let y = blur; y < canvas.height - blur; y++) {
-                for (let x = blur; x < canvas.width - blur; x++) {
+            const kernelSize = Math.min(blur, 5); // Limit kernel size for performance
+            
+            for (let y = kernelSize; y < canvas.height - kernelSize; y++) {
+                for (let x = kernelSize; x < canvas.width - kernelSize; x++) {
                     const idx = (y * canvas.width + x) * 4;
                     const alpha = data[idx + 3];
                     
-                    // Only blur edges (where alpha is between 0 and 255)
-                    if (alpha > 0 && alpha < 255) {
+                    // Check if this pixel is near an edge (has both opaque and transparent neighbors)
+                    let hasOpaque = false;
+                    let hasTransparent = false;
+                    for (let dy = -1; dy <= 1; dy++) {
+                        for (let dx = -1; dx <= 1; dx++) {
+                            const nAlpha = data[((y + dy) * canvas.width + (x + dx)) * 4 + 3];
+                            if (nAlpha > 128) hasOpaque = true;
+                            if (nAlpha < 128) hasTransparent = true;
+                        }
+                    }
+                    
+                    // Only blur if near an edge
+                    if (hasOpaque && hasTransparent) {
                         let sumAlpha = 0;
                         let count = 0;
                         
-                        // Sample surrounding pixels
-                        for (let dy = -blur; dy <= blur; dy++) {
-                            for (let dx = -blur; dx <= blur; dx++) {
+                        // Sample surrounding pixels with Gaussian-like weighting
+                        for (let dy = -kernelSize; dy <= kernelSize; dy++) {
+                            for (let dx = -kernelSize; dx <= kernelSize; dx++) {
                                 const nIdx = ((y + dy) * canvas.width + (x + dx)) * 4;
                                 sumAlpha += data[nIdx + 3];
                                 count++;
@@ -2414,6 +2505,8 @@ function previewKeying() {
                         }
                         
                         tempData[idx + 3] = Math.round(sumAlpha / count);
+                    } else {
+                        tempData[idx + 3] = alpha; // Keep original alpha if not near edge
                     }
                 }
             }
@@ -2585,7 +2678,7 @@ function processKeying() {
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                alert('✅ Keying job queued! Check the job log for progress.');
+                console.log('✓ Keying job queued');
                 loadJobs();
                 currentKeyingJobId = null; // Reset
             } else {
@@ -2632,7 +2725,7 @@ function regenerateJob(jobId) {
         .then(data => {
             if (data.success) {
                 loadJobs();
-                alert('Job regenerated!');
+                console.log('✓ Job regenerated');
             } else {
                 alert('Error: ' + (data.error || 'Unknown error'));
             }
@@ -2663,10 +2756,12 @@ function editJob(jobId) {
                     if (inputData.style_ref_image_path) {
                         const stylePreviewImg = document.getElementById('style-ref-preview-img');
                         const stylePlaceholder = document.getElementById('style-ref-placeholder');
+                        const styleRemoveBtn = document.getElementById('style-ref-remove');
                         if (stylePreviewImg && stylePlaceholder) {
                             stylePreviewImg.src = '/' + inputData.style_ref_image_path.replace(/^\//, '');
                             stylePreviewImg.style.display = 'block';
                             stylePlaceholder.style.display = 'none';
+                            if (styleRemoveBtn) styleRemoveBtn.style.display = 'block';
                             console.log('Loaded style ref:', inputData.style_ref_image_path);
                         }
                     }
@@ -2675,10 +2770,12 @@ function editJob(jobId) {
                     if (inputData.color_ref_image_path) {
                         const colorPreviewImg = document.getElementById('color-ref-preview-img');
                         const colorPlaceholder = document.getElementById('color-ref-placeholder');
+                        const colorRemoveBtn = document.getElementById('color-ref-remove');
                         if (colorPreviewImg && colorPlaceholder) {
                             colorPreviewImg.src = '/' + inputData.color_ref_image_path.replace(/^\//, '');
                             colorPreviewImg.style.display = 'block';
                             colorPlaceholder.style.display = 'none';
+                            if (colorRemoveBtn) colorRemoveBtn.style.display = 'block';
                             console.log('Loaded color ref:', inputData.color_ref_image_path);
                         }
                     }
@@ -2822,7 +2919,7 @@ function autoKeyJob(jobId) {
         .then(data => {
             if (data.success) {
                 loadJobs();
-                alert('Auto-keying started!');
+                console.log('✓ Auto-keying started');
             } else {
                 alert('Error: ' + (data.error || 'Unknown error'));
             }
@@ -2913,7 +3010,7 @@ function selectForStitch(jobId) {
     
     // If we have 2 videos, perform the stitch
     if (stitchSelection.length === 1) {
-        alert(`✅ First video selected: "${job.prompt}"\n\nNow select the second video to stitch.`);
+        console.log(`✅ First video selected: "${job.prompt}" - Select second video to stitch.`);
     } else if (stitchSelection.length === 2) {
         performStitch();
     } else {
@@ -2923,26 +3020,13 @@ function selectForStitch(jobId) {
             url: job.result_data,
             prompt: job.prompt
         }];
-        alert(`✅ First video selected: "${job.prompt}"\n\nNow select the second video to stitch.`);
+        console.log(`✅ First video selected: "${job.prompt}" - Select second video to stitch.`);
     }
 }
 
 function performStitch() {
     const video1 = stitchSelection[0];
     const video2 = stitchSelection[1];
-    
-    // Confirm the stitch
-    const confirmed = confirm(
-        `Stitch these videos?\n\n` +
-        `Video 1: ${video1.prompt}\n` +
-        `Video 2: ${video2.prompt}\n\n` +
-        `They will be stitched in this order.`
-    );
-    
-    if (!confirmed) {
-        stitchSelection = [];
-        return;
-    }
     
     // Create stitch job via API
     const formData = new FormData();
@@ -2957,7 +3041,7 @@ function performStitch() {
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                alert('✅ Video stitching job queued!');
+                console.log('✓ Video stitching job queued');
                 loadJobs();
                 stitchSelection = []; // Reset selection
             } else {
@@ -3110,7 +3194,7 @@ function showMediaAtIndex(index) {
     if (index < 0 || index >= viewableJobs.length) return;
     
     const job = viewableJobs[index];
-    const isVideoJob = ['animation', 'boomerang_automation', 'video_stitching'].includes(job.job_type);
+    const isVideoJob = ['animation', 'boomerang_automation', 'video_stitching', 'video_upload'].includes(job.job_type);
     
     const modalImage = document.getElementById('modal-image');
     const modalVideo = document.getElementById('modal-video');

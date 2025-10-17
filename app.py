@@ -1,10 +1,12 @@
 import os
+import sys
 import io
 import json
 import uuid
 import shutil
 import sqlite3
 import base64
+import subprocess
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, jsonify, send_file, Response
 import cv2
@@ -14,10 +16,65 @@ from PIL import Image
 from video_processor import process_single_frame
 from s3_storage import storage, upload_file, save_uploaded_file, get_public_url, is_s3_enabled
 
-app = Flask(__name__)
+# ============================================================================
+# EMBEDDED API KEYS FOR STANDALONE INSTALLER
+# ============================================================================
+# These keys are embedded for the standalone installer version.
+# They can be overridden by setting environment variables before launch.
+# ⚠️ SECURITY NOTE: These keys are recoverable from the binary.
+#    Only use for internal prototypes. Rotate keys frequently.
+# ============================================================================
 
-# Load environment variables
+# Embed your shared API keys here (will be used if env vars not set)
+# For cloud deployment, keys are set via Railway environment variables
+# For standalone app, uncomment and add keys here
+# os.environ.setdefault("OPENAI_API_KEY",     "your-key-here")
+# os.environ.setdefault("OPENAI_ORG_ID",      "your-org-id-here")
+# os.environ.setdefault("REPLICATE_API_KEY",  "your-key-here")
+# os.environ.setdefault("LEONARDO_API_KEY",   "your-key-here")
+
+# Optional: Disable S3 for standalone (use local storage only)
+os.environ.setdefault("USE_S3", "false")
+os.environ.setdefault("PRODUCTION_MODE", "false")
+
+# Load environment variables (will use embedded keys if .env not present)
 load_dotenv()
+
+# --- CONFIGURATION & FOLDER PATHS ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# For standalone app, use user's Documents folder instead of app bundle
+# This makes files accessible and prevents DMG from including user data
+if getattr(sys, 'frozen', False):
+    # Running as standalone app (PyInstaller bundle)
+    USER_HOME = os.path.expanduser('~')
+    AIAP_DATA_DIR = os.path.join(USER_HOME, 'Documents', 'AIAP')
+    STATIC_FOLDER = os.path.join(AIAP_DATA_DIR, 'static')
+    DATABASE_PATH = os.path.join(AIAP_DATA_DIR, 'jobs.db')
+    print(f"📁 Running as standalone app")
+    print(f"📁 Data directory: {AIAP_DATA_DIR}")
+    # Templates are bundled in _MEIPASS
+    template_folder = os.path.join(sys._MEIPASS, 'templates')
+    static_assets = os.path.join(sys._MEIPASS, 'static')
+    app = Flask(__name__, template_folder=template_folder, static_folder=static_assets)
+else:
+    # Running in development mode
+    STATIC_FOLDER = os.path.join(BASE_DIR, 'static')
+    DATABASE_PATH = 'jobs.db'
+    print(f"📁 Running in development mode")
+    print(f"📁 Data directory: {BASE_DIR}")
+    app = Flask(__name__)
+
+UPLOADS_FOLDER = os.path.join(STATIC_FOLDER, 'uploads')
+LIBRARY_FOLDER = os.path.join(STATIC_FOLDER, 'library')
+ANIMATIONS_FOLDER_GENERATED = os.path.join(STATIC_FOLDER, 'animations', 'generated')
+TRANSPARENT_VIDEOS_FOLDER = os.path.join(STATIC_FOLDER, 'library', 'transparent_videos')
+
+# Create all necessary folders
+os.makedirs(UPLOADS_FOLDER, exist_ok=True)
+os.makedirs(LIBRARY_FOLDER, exist_ok=True)
+os.makedirs(ANIMATIONS_FOLDER_GENERATED, exist_ok=True)
+os.makedirs(TRANSPARENT_VIDEOS_FOLDER, exist_ok=True)
 
 # Production mode check
 PRODUCTION_MODE = os.getenv('PRODUCTION_MODE', 'false').lower() == 'true'
@@ -30,21 +87,6 @@ if not PRODUCTION_MODE:
     print("🔧 Running in DEVELOPMENT mode")
 else:
     print("🚀 Running in PRODUCTION mode")
-
-# --- CONFIGURATION & FOLDER PATHS ---
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-STATIC_FOLDER = os.path.join(BASE_DIR, 'static')
-UPLOADS_FOLDER = os.path.join(STATIC_FOLDER, 'uploads')
-LIBRARY_FOLDER = os.path.join(STATIC_FOLDER, 'library')
-ANIMATIONS_FOLDER_GENERATED = os.path.join(STATIC_FOLDER, 'animations', 'generated')
-TRANSPARENT_VIDEOS_FOLDER = os.path.join(STATIC_FOLDER, 'library', 'transparent_videos')
-
-os.makedirs(UPLOADS_FOLDER, exist_ok=True)
-os.makedirs(LIBRARY_FOLDER, exist_ok=True)
-os.makedirs(ANIMATIONS_FOLDER_GENERATED, exist_ok=True)
-os.makedirs(TRANSPARENT_VIDEOS_FOLDER, exist_ok=True)
-
-DATABASE_PATH = 'jobs.db'
 
 # --- DATABASE HELPER ---
 def get_db_connection():
@@ -165,7 +207,37 @@ def preprocess_animation_image(source_image_path, background_color_str):
 # --- Main Routes ---
 @app.route("/")
 def home():
-    return render_template("index_v2.html")
+    # Pass data directory path to template for standalone app
+    data_dir = None
+    if getattr(sys, 'frozen', False):
+        USER_HOME = os.path.expanduser('~')
+        data_dir = os.path.join(USER_HOME, 'Documents', 'AIAP')
+    return render_template("index_v2.html", data_dir=data_dir)
+
+@app.route("/open-data-folder")
+def open_data_folder():
+    """Open the data folder in Finder (macOS) or Explorer (Windows)"""
+    try:
+        if getattr(sys, 'frozen', False):
+            USER_HOME = os.path.expanduser('~')
+            data_dir = os.path.join(USER_HOME, 'Documents', 'AIAP')
+        else:
+            data_dir = BASE_DIR
+        
+        # Ensure directory exists
+        os.makedirs(data_dir, exist_ok=True)
+        
+        # Open in file manager
+        if sys.platform == 'darwin':  # macOS
+            subprocess.run(['open', data_dir])
+        elif sys.platform == 'win32':  # Windows
+            subprocess.run(['explorer', data_dir])
+        else:  # Linux
+            subprocess.run(['xdg-open', data_dir])
+        
+        return jsonify({"success": True, "message": f"Opened {data_dir}"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route("/fine-tune/<int:job_id>")
 def fine_tune_page(job_id):
@@ -294,6 +366,49 @@ def auto_key_video(job_id):
         return jsonify({"success": True, "message": f"Auto-key ({bg_display}) queued for processing!"})
     except Exception as e:
         print(f"Error in auto-key: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/upload-video-for-keying", methods=["POST"])
+def upload_video_for_keying():
+    """Upload a video file directly for keying (creates a placeholder job)"""
+    try:
+        if 'video' not in request.files:
+            return jsonify({"success": False, "error": "No video file provided"}), 400
+        
+        video_file = request.files['video']
+        if video_file.filename == '':
+            return jsonify({"success": False, "error": "Empty filename"}), 400
+        
+        # Save the uploaded video
+        filename = f"uploaded_{uuid.uuid4()}.mp4"
+        video_path = os.path.join(UPLOADS_FOLDER, filename)
+        video_file.save(video_path)
+        
+        # Upload to S3 if enabled
+        s3_key = f"uploads/{filename}"
+        video_url = upload_file(video_path, s3_key)
+        
+        # Create a placeholder job for this uploaded video
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO jobs (job_type, status, prompt, result_data, input_data, created_at)
+                VALUES (?, ?, ?, ?, ?, datetime('now'))
+            ''', (
+                'video_upload',
+                'completed',
+                f'Uploaded video: {video_file.filename}',
+                video_url,
+                json.dumps({'original_filename': video_file.filename})
+            ))
+            conn.commit()
+            job_id = cursor.lastrowid
+        
+        print(f"✅ Video uploaded for keying: {video_file.filename} -> Job ID: {job_id}")
+        return jsonify({"success": True, "job_id": job_id, "video_url": video_url})
+    
+    except Exception as e:
+        print(f"Error uploading video for keying: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route("/manual-key/<int:job_id>", methods=["POST"])
