@@ -11,6 +11,8 @@
 
 ## 🪣 **STEP 1: AWS S3 Setup** (15 minutes)
 
+> ℹ️ **Note:** S3 is fully supported! If you see warnings about "Email Grantee ACLs" or "DisplayName" being discontinued, those are old features we're NOT using. We're using the modern, recommended approach (bucket policies instead of ACLs). ✅
+
 ### 1.1 Create S3 Bucket
 
 Go to: https://s3.console.aws.amazon.com/
@@ -18,19 +20,22 @@ Go to: https://s3.console.aws.amazon.com/
 - [ ] Click "Create bucket"
 - [ ] Bucket name: `aiap-media-YOUR-NAME` (must be globally unique!)
 - [ ] Region: `us-east-1` (or your preferred region)
-- [ ] **IMPORTANT:** UNCHECK "Block all public access"
-- [ ] Acknowledge warning about public access
+- [ ] **Object Ownership:** Keep default "ACLs disabled (recommended)" ✅
+- [ ] **Block Public Access:** UNCHECK "Block all public access"
+- [ ] Acknowledge warning about public access (this is OK - we need images to be viewable)
 - [ ] Click "Create bucket"
 
 **✏️ Write down your bucket name:** _________________________
 
 ---
 
-### 1.2 Configure Bucket Policy
+### 1.2 Configure Bucket Policy (Modern Recommended Approach)
+
+We're using **bucket policies** instead of ACLs. This is AWS's recommended approach since 2023.
 
 - [ ] Go to your bucket → **Permissions** tab
 - [ ] Scroll to **Bucket Policy** → Click "Edit"
-- [ ] Paste this policy (replace YOUR-BUCKET-NAME):
+- [ ] Paste this policy (replace YOUR-BUCKET-NAME with your actual bucket name):
 
 ```json
 {
@@ -243,6 +248,29 @@ Check these regularly:
 
 - [ ] Check **Metrics** tab to see storage growth
 - [ ] Monitor costs in **Billing Dashboard**
+
+---
+
+## ❓ **Common Questions**
+
+### Q: Is S3 being discontinued?
+
+**A: No!** S3 is AWS's flagship storage service and is fully supported. The warnings you might see in AWS docs are about:
+- **Email Grantee ACLs** (old feature from 2000s) - being removed Oct 2025
+- **DisplayName field** (legacy display field) - being removed Oct 2025
+
+We're using **bucket policies** (the modern, recommended approach), so these changes don't affect us at all. ✅
+
+### Q: Why disable "Block Public Access"?
+
+**A:** Your generated images/videos need to be viewable in the browser. By using a bucket policy that allows only `s3:GetObject` (read), we make files viewable but NOT modifiable by the public. This is secure and standard for media hosting.
+
+### Q: Can I use a different AWS region?
+
+**A: Yes!** Just make sure to:
+1. Create the bucket in your desired region
+2. Update `AWS_REGION` in Railway to match
+3. Use the correct region in your bucket policy
 
 ---
 

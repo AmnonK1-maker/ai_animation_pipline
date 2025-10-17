@@ -54,6 +54,8 @@ Before you start, you'll need:
 
 ## 🪣 **Step 1: Set Up AWS S3 Storage**
 
+> ℹ️ **S3 Status:** Fully operational and supported! AWS is phasing out legacy ACL features (Email Grantee ACLs), but we're using the modern **bucket policies** approach, which is recommended and future-proof. ✅
+
 ### 1.1 Create S3 Bucket
 
 1. Go to [AWS S3 Console](https://s3.console.aws.amazon.com/)
@@ -61,9 +63,9 @@ Before you start, you'll need:
 3. Bucket settings:
    - **Bucket name**: `ai-workflow-media` (must be globally unique)
    - **Region**: `us-east-1` (or your preferred region)
-   - **Object Ownership**: ACLs enabled
+   - **Object Ownership**: Keep default "ACLs disabled (recommended)"
    - **Block Public Access**: **UNCHECK** "Block all public access"
-   - ⚠️ Acknowledge that objects can be public
+   - ⚠️ Acknowledge that objects can be public (needed for browser access)
 4. Click **"Create bucket"**
 
 ### 1.2 Configure Bucket Policy
