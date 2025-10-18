@@ -1,0 +1,22 @@
+# Copy and paste this into Railway → Variables → RAW Editor
+# Replace the placeholder values with your actual API keys from .env file
+
+# AI API Keys (copy from your .env file)
+LEONARDO_API_KEY=your_leonardo_api_key_here
+REPLICATE_API_KEY=your_replicate_api_key_here
+OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_ORG_ID=your_openai_org_id_here
+
+# Production Mode
+PRODUCTION_MODE=true
+
+# AWS S3 Configuration - FILL THESE IN!
+USE_S3=true
+AWS_ACCESS_KEY_ID=PASTE_YOUR_ACCESS_KEY_HERE
+AWS_SECRET_ACCESS_KEY=PASTE_YOUR_SECRET_KEY_HERE
+AWS_REGION=us-east-1
+S3_BUCKET_NAME=PASTE_YOUR_BUCKET_NAME_HERE
+
+# Worker Configuration (3 jobs at once)
+MAX_CONCURRENT_JOBS=3
+
