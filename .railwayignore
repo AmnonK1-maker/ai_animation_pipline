@@ -1,0 +1,57 @@
+# Ignore large local files that aren't needed for cloud deployment
+
+# Virtual environment (Railway builds its own)
+venv/
+env/
+*.pyc
+__pycache__/
+
+# Standalone builds (not needed for cloud)
+standalone/
+
+# Local database (Railway uses its own)
+*.db
+*.db-shm
+*.db-wal
+jobs.db*
+
+# Logs
+*.log
+worker_current.log
+worker_debug.log
+flask.log
+app_restart.log
+
+# Static media (will be on S3 in production)
+static/animations/
+static/library/
+static/uploads/
+
+# OS files
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Backup files
+*.backup
+*.bak
+*.bak2
+*.bak3
+*.bak4
+*.bak5
+
+# Test files
+test_*.sh
+
+# Local config
+.env
+
+# Build artifacts
+build/
+dist/
+*.spec
+*.dmg
+*.pkg
+*.app/
+
