@@ -24,5 +24,8 @@ COPY . .
 # Expose port (Railway will set $PORT)
 EXPOSE 8080
 
-# Railway will use Procfile for the start command
+# Create startup script to handle PORT variable
+RUN echo '#!/bin/sh\nexec gunicorn --bind 0.0.0.0:${PORT:-8080} --timeout 120 --workers 2 app:app' > /start.sh && chmod +x /start.sh
+
+CMD ["/start.sh"]
 
