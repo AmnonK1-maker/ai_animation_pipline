@@ -1496,8 +1496,11 @@ def preview_frame():
     _, img_encoded = cv2.imencode('.png', bgra_frame)
     return send_file(io.BytesIO(img_encoded.tobytes()), mimetype='image/png')
 
+# Initialize database when app is imported (for Gunicorn/production)
+init_db()
+
 if __name__ == '__main__':
-    # Initialize database on startup
+    # Initialize database on startup (for direct execution)
     init_db()
     # Start the Flask development server
     app.run(debug=True, host='0.0.0.0', port=5001)
