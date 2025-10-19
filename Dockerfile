@@ -24,6 +24,5 @@ COPY . .
 # Expose port (Railway will set $PORT)
 EXPOSE 8080
 
-# Start command - use shell form to expand $PORT variable
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-8080} --timeout 120 --workers 2 app:app"]
+# Railway will use Procfile for the start command
 
