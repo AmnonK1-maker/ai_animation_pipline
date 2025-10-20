@@ -3,7 +3,6 @@ services:
   - type: web
     name: aiap-web
     env: docker
-    region: oregon
     plan: free
     dockerfilePath: ./Dockerfile
     dockerCommand: sh -c 'gunicorn --bind 0.0.0.0:${PORT:-8080} --timeout 120 --workers 2 app:app'
@@ -31,7 +30,6 @@ services:
   - type: worker
     name: aiap-worker
     env: docker
-    region: oregon
     plan: free
     dockerfilePath: ./Dockerfile
     dockerCommand: python worker.py
