@@ -5,7 +5,7 @@ services:
     env: docker
     plan: free
     dockerfilePath: ./Dockerfile
-    dockerCommand: sh -c 'gunicorn --bind 0.0.0.0:${PORT:-8080} --timeout 120 --workers 2 app:app'
+    dockerCommand: gunicorn --config gunicorn_config.py app:app
     envVars:
       - key: OPENAI_API_KEY
         sync: false
