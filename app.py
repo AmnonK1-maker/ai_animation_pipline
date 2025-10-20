@@ -99,29 +99,53 @@ def get_db_connection():
 
 def init_db():
     try:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS jobs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT, job_type TEXT NOT NULL, status TEXT NOT NULL,
-                    created_at TIMESTAMP NOT NULL, prompt TEXT, input_data TEXT,
-                    result_data TEXT, error_message TEXT, keying_settings TEXT,
-                    keyed_result_data TEXT, parent_job_id INTEGER
-                )
-            ''')
-            existing_columns = [col[1] for col in cursor.execute("PRAGMA table_info(jobs)").fetchall()]
-            columns_to_add = { 'keying_settings': 'TEXT', 'keyed_result_data': 'TEXT', 'parent_job_id': 'INTEGER' }
-            for col, col_type in columns_to_add.items():
-                if col not in existing_columns:
-                    try: 
-                        cursor.execute(f"ALTER TABLE jobs ADD COLUMN {col} {col_type}")
-                        print(f"Added missing column: {col}")
-                    except sqlite3.OperationalError as e:
-                        print(f"Column {col} may already exist or error: {e}")
-            conn.commit()
-            print("Database initialized successfully.")
+        print(f"📁 Initializing database at: {DATABASE_PATH}")
+        print(f"📁 Database exists before init: {os.path.exists(DATABASE_PATH)}")
+        
+        # Create database directory if it doesn't exist
+        db_dir = os.path.dirname(DATABASE_PATH) if os.path.dirname(DATABASE_PATH) else '.'
+        if db_dir != '.' and not os.path.exists(db_dir):
+            os.makedirs(db_dir, exist_ok=True)
+            print(f"📁 Created database directory: {db_dir}")
+        
+        # Use direct connection without WAL mode for initialization
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30)
+        conn.isolation_level = None  # Autocommit mode
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, job_type TEXT NOT NULL, status TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL, prompt TEXT, input_data TEXT,
+                result_data TEXT, error_message TEXT, keying_settings TEXT,
+                keyed_result_data TEXT, parent_job_id INTEGER
+            )
+        ''')
+        
+        existing_columns = [col[1] for col in cursor.execute("PRAGMA table_info(jobs)").fetchall()]
+        columns_to_add = { 'keying_settings': 'TEXT', 'keyed_result_data': 'TEXT', 'parent_job_id': 'INTEGER' }
+        for col, col_type in columns_to_add.items():
+            if col not in existing_columns:
+                try: 
+                    cursor.execute(f"ALTER TABLE jobs ADD COLUMN {col} {col_type}")
+                    print(f"✅ Added missing column: {col}")
+                except sqlite3.OperationalError as e:
+                    print(f"⚠️ Column {col} may already exist or error: {e}")
+        
+        # Verify table was created
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='jobs'")
+        if cursor.fetchone():
+            print("✅ Table 'jobs' verified to exist")
+        else:
+            raise Exception("Failed to create 'jobs' table")
+        
+        conn.close()
+        print(f"📁 Database exists after init: {os.path.exists(DATABASE_PATH)}")
+        print("✅ Database initialized successfully.")
     except Exception as e:
-        print(f"Database initialization error: {e}")
+        print(f"❌ Database initialization error: {e}")
+        import traceback
+        traceback.print_exc()
         raise
 
 @app.cli.command("init-db")
