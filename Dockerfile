@@ -24,8 +24,8 @@ COPY . .
 # Expose port (Railway will set $PORT)
 EXPOSE 8080
 
-# Create startup script to handle PORT variable
-RUN echo '#!/bin/sh\nexec gunicorn --bind 0.0.0.0:${PORT:-8080} --timeout 120 --workers 2 app:app' > /start.sh && chmod +x /start.sh
+# Create startup script to use gunicorn config
+RUN echo '#!/bin/sh\nexec gunicorn --config gunicorn_config.py app:app' > /start.sh && chmod +x /start.sh
 
 CMD ["/start.sh"]
 
