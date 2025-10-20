@@ -95,6 +95,27 @@ def get_db_connection():
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute("PRAGMA busy_timeout=30000;")  # 30 second timeout for busy database
     conn.row_factory = sqlite3.Row
+    
+    # Lazy initialization: Ensure table exists on every connection
+    # This handles Railway's ephemeral filesystem issues
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='jobs'")
+        if not cursor.fetchone():
+            print("⚠️ Table 'jobs' not found, initializing database...")
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS jobs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT, job_type TEXT NOT NULL, status TEXT NOT NULL,
+                    created_at TIMESTAMP NOT NULL, prompt TEXT, input_data TEXT,
+                    result_data TEXT, error_message TEXT, keying_settings TEXT,
+                    keyed_result_data TEXT, parent_job_id INTEGER
+                )
+            ''')
+            conn.commit()
+            print("✅ Database table created on-demand")
+    except Exception as e:
+        print(f"⚠️ Error during lazy DB init: {e}")
+    
     return conn
 
 def init_db():
