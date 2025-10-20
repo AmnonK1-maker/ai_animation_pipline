@@ -1,0 +1,57 @@
+services:
+  # Web Service (Flask App)
+  - type: web
+    name: aiap-web
+    env: docker
+    region: oregon
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerCommand: sh -c 'gunicorn --bind 0.0.0.0:${PORT:-8080} --timeout 120 --workers 2 app:app'
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_ORG_ID
+        sync: false
+      - key: REPLICATE_API_KEY
+        sync: false
+      - key: LEONARDO_API_KEY
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_REGION
+        value: us-east-1
+      - key: S3_BUCKET_NAME
+        sync: false
+      - key: MAX_CONCURRENT_JOBS
+        value: "3"
+
+  # Background Worker
+  - type: worker
+    name: aiap-worker
+    env: docker
+    region: oregon
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerCommand: python worker.py
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_ORG_ID
+        sync: false
+      - key: REPLICATE_API_KEY
+        sync: false
+      - key: LEONARDO_API_KEY
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_REGION
+        value: us-east-1
+      - key: S3_BUCKET_NAME
+        sync: false
+      - key: MAX_CONCURRENT_JOBS
+        value: "3"
+
