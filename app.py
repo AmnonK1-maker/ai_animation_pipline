@@ -1497,7 +1497,19 @@ def preview_frame():
     return send_file(io.BytesIO(img_encoded.tobytes()), mimetype='image/png')
 
 # Initialize database when app is imported (for Gunicorn/production)
-init_db()
+print("=" * 50)
+print("🔧 INITIALIZING DATABASE...")
+print(f"📁 Database path: {DATABASE_PATH}")
+print(f"📁 Current directory: {os.getcwd()}")
+print("=" * 50)
+try:
+    init_db()
+    print("✅ Database initialization completed successfully!")
+except Exception as e:
+    print(f"❌ CRITICAL: Database initialization failed: {e}")
+    import traceback
+    traceback.print_exc()
+    # Don't raise - let the app start anyway and show better errors
 
 if __name__ == '__main__':
     # Initialize database on startup (for direct execution)
