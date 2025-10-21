@@ -292,11 +292,19 @@ def fine_tune_page(job_id):
     if not job: return "Job not found.", 404
 
     fps = 30 
-    video_path = os.path.join(BASE_DIR, job['result_data'].lstrip('/'))
-    if os.path.exists(video_path):
-        cap = cv2.VideoCapture(video_path)
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        cap.release()
+    video_url = job['result_data']
+    
+    # Handle both S3 URLs and local file paths
+    if video_url.startswith('http'):
+        # For S3 URLs, we can't easily get FPS without downloading
+        # Default to 30 FPS (standard for most generated videos)
+        fps = 30
+    else:
+        video_path = os.path.join(BASE_DIR, video_url.lstrip('/'))
+        if os.path.exists(video_path):
+            cap = cv2.VideoCapture(video_path)
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            cap.release()
 
     return render_template("fine_tune.html", job=dict(job), fps=fps)
 
