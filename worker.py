@@ -279,17 +279,43 @@ def handle_animation(job):
         return None, f"Animation generation error: {e}"
 
 def handle_video_stitching(job):
+    temp_video_a = None
+    temp_video_b = None
     try:
         print(f"-> Starting video stitching for job {job['id']}...")
         input_data = json.loads(job['input_data'])
-        video_a_path = os.path.join(BASE_DIR, input_data['video_a_path'].lstrip('/'))
-        video_b_path = os.path.join(BASE_DIR, input_data['video_b_path'].lstrip('/'))
         
-        # Validate input files exist
-        if not os.path.exists(video_a_path):
-            return None, f"Source video A not found: {video_a_path}"
-        if not os.path.exists(video_b_path):
-            return None, f"Source video B not found: {video_b_path}"
+        # Handle both S3 URLs and local file paths for video A
+        video_a_url = input_data['video_a_path']
+        if video_a_url.startswith('http'):
+            # It's an S3 URL - download it first
+            print(f"   ...downloading video A from S3: {video_a_url}")
+            vid_response = requests.get(video_a_url)
+            vid_response.raise_for_status()
+            temp_video_a = f"temp_stitch_a_{uuid.uuid4()}.mp4"
+            video_a_path = os.path.join(ANIMATIONS_FOLDER_GENERATED, temp_video_a)
+            with open(video_a_path, "wb") as f:
+                f.write(vid_response.content)
+        else:
+            video_a_path = os.path.join(BASE_DIR, video_a_url.lstrip('/'))
+            if not os.path.exists(video_a_path):
+                return None, f"Source video A not found: {video_a_path}"
+        
+        # Handle both S3 URLs and local file paths for video B
+        video_b_url = input_data['video_b_path']
+        if video_b_url.startswith('http'):
+            # It's an S3 URL - download it first
+            print(f"   ...downloading video B from S3: {video_b_url}")
+            vid_response = requests.get(video_b_url)
+            vid_response.raise_for_status()
+            temp_video_b = f"temp_stitch_b_{uuid.uuid4()}.mp4"
+            video_b_path = os.path.join(ANIMATIONS_FOLDER_GENERATED, temp_video_b)
+            with open(video_b_path, "wb") as f:
+                f.write(vid_response.content)
+        else:
+            video_b_path = os.path.join(BASE_DIR, video_b_url.lstrip('/'))
+            if not os.path.exists(video_b_path):
+                return None, f"Source video B not found: {video_b_path}"
             
         # Check file sizes (basic validation)
         size_a = os.path.getsize(video_a_path)
@@ -325,11 +351,39 @@ def handle_video_stitching(job):
         # Upload to S3 if enabled
         s3_key = f"library/{output_filename}"
         public_url = upload_file(output_filepath, s3_key)
+        
+        # Clean up temp files if we downloaded from S3
+        if temp_video_a:
+            try:
+                os.remove(os.path.join(ANIMATIONS_FOLDER_GENERATED, temp_video_a))
+                print(f"   ...cleaned up temp video A")
+            except Exception as e:
+                print(f"   ...warning: could not delete temp video A: {e}")
+        if temp_video_b:
+            try:
+                os.remove(os.path.join(ANIMATIONS_FOLDER_GENERATED, temp_video_b))
+                print(f"   ...cleaned up temp video B")
+            except Exception as e:
+                print(f"   ...warning: could not delete temp video B: {e}")
+        
         return public_url, None
         
     except Exception as e:
         print(f"   ...ERROR in video stitching: {e}")
         traceback.print_exc()
+        
+        # Clean up temp files on error too
+        if temp_video_a:
+            try:
+                os.remove(os.path.join(ANIMATIONS_FOLDER_GENERATED, temp_video_a))
+            except:
+                pass
+        if temp_video_b:
+            try:
+                os.remove(os.path.join(ANIMATIONS_FOLDER_GENERATED, temp_video_b))
+            except:
+                pass
+        
         return None, f"Video stitching error: {e}"
 
 def handle_replicate_openai_generation(job):
