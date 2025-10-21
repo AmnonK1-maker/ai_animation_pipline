@@ -57,9 +57,9 @@ class S3Storage:
                 content_type = 'application/octet-stream'
             
             # Upload file
+            # Note: ACL not needed - bucket policy makes all objects public
             extra_args = {
-                'ContentType': content_type,
-                'ACL': 'public-read'  # Make file publicly accessible
+                'ContentType': content_type
             }
             
             self.s3_client.upload_file(
@@ -73,7 +73,9 @@ class S3Storage:
             if self.cloudfront_url:
                 return f"{self.cloudfront_url}/{s3_key}"
             else:
-                return f"https://{self.bucket_name}.s3.amazonaws.com/{s3_key}"
+                # Use regional endpoint for better performance
+                region = os.getenv('AWS_REGION', 'us-east-1')
+                return f"https://{self.bucket_name}.s3.{region}.amazonaws.com/{s3_key}"
                 
         except ClientError as e:
             print(f"❌ S3 upload error: {e}")
@@ -182,7 +184,9 @@ class S3Storage:
         if self.cloudfront_url:
             return f"{self.cloudfront_url}/{s3_key}"
         else:
-            return f"https://{self.bucket_name}.s3.amazonaws.com/{s3_key}"
+            # Use regional endpoint for better performance
+            region = os.getenv('AWS_REGION', 'us-east-1')
+            return f"https://{self.bucket_name}.s3.{region}.amazonaws.com/{s3_key}"
     
     def save_uploaded_file(self, file_object, s3_key):
         """
@@ -207,13 +211,13 @@ class S3Storage:
             content_type = file_object.content_type or 'application/octet-stream'
             
             # Upload directly from file object
+            # Note: ACL not needed - bucket policy makes all objects public
             self.s3_client.upload_fileobj(
                 file_object,
                 self.bucket_name,
                 s3_key,
                 ExtraArgs={
-                    'ContentType': content_type,
-                    'ACL': 'public-read'
+                    'ContentType': content_type
                 }
             )
             
