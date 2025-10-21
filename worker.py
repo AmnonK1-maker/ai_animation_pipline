@@ -544,6 +544,7 @@ def handle_image_generation(job):
     else: return handle_leonardo_generation(job)
 
 def handle_openai_vision_analysis(job):
+    temp_image = None
     if not OPENAI_API_KEY: return None, "OpenAI API key is not initialized. Check API keys."
     try:
         job_type = job['job_type'].replace('_', ' ').capitalize()
@@ -552,10 +553,25 @@ def handle_openai_vision_analysis(job):
         print(f"   DEBUG: input_data keys: {input_data.keys()}")
         print(f"   DEBUG: image_path from input_data: {input_data.get('image_path', 'NOT FOUND')}")
         system_prompt = input_data.get('system_prompt', 'Analyze this image.')
-        image_path = os.path.join(BASE_DIR, input_data['image_path'].lstrip('/'))
+        
+        # Handle both S3 URLs and local file paths
+        image_url = input_data['image_path']
+        if image_url.startswith('http'):
+            # It's an S3 URL - download it first
+            print(f"   ...downloading image from S3: {image_url}")
+            img_response = requests.get(image_url)
+            img_response.raise_for_status()
+            temp_image = f"temp_analysis_{uuid.uuid4()}.png"
+            image_path = os.path.join(LIBRARY_FOLDER, temp_image)
+            with open(image_path, "wb") as f:
+                f.write(img_response.content)
+        else:
+            image_path = os.path.join(BASE_DIR, image_url.lstrip('/'))
+            if not os.path.exists(image_path): 
+                return None, f"Image file not found at {image_path}"
+        
         print(f"   DEBUG: Full image path: {image_path}")
         print(f"   DEBUG: Image file exists: {os.path.exists(image_path)}")
-        if not os.path.exists(image_path): return None, f"Image file not found at {image_path}"
         
         # Determine the appropriate user message based on job type
         # For vision models, combine system prompt with user message for better instruction following
@@ -607,9 +623,23 @@ def handle_openai_vision_analysis(job):
             print(f"   ...Result preview: {analysis_text[:100]}...")
         else:
             print("   ...WARNING: Empty result from OpenAI!")
+        
+        # Clean up temp file if we downloaded from S3
+        if temp_image:
+            try:
+                os.remove(os.path.join(LIBRARY_FOLDER, temp_image))
+                print(f"   ...cleaned up temp image")
+            except Exception as e:
+                print(f"   ...warning: could not delete temp image: {e}")
             
         return analysis_text if analysis_text else None, None if analysis_text else "Empty response from OpenAI GPT-4o"
     except Exception as e:
+        # Clean up temp file on error too
+        if temp_image:
+            try:
+                os.remove(os.path.join(LIBRARY_FOLDER, temp_image))
+            except:
+                pass
         return None, f"OpenAI GPT-4o Vision API error: {e}"
 
 def handle_keying(job):
