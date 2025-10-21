@@ -59,7 +59,8 @@ class S3Storage:
             # Upload file
             # Note: ACL not needed - bucket policy makes all objects public
             extra_args = {
-                'ContentType': content_type
+                'ContentType': content_type,
+                'CacheControl': 'public, max-age=31536000'  # Cache for 1 year
             }
             
             self.s3_client.upload_file(
@@ -217,7 +218,8 @@ class S3Storage:
                 self.bucket_name,
                 s3_key,
                 ExtraArgs={
-                    'ContentType': content_type
+                    'ContentType': content_type,
+                    'CacheControl': 'public, max-age=31536000'  # Cache for 1 year
                 }
             )
             
