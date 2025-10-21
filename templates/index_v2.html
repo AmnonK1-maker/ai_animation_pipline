@@ -2758,7 +2758,8 @@ function editJob(jobId) {
                         const stylePlaceholder = document.getElementById('style-ref-placeholder');
                         const styleRemoveBtn = document.getElementById('style-ref-remove');
                         if (stylePreviewImg && stylePlaceholder) {
-                            stylePreviewImg.src = '/' + inputData.style_ref_image_path.replace(/^\//, '');
+                            // Handle both absolute URLs (S3) and relative paths (local)
+                            stylePreviewImg.src = inputData.style_ref_image_path.startsWith('http') ? inputData.style_ref_image_path : '/' + inputData.style_ref_image_path.replace(/^\//, '');
                             stylePreviewImg.style.display = 'block';
                             stylePlaceholder.style.display = 'none';
                             if (styleRemoveBtn) styleRemoveBtn.style.display = 'block';
@@ -2772,7 +2773,8 @@ function editJob(jobId) {
                         const colorPlaceholder = document.getElementById('color-ref-placeholder');
                         const colorRemoveBtn = document.getElementById('color-ref-remove');
                         if (colorPreviewImg && colorPlaceholder) {
-                            colorPreviewImg.src = '/' + inputData.color_ref_image_path.replace(/^\//, '');
+                            // Handle both absolute URLs (S3) and relative paths (local)
+                            colorPreviewImg.src = inputData.color_ref_image_path.startsWith('http') ? inputData.color_ref_image_path : '/' + inputData.color_ref_image_path.replace(/^\//, '');
                             colorPreviewImg.style.display = 'block';
                             colorPlaceholder.style.display = 'none';
                             if (colorRemoveBtn) colorRemoveBtn.style.display = 'block';
@@ -2812,7 +2814,8 @@ function editJob(jobId) {
                         const previewImg = document.getElementById('anim-frame-preview');
                         const placeholder = document.getElementById('anim-frame-placeholder');
                         if (previewImg && placeholder) {
-                            previewImg.src = '/' + imageUrl.replace(/^\//, '');
+                            // Handle both absolute URLs (S3) and relative paths (local)
+                            previewImg.src = imageUrl.startsWith('http') ? imageUrl : '/' + imageUrl.replace(/^\//, '');
                             previewImg.style.display = 'block';
                             placeholder.style.display = 'none';
                             console.log('Loaded animation start frame:', imageUrl);
@@ -2849,7 +2852,8 @@ function animateImage(jobId) {
     // Show image preview
     const previewImg = document.getElementById('anim-frame-preview');
     const placeholder = document.getElementById('anim-frame-placeholder');
-    previewImg.src = '/' + job.result_data.replace(/^\//, '');
+    // Handle both absolute URLs (S3) and relative paths (local)
+    previewImg.src = job.result_data.startsWith('http') ? job.result_data : '/' + job.result_data.replace(/^\//, '');
     previewImg.style.display = 'block';
     placeholder.style.display = 'none';
 }
