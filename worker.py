@@ -1099,9 +1099,16 @@ def main():
                     job = None
                     with get_db_connection() as conn:
                         cursor = conn.cursor()
+                        
+                        # Count jobs in each status for debugging
+                        keying_count = cursor.execute("SELECT COUNT(*) FROM jobs WHERE status = 'keying_queued'").fetchone()[0]
+                        queued_count = cursor.execute("SELECT COUNT(*) FROM jobs WHERE status = 'queued'").fetchone()[0]
+                        print(f"🔍 Worker checking for jobs: {keying_count} keying_queued, {queued_count} queued, {len(active_futures)}/{MAX_CONCURRENT_JOBS} active")
+                        
                         # Priority: keying jobs first
                         job = cursor.execute("SELECT * FROM jobs WHERE status = 'keying_queued' ORDER BY created_at ASC LIMIT 1").fetchone()
                         if job:
+                            print(f"   🎬 Found KEYING job #{job['id']} - updating to keying_processing")
                             cursor.execute("UPDATE jobs SET status = 'keying_processing' WHERE id = ?", (job['id'],))
                             conn.commit()
                             job = cursor.execute("SELECT * FROM jobs WHERE id = ?", (job['id'],)).fetchone()
@@ -1109,6 +1116,7 @@ def main():
                             # Then regular queued jobs
                             job = cursor.execute("SELECT * FROM jobs WHERE status = 'queued' ORDER BY created_at ASC LIMIT 1").fetchone()
                             if job:
+                                print(f"   📋 Found REGULAR job #{job['id']} - updating to processing")
                                 cursor.execute("UPDATE jobs SET status = 'processing' WHERE id = ?", (job['id'],))
                                 conn.commit()
                                 job = cursor.execute("SELECT * FROM jobs WHERE id = ?", (job['id'],)).fetchone()
@@ -1116,13 +1124,10 @@ def main():
                     if job:
                         # Submit job to thread pool
                         job_dict = dict(job)
+                        print(f"   ✅ Submitting job #{job['id']} to thread pool (type={job['job_type']}, status={job['status']})")
                         future = executor.submit(process_single_job_worker, job_dict)
                         active_futures[future] = job['id']
                         print(f"Submitted job {job['id']} to worker thread pool ({len(active_futures)}/{MAX_CONCURRENT_JOBS} active)")
-                
-                # Show status if no jobs are being processed
-                if len(active_futures) == 0:
-                    print("No jobs found. Waiting...", end='\r')
                 
                 # Sleep briefly to avoid tight loop
                 time.sleep(1)

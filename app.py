@@ -468,14 +468,18 @@ def upload_video_for_keying():
 def manual_key_video(job_id):
     """Apply manual keying settings and immediately queue for processing"""
     try:
+        print(f"🎬 /manual-key endpoint called for job #{job_id}")
         keying_settings_json = request.form.get('keying_settings')
         if not keying_settings_json:
+            print(f"   ❌ No keying settings provided")
             return jsonify({"success": False, "error": "Missing keying settings"}), 400
         
         # Parse and validate the settings
         try:
             settings = json.loads(keying_settings_json)
+            print(f"   ✅ Settings parsed: {settings}")
         except json.JSONDecodeError:
+            print(f"   ❌ Invalid JSON in settings")
             return jsonify({"success": False, "error": "Invalid keying settings format"}), 400
         
         with get_db_connection() as conn:
@@ -484,9 +488,13 @@ def manual_key_video(job_id):
             # Verify job exists
             job = cursor.execute("SELECT job_type, result_data FROM jobs WHERE id = ?", (job_id,)).fetchone()
             if not job:
+                print(f"   ❌ Job {job_id} not found in database")
                 return jsonify({"success": False, "error": f"Job {job_id} not found"}), 404
             
+            print(f"   ✅ Job found: type={job['job_type']}, video={job['result_data'][:50]}...")
+            
             if not job['result_data']:
+                print(f"   ❌ Job has no result_data (video)")
                 return jsonify({"success": False, "error": "Job has no video to key"}), 400
             
             # Update job with keying settings and set status to keying_queued
@@ -497,7 +505,8 @@ def manual_key_video(job_id):
             )
             conn.commit()
             
-            print(f"-> Manual keying queued for job {job_id} (jumped to top of queue) with settings: {settings}")
+            print(f"   ✅ Job #{job_id} marked as 'keying_queued' with timestamp={datetime.now()}")
+            print(f"   🎯 Worker should pick up this job next!")
         
         return jsonify({"success": True, "message": "Manual keying job queued for processing"})
     except Exception as e:
