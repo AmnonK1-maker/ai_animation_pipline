@@ -714,16 +714,26 @@ def handle_keying(job):
         
         # Upload to S3 if enabled
         s3_key = f"library/transparent_videos/{output_filename}"
+        print(f"   JOB #{job_id}: 📤 Uploading keyed video to S3: {s3_key}")
         public_url = upload_file(final_output_path, s3_key)
+        print(f"   JOB #{job_id}: 📤 S3 upload complete. Public URL: {public_url}")
         
-        # Clean up temp file if we downloaded from S3
+        if not public_url:
+            error_msg = "S3 upload failed - no URL returned"
+            print(f"   JOB #{job_id}: ❌ ERROR: {error_msg}")
+            return None, error_msg
+        
+        # Clean up temp INPUT file if we downloaded from S3
         if temp_video:
+            temp_path = os.path.join(ANIMATIONS_FOLDER_GENERATED, temp_video)
             try:
-                os.remove(os.path.join(ANIMATIONS_FOLDER_GENERATED, temp_video))
-                print(f"   JOB #{job_id}: Cleaned up temp video file")
+                print(f"   JOB #{job_id}: 🧹 Cleaning up temp INPUT file: {temp_path}")
+                os.remove(temp_path)
+                print(f"   JOB #{job_id}: ✅ Temp INPUT file deleted")
             except Exception as e:
-                print(f"   JOB #{job_id}: Warning: could not delete temp file: {e}")
+                print(f"   JOB #{job_id}: ⚠️ Warning: could not delete temp INPUT file: {e}")
         
+        print(f"   JOB #{job_id}: 🎉 Returning keyed video URL: {public_url}")
         return public_url, None
     except Exception as e:
         print(f"   JOB #{job.get('id', '???')}: ❌ Keying failed with error: {e}")
@@ -973,11 +983,14 @@ def process_single_job_worker(job):
                 cursor = conn.cursor()
                 if error_message is not None:
                     new_status = 'failed'
+                    print(f"   JOB #{job_id}: ❌ Marking as FAILED with error: {error_message}")
                     cursor.execute("UPDATE jobs SET status = ?, error_message = ? WHERE id = ?", (new_status, str(error_message), job_id))
                 elif job['status'] in ['keying_queued', 'keying_processing']:
                     # Handle keying completion BEFORE checking job_type
                     new_status = 'completed'
+                    print(f"   JOB #{job_id}: ✅ Marking as COMPLETED with keyed_result_data: {result_data}")
                     cursor.execute("UPDATE jobs SET status = ?, keyed_result_data = ? WHERE id = ?", (new_status, result_data, job_id))
+                    print(f"   JOB #{job_id}: 💾 Database updated successfully")
                 elif job['job_type'] == 'boomerang_automation':
                     # This is for initial boomerang setup, not keying
                     new_status = result_data # This should be 'waiting_for_children'
