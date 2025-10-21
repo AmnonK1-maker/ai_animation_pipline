@@ -24,8 +24,15 @@ COPY . .
 # Expose port (Railway will set $PORT)
 EXPOSE 8080
 
-# Create startup script to use gunicorn config
-RUN echo '#!/bin/sh\nexec gunicorn --config gunicorn_config.py app:app' > /start.sh && chmod +x /start.sh
+# Create startup script to run both web server and worker
+RUN echo '#!/bin/sh\n\
+echo "Starting worker in background..."\n\
+python worker.py &\n\
+WORKER_PID=$!\n\
+echo "Worker started with PID: $WORKER_PID"\n\
+\n\
+echo "Starting Gunicorn web server..."\n\
+exec gunicorn --config gunicorn_config.py app:app' > /start.sh && chmod +x /start.sh
 
 CMD ["/start.sh"]
 

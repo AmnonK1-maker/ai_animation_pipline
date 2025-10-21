@@ -25,30 +25,6 @@ services:
       - key: MAX_CONCURRENT_JOBS
         value: "3"
 
-  # Background Worker
-  - type: worker
-    name: aiap-worker
-    env: docker
-    plan: free
-    dockerfilePath: ./Dockerfile
-    dockerCommand: python worker.py
-    envVars:
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: OPENAI_ORG_ID
-        sync: false
-      - key: REPLICATE_API_KEY
-        sync: false
-      - key: LEONARDO_API_KEY
-        sync: false
-      - key: AWS_ACCESS_KEY_ID
-        sync: false
-      - key: AWS_SECRET_ACCESS_KEY
-        sync: false
-      - key: AWS_REGION
-        value: us-east-1
-      - key: S3_BUCKET_NAME
-        sync: false
-      - key: MAX_CONCURRENT_JOBS
-        value: "3"
+  # Note: Worker runs inside the web container (see Dockerfile /start.sh)
+  # No separate worker service needed - SQLite doesn't work across containers
 
