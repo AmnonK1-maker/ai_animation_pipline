@@ -175,9 +175,24 @@ def handle_animation(job):
         input_data = json.loads(job['input_data'])
         video_model = input_data.get("video_model")
         print(f"   ...using model: {video_model}")
-        start_image_path = os.path.join(BASE_DIR, input_data['image_url'].lstrip('/'))
-        if not os.path.exists(start_image_path):
-            raise FileNotFoundError(f"Start image not found at {start_image_path}")
+        
+        # Handle both S3 URLs and local file paths for start image
+        image_url = input_data['image_url']
+        temp_start_file = None
+        if image_url.startswith('http'):
+            # It's an S3 URL - download it first
+            print(f"   ...downloading start image from S3: {image_url}")
+            img_response = requests.get(image_url)
+            img_response.raise_for_status()
+            temp_start_file = f"temp_start_{uuid.uuid4()}.png"
+            start_image_path = os.path.join(LIBRARY_FOLDER, temp_start_file)
+            with open(start_image_path, "wb") as f:
+                f.write(img_response.content)
+        else:
+            # It's a local path
+            start_image_path = os.path.join(BASE_DIR, image_url.lstrip('/'))
+            if not os.path.exists(start_image_path):
+                raise FileNotFoundError(f"Start image not found at {start_image_path}")
         user_negative_prompt = input_data.get("negative_prompt", "").strip()
         additional_instructions = "contact shadow, drop shadow, change background color"
         final_negative_prompt = f"{user_negative_prompt}, {additional_instructions}" if user_negative_prompt else additional_instructions
@@ -190,6 +205,7 @@ def handle_animation(job):
             api_input["resolution"] = input_data.get('seedance_resolution', '1080p')
             api_input["aspect_ratio"] = input_data.get('seedance_aspect_ratio', '1:1')
         end_file_obj = None
+        temp_end_file = None
         try:
             with open(start_image_path, "rb") as start_file:
                 if 'seedance' in video_model: api_input["image"] = start_file
@@ -197,11 +213,25 @@ def handle_animation(job):
                 end_image_url = input_data.get("end_image_url")
                 
                 if end_image_url and isinstance(end_image_url, str) and end_image_url.strip():
-                    end_image_path = os.path.join(BASE_DIR, end_image_url.lstrip('/'))
-                    if os.path.exists(end_image_path):
-                        print(f"   ...using end frame from {end_image_path}")
+                    # Handle both S3 URLs and local file paths for end image
+                    if end_image_url.startswith('http'):
+                        # It's an S3 URL - download it first
+                        print(f"   ...downloading end image from S3: {end_image_url}")
+                        img_response = requests.get(end_image_url)
+                        img_response.raise_for_status()
+                        temp_end_file = f"temp_end_{uuid.uuid4()}.png"
+                        end_image_path = os.path.join(LIBRARY_FOLDER, temp_end_file)
+                        with open(end_image_path, "wb") as f:
+                            f.write(img_response.content)
                         end_file_obj = open(end_image_path, "rb")
                         api_input["end_image"] = end_file_obj
+                    else:
+                        # It's a local path
+                        end_image_path = os.path.join(BASE_DIR, end_image_url.lstrip('/'))
+                        if os.path.exists(end_image_path):
+                            print(f"   ...using end frame from {end_image_path}")
+                            end_file_obj = open(end_image_path, "rb")
+                            api_input["end_image"] = end_file_obj
                 if input_data.get("seamless_loop", False):
                     print("   ...using start frame as end frame for seamless loop.")
                     start_file.seek(0)
@@ -225,6 +255,20 @@ def handle_animation(job):
         video_filename = f"{uuid.uuid4()}.mp4"
         video_filepath = os.path.join(ANIMATIONS_FOLDER_GENERATED, video_filename)
         with open(video_filepath, "wb") as f: f.write(video_response.content)
+        
+        # Clean up temp files if we downloaded from S3
+        if temp_start_file:
+            try:
+                os.remove(os.path.join(LIBRARY_FOLDER, temp_start_file))
+                print(f"   ...cleaned up temp start file")
+            except Exception as e:
+                print(f"   ...warning: could not delete temp start file: {e}")
+        if temp_end_file:
+            try:
+                os.remove(os.path.join(LIBRARY_FOLDER, temp_end_file))
+                print(f"   ...cleaned up temp end file")
+            except Exception as e:
+                print(f"   ...warning: could not delete temp end file: {e}")
         
         # Upload to S3 if enabled
         s3_key = f"animations/generated/{video_filename}"
