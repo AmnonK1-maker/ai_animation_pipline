@@ -334,6 +334,8 @@ def handle_bytedance_generation(job):
         public_url = upload_file(filepath, s3_key)
         return public_url, None
     except Exception as e:
+        print(f"   ❌ Bytedance generation error: {e}")
+        traceback.print_exc()
         return None, f"Bytedance generation error: {e}"
 
 def handle_background_removal(job):
@@ -408,6 +410,8 @@ def handle_leonardo_generation(job):
             elif status == "FAILED":
                 return None, "Leonardo AI job failed."
     except Exception as e:
+        print(f"   ❌ Leonardo generation error: {e}")
+        traceback.print_exc()
         return None, f"Image generation error: {e}"
 
 def handle_image_generation(job):
