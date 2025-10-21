@@ -613,18 +613,32 @@ def handle_openai_vision_analysis(job):
         return None, f"OpenAI GPT-4o Vision API error: {e}"
 
 def handle_keying(job):
+    temp_video = None
     try:
         job_id = job['id']
         print(f"-> Starting OpenCV keying for job #{job_id}...")
         print(f"   JOB #{job_id}: Job type: {job['job_type']}")
         print(f"   JOB #{job_id}: Input video: {job['result_data']}")
         
-        # Validate input file exists
-        greenscreen_video_path = os.path.join(BASE_DIR, job['result_data'].lstrip('/'))
-        if not os.path.exists(greenscreen_video_path):
-            error_msg = f"Input video file not found: {greenscreen_video_path}"
-            print(f"   JOB #{job_id}: ERROR - {error_msg}")
-            return None, error_msg
+        # Handle both S3 URLs and local file paths
+        video_url = job['result_data']
+        if video_url.startswith('http'):
+            # It's an S3 URL - download it first
+            print(f"   JOB #{job_id}: Downloading video from S3...")
+            vid_response = requests.get(video_url)
+            vid_response.raise_for_status()
+            temp_video = f"temp_keying_{uuid.uuid4()}.mp4"
+            greenscreen_video_path = os.path.join(ANIMATIONS_FOLDER_GENERATED, temp_video)
+            with open(greenscreen_video_path, "wb") as f:
+                f.write(vid_response.content)
+            print(f"   JOB #{job_id}: Downloaded {len(vid_response.content)} bytes to {greenscreen_video_path}")
+        else:
+            # It's a local path
+            greenscreen_video_path = os.path.join(BASE_DIR, video_url.lstrip('/'))
+            if not os.path.exists(greenscreen_video_path):
+                error_msg = f"Input video file not found: {greenscreen_video_path}"
+                print(f"   JOB #{job_id}: ERROR - {error_msg}")
+                return None, error_msg
             
         print(f"   JOB #{job_id}: Full input path: {greenscreen_video_path}")
         print(f"   JOB #{job_id}: File exists: {os.path.exists(greenscreen_video_path)}")
@@ -671,10 +685,27 @@ def handle_keying(job):
         # Upload to S3 if enabled
         s3_key = f"library/transparent_videos/{output_filename}"
         public_url = upload_file(final_output_path, s3_key)
+        
+        # Clean up temp file if we downloaded from S3
+        if temp_video:
+            try:
+                os.remove(os.path.join(ANIMATIONS_FOLDER_GENERATED, temp_video))
+                print(f"   JOB #{job_id}: Cleaned up temp video file")
+            except Exception as e:
+                print(f"   JOB #{job_id}: Warning: could not delete temp file: {e}")
+        
         return public_url, None
     except Exception as e:
         print(f"   JOB #{job.get('id', '???')}: ❌ Keying failed with error: {e}")
         traceback.print_exc()
+        
+        # Clean up temp file on error too
+        if temp_video:
+            try:
+                os.remove(os.path.join(ANIMATIONS_FOLDER_GENERATED, temp_video))
+            except:
+                pass
+        
         return None, f"Keying error: {e}"
 
 def kill_stuck_ffmpeg_processes():
