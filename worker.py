@@ -342,14 +342,29 @@ def handle_background_removal(job):
     try:
         print(f"-> Starting BRIA background removal for job {job['id']}...")
         input_data = json.loads(job['input_data'])
-        relative_image_path = input_data.get("image_path")
-        if not relative_image_path: return None, "No image path provided for background removal."
-        # Handle both relative and absolute paths more safely
-        if relative_image_path.startswith('/'):
-            full_image_path = os.path.join(BASE_DIR, relative_image_path.lstrip('/'))
+        image_path = input_data.get("image_path")
+        if not image_path: return None, "No image path provided for background removal."
+        
+        # Handle both S3 URLs and local file paths
+        if image_path.startswith('http'):
+            # It's an S3 URL - download it first
+            print(f"   ...downloading image from S3: {image_path}")
+            img_response = requests.get(image_path)
+            img_response.raise_for_status()
+            temp_filename = f"temp_{uuid.uuid4()}.png"
+            temp_filepath = os.path.join(LIBRARY_FOLDER, temp_filename)
+            with open(temp_filepath, "wb") as f:
+                f.write(img_response.content)
+            full_image_path = temp_filepath
         else:
-            full_image_path = os.path.join(BASE_DIR, relative_image_path)
-        if not os.path.exists(full_image_path): return None, f"File not found for background removal: {full_image_path}"
+            # It's a local path
+            if image_path.startswith('/'):
+                full_image_path = os.path.join(BASE_DIR, image_path.lstrip('/'))
+            else:
+                full_image_path = os.path.join(BASE_DIR, image_path)
+            if not os.path.exists(full_image_path): 
+                return None, f"File not found for background removal: {full_image_path}"
+        
         print(f"   ...uploading {full_image_path} to bria/remove-background")
         with open(full_image_path, "rb") as f:
             transparent_output_url = replicate.run("bria/remove-background", input={"image": f})
@@ -360,13 +375,22 @@ def handle_background_removal(job):
         filename = f"{uuid.uuid4()}.png"
         filepath = os.path.join(LIBRARY_FOLDER, filename)
         with open(filepath, "wb") as f: f.write(img_res.content)
-        print(f"   ...kept original image: {full_image_path}")
+        
+        # Clean up temp file if we downloaded from S3
+        if image_path.startswith('http'):
+            try:
+                os.remove(full_image_path)
+                print(f"   ...cleaned up temp file")
+            except Exception as e:
+                print(f"   ...warning: could not delete temp file: {e}")
         
         # Upload to S3 if enabled
         s3_key = f"library/{filename}"
         public_url = upload_file(filepath, s3_key)
         return public_url, None
     except Exception as e:
+        print(f"   ❌ Background removal error: {e}")
+        traceback.print_exc()
         return None, f"BRIA background removal error: {e}"
 
 def handle_leonardo_generation(job):
