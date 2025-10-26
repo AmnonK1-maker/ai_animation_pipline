@@ -811,6 +811,10 @@
                         <input type="checkbox" name="image-model" value="bytedance-seedream-4">
                         <span>Bytedance Seedream-4</span>
                     </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" name="image-model" value="replicate-flux-1.1-pro" checked>
+                        <span>FLUX 1.1 Pro ⚡ (Fast & High Quality)</span>
+                    </label>
                 </div>
             </div>
             
@@ -885,6 +889,21 @@
                         <input type="radio" name="anim-background" value="blue">
                         <span>Blue Screen</span>
                     </label>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="checkbox-item" style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                    <input type="checkbox" id="anim-white-outline" name="anim-white-outline" onchange="toggleOutlineThickness()">
+                    <span>Add White Outline</span>
+                </label>
+                <div id="outline-thickness-control" style="display: none; margin-left: 28px; margin-top: 10px;">
+                    <div class="slider-group">
+                        <div class="slider-label">
+                            <span>Outline Thickness: <span id="outline-thickness-value">3</span>px</span>
+                        </div>
+                        <input type="range" class="slider" id="outline-thickness-slider" min="1" max="10" value="3" oninput="updateOutlineThickness()">
+                    </div>
                 </div>
             </div>
             
@@ -979,6 +998,21 @@
                         <input type="radio" name="loop-background" value="blue">
                         <span>Blue Screen</span>
                     </label>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="checkbox-item" style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                    <input type="checkbox" id="loop-white-outline" name="loop-white-outline" onchange="toggleLoopOutlineThickness()">
+                    <span>Add White Outline</span>
+                </label>
+                <div id="loop-outline-thickness-control" style="display: none; margin-left: 28px; margin-top: 10px;">
+                    <div class="slider-group">
+                        <div class="slider-label">
+                            <span>Outline Thickness: <span id="loop-outline-thickness-value">3</span>px</span>
+                        </div>
+                        <input type="range" class="slider" id="loop-outline-thickness-slider" min="1" max="10" value="3" oninput="updateLoopOutlineThickness()">
+                    </div>
                 </div>
             </div>
             
@@ -1095,6 +1129,121 @@
                     <button class="frame-btn" onclick="zoomInKeyer()">🔍 Zoom In</button>
                     <button class="frame-btn" onclick="zoomOutKeyer()">🔍 Zoom Out</button>
                     <button class="frame-btn" onclick="resetKeyerZoom()">Reset Zoom</button>
+                </div>
+            </div>
+            
+            <!-- STICKER EFFECT SECTION -->
+            <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 2px solid #dee2e6;">
+                <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 16px;">🎨 Sticker Effect (Post-Keying)</h3>
+                <div style="margin-bottom: 15px;">
+                    <label class="checkbox-item" style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="keyer-sticker-effect" onchange="toggleKeyerStickerControls()">
+                        <span style="font-weight: 600;">Enable Realistic Sticker Effect</span>
+                    </label>
+                    <p style="margin: 5px 0 0 28px; font-size: 13px; color: #666;">Adds crumpled paper texture with animated highlights</p>
+                </div>
+                
+                <div id="keyer-sticker-controls" style="display: none; padding-left: 15px;">
+                    <div class="slider-group">
+                        <div class="slider-label">
+                            <span>Displacement Intensity: <span id="keyer-displacement-value">50</span></span>
+                        </div>
+                        <input type="range" class="slider" id="keyer-displacement-intensity" min="0" max="50" value="50" step="1" oninput="updateSliderValue('keyer-displacement-intensity')">
+                        <small style="display: block; margin-top: 5px; color: #666;">How much the image warps (0 = flat, 50 = extreme)</small>
+                    </div>
+                    
+                    <div class="slider-group">
+                        <div class="slider-label">
+                            <span>Multiply Blend Opacity: <span id="keyer-darker-opacity-value">1</span></span>
+                        </div>
+                        <input type="range" class="slider" id="keyer-darker-opacity" min="0" max="1" value="1" step="0.1" oninput="updateSliderValue('keyer-darker-opacity')">
+                        <small style="display: block; margin-top: 5px; color: #666;">Texture darkness (0 = none, 1 = full)</small>
+                    </div>
+                    
+                    <div class="slider-group">
+                        <div class="slider-label">
+                            <span>Add Blend Opacity: <span id="keyer-screen-opacity-value">0.7</span></span>
+                        </div>
+                        <input type="range" class="slider" id="keyer-screen-opacity" min="0" max="1" value="0.7" step="0.1" oninput="updateSliderValue('keyer-screen-opacity')">
+                        <small style="display: block; margin-top: 5px; color: #666;">Brightness/shine (0 = none, 1 = full)</small>
+                    </div>
+                    
+                    <hr style="margin: 15px 0; border: none; border-top: 1px solid #dee2e6;">
+                    
+                    <div class="slider-group">
+                        <label class="checkbox-item" style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                            <input type="checkbox" id="keyer-enable-bevel" onchange="toggleKeyerBevel()">
+                            <span style="font-weight: 600;">Enable Bevel & Emboss (Surface Relief)</span>
+                        </label>
+                        <div id="keyer-bevel-controls" style="display: none; margin-left: 20px;">
+                            <div class="slider-group">
+                                <div class="slider-label"><span>Depth: <span id="keyer-bevel-depth-value">3</span></span></div>
+                                <input type="range" class="slider" id="keyer-bevel-depth" min="1" max="15" value="3" oninput="updateSliderValue('keyer-bevel-depth')">
+                            </div>
+                            <div class="slider-group">
+                                <div class="slider-label"><span>Highlight: <span id="keyer-bevel-highlight-value">0.5</span></span></div>
+                                <input type="range" class="slider" id="keyer-bevel-highlight" min="0" max="1" value="0.5" step="0.1" oninput="updateSliderValue('keyer-bevel-highlight')">
+                            </div>
+                            <div class="slider-group">
+                                <div class="slider-label"><span>Shadow: <span id="keyer-bevel-shadow-value">0.5</span></span></div>
+                                <input type="range" class="slider" id="keyer-bevel-shadow" min="0" max="1" value="0.5" step="0.1" oninput="updateSliderValue('keyer-bevel-shadow')">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="slider-group">
+                        <label class="checkbox-item" style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                            <input type="checkbox" id="keyer-enable-alpha-bevel" onchange="toggleKeyerAlphaBevel()">
+                            <span style="font-weight: 600;">Enable Alpha Bevel (Edge Effect)</span>
+                        </label>
+                        <div id="keyer-alpha-bevel-controls" style="display: none; margin-left: 20px;">
+                            <div class="slider-group">
+                                <div class="slider-label"><span>Depth: <span id="keyer-alpha-bevel-size-value">15</span>px</span></div>
+                                <input type="range" class="slider" id="keyer-alpha-bevel-size" min="1" max="30" value="15" oninput="updateSliderValue('keyer-alpha-bevel-size')">
+                            </div>
+                            <div class="slider-group">
+                                <div class="slider-label"><span>Blur: <span id="keyer-alpha-bevel-blur-value">2</span>px</span></div>
+                                <input type="range" class="slider" id="keyer-alpha-bevel-blur" min="0" max="30" value="2" oninput="updateSliderValue('keyer-alpha-bevel-blur')">
+                            </div>
+                            <div class="slider-group">
+                                <div class="slider-label"><span>Light Angle: <span id="keyer-alpha-bevel-angle-value">70</span>°</span></div>
+                                <input type="range" class="slider" id="keyer-alpha-bevel-angle" min="0" max="360" value="70" oninput="updateSliderValue('keyer-alpha-bevel-angle')">
+                            </div>
+                            <div class="slider-group">
+                                <div class="slider-label"><span>Highlight: <span id="keyer-alpha-bevel-highlight-value">0.6</span></span></div>
+                                <input type="range" class="slider" id="keyer-alpha-bevel-highlight" min="0" max="1" value="0.6" step="0.1" oninput="updateSliderValue('keyer-alpha-bevel-highlight')">
+                            </div>
+                            <div class="slider-group">
+                                <div class="slider-label"><span>Shadow: <span id="keyer-alpha-bevel-shadow-value">0.6</span></span></div>
+                                <input type="range" class="slider" id="keyer-alpha-bevel-shadow" min="0" max="1" value="0.6" step="0.1" oninput="updateSliderValue('keyer-alpha-bevel-shadow')">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="slider-group">
+                        <label class="checkbox-item" style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                            <input type="checkbox" id="keyer-enable-shadow" onchange="toggleKeyerShadow()">
+                            <span style="font-weight: 600;">Enable Drop Shadow</span>
+                        </label>
+                        <div id="keyer-shadow-controls" style="display: none; margin-left: 20px;">
+                            <div class="slider-group">
+                                <div class="slider-label"><span>Blur: <span id="keyer-shadow-blur-value">0</span>px</span></div>
+                                <input type="range" class="slider" id="keyer-shadow-blur" min="0" max="30" value="0" oninput="updateSliderValue('keyer-shadow-blur')">
+                            </div>
+                            <div class="slider-group">
+                                <div class="slider-label"><span>Offset X: <span id="keyer-shadow-x-value">1</span>px</span></div>
+                                <input type="range" class="slider" id="keyer-shadow-x" min="-20" max="20" value="1" oninput="updateSliderValue('keyer-shadow-x')">
+                            </div>
+                            <div class="slider-group">
+                                <div class="slider-label"><span>Offset Y: <span id="keyer-shadow-y-value">1</span>px</span></div>
+                                <input type="range" class="slider" id="keyer-shadow-y" min="-20" max="20" value="1" oninput="updateSliderValue('keyer-shadow-y')">
+                            </div>
+                            <div class="slider-group">
+                                <div class="slider-label"><span>Opacity: <span id="keyer-shadow-opacity-value">1</span></span></div>
+                                <input type="range" class="slider" id="keyer-shadow-opacity" min="0" max="1" value="1" step="0.1" oninput="updateSliderValue('keyer-shadow-opacity')">
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
             
@@ -1392,9 +1541,45 @@ document.getElementById('keyer-video-file').addEventListener('change', (e) => {
 
 // ===== SLIDER VALUE UPDATES =====
 function updateSliderValue(sliderId) {
-    const slider = document.getElementById(`keyer-${sliderId}`);
-    const valueSpan = document.getElementById(`${sliderId}-value`);
-    valueSpan.textContent = slider.value;
+    // Handle both keyer-prefixed and direct slider IDs
+    let slider, valueSpan;
+    if (sliderId.startsWith('keyer-')) {
+        // Already has prefix (for sticker effect sliders)
+        slider = document.getElementById(sliderId);
+        const valueId = sliderId.replace('keyer-', '') + '-value';
+        valueSpan = document.getElementById(valueId);
+    } else {
+        // Needs prefix (for regular keying sliders)
+        slider = document.getElementById(`keyer-${sliderId}`);
+        valueSpan = document.getElementById(`${sliderId}-value`);
+    }
+    if (slider && valueSpan) {
+        valueSpan.textContent = slider.value;
+    }
+}
+
+function toggleKeyerStickerControls() {
+    const checkbox = document.getElementById('keyer-sticker-effect');
+    const controls = document.getElementById('keyer-sticker-controls');
+    controls.style.display = checkbox.checked ? 'block' : 'none';
+}
+
+function toggleKeyerBevel() {
+    const checkbox = document.getElementById('keyer-enable-bevel');
+    const controls = document.getElementById('keyer-bevel-controls');
+    controls.style.display = checkbox.checked ? 'block' : 'none';
+}
+
+function toggleKeyerAlphaBevel() {
+    const checkbox = document.getElementById('keyer-enable-alpha-bevel');
+    const controls = document.getElementById('keyer-alpha-bevel-controls');
+    controls.style.display = checkbox.checked ? 'block' : 'none';
+}
+
+function toggleKeyerShadow() {
+    const checkbox = document.getElementById('keyer-enable-shadow');
+    const controls = document.getElementById('keyer-shadow-controls');
+    controls.style.display = checkbox.checked ? 'block' : 'none';
 }
 
 function debouncedPreviewKeying() {
@@ -1431,6 +1616,31 @@ function updateColorPreview() {
     text.textContent = `HSV: (${hue}, ${sat}, ${val})`;
     
     console.log('Color preview updated:', { hue, sat, val, hueCSS, satCSS, lightCSS });
+}
+
+// ===== WHITE OUTLINE CONTROL =====
+function toggleOutlineThickness() {
+    const checkbox = document.getElementById('anim-white-outline');
+    const control = document.getElementById('outline-thickness-control');
+    control.style.display = checkbox.checked ? 'block' : 'none';
+}
+
+function updateOutlineThickness() {
+    const slider = document.getElementById('outline-thickness-slider');
+    const valueSpan = document.getElementById('outline-thickness-value');
+    valueSpan.textContent = slider.value;
+}
+
+function toggleLoopOutlineThickness() {
+    const checkbox = document.getElementById('loop-white-outline');
+    const control = document.getElementById('loop-outline-thickness-control');
+    control.style.display = checkbox.checked ? 'block' : 'none';
+}
+
+function updateLoopOutlineThickness() {
+    const slider = document.getElementById('loop-outline-thickness-slider');
+    const valueSpan = document.getElementById('loop-outline-thickness-value');
+    valueSpan.textContent = slider.value;
 }
 
 // ===== SMART POLLING SYSTEM =====
@@ -1843,6 +2053,8 @@ function generateAnimation() {
     formData.append('prompt', finalPrompt);
     formData.append('negative_prompt', finalNegativePrompt);
     formData.append('background', background);
+    formData.append('white_outline', document.getElementById('anim-white-outline').checked);
+    formData.append('outline_thickness', document.getElementById('outline-thickness-slider').value);
     formData.append('seamless_loop', document.getElementById('anim-seamless-loop').checked);
     
     const models = Array.from(document.querySelectorAll('input[name="anim-model"]:checked')).map(el => el.value);
@@ -2000,6 +2212,8 @@ function createLoop() {
     formData.append('prompt', finalPrompt);
     formData.append('negative_prompt', finalNegativePrompt);
     formData.append('background', background);
+    formData.append('white_outline', document.getElementById('loop-white-outline').checked);
+    formData.append('outline_thickness', document.getElementById('loop-outline-thickness-slider').value);
     formData.append('video_model', videoModel);
     formData.append('boomerang_automation', 'true');
     formData.append('start_frame', extractedFrameA, 'frame_a.png');
@@ -2662,7 +2876,30 @@ function processKeying() {
         erode: parseInt(document.getElementById('keyer-erode').value),
         dilate: parseInt(document.getElementById('keyer-dilate').value),
         blur: parseInt(document.getElementById('keyer-blur').value),
-        spill: parseInt(document.getElementById('keyer-spill').value)
+        spill: parseInt(document.getElementById('keyer-spill').value),
+        // Sticker effect parameters
+        sticker_effect: document.getElementById('keyer-sticker-effect').checked,
+        displacement_intensity: parseInt(document.getElementById('keyer-displacement-intensity').value),
+        darker_opacity: parseFloat(document.getElementById('keyer-darker-opacity').value),
+        screen_opacity: parseFloat(document.getElementById('keyer-screen-opacity').value),
+        // Surface bevel parameters
+        enable_bevel: document.getElementById('keyer-enable-bevel').checked,
+        bevel_depth: parseInt(document.getElementById('keyer-bevel-depth').value),
+        bevel_highlight: parseFloat(document.getElementById('keyer-bevel-highlight').value),
+        bevel_shadow: parseFloat(document.getElementById('keyer-bevel-shadow').value),
+        // Alpha bevel parameters
+        enable_alpha_bevel: document.getElementById('keyer-enable-alpha-bevel').checked,
+        alpha_bevel_size: parseInt(document.getElementById('keyer-alpha-bevel-size').value),
+        alpha_bevel_blur: parseInt(document.getElementById('keyer-alpha-bevel-blur').value),
+        alpha_bevel_angle: parseFloat(document.getElementById('keyer-alpha-bevel-angle').value),
+        alpha_bevel_highlight: parseFloat(document.getElementById('keyer-alpha-bevel-highlight').value),
+        alpha_bevel_shadow: parseFloat(document.getElementById('keyer-alpha-bevel-shadow').value),
+        // Drop shadow parameters
+        enable_shadow: document.getElementById('keyer-enable-shadow').checked,
+        shadow_blur: parseInt(document.getElementById('keyer-shadow-blur').value),
+        shadow_x: parseInt(document.getElementById('keyer-shadow-x').value),
+        shadow_y: parseInt(document.getElementById('keyer-shadow-y').value),
+        shadow_opacity: parseFloat(document.getElementById('keyer-shadow-opacity').value)
     };
     
     console.log('Processing keying with settings:', settings, 'for job:', currentKeyingJobId);
@@ -2981,7 +3218,7 @@ function reKeyJob(jobId) {
     // Re-key means we want to key the ORIGINAL video again, not the keyed result
     // So we use the same function as manualKeyJob, which loads job.result_data (the original)
     manualKeyJob(jobId);
-    alert('💡 Tip: The original video is loaded. Adjust the keying parameters and click "Save & Process" to re-key with new settings.');
+    console.log('💡 Tip: The original video is loaded. Adjust the keying parameters and click "Save & Process" to re-key with new settings.');
 }
 
 function downloadJob(jobId) {

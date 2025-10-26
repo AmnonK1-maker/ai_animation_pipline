@@ -52,11 +52,19 @@ def process_single_frame(frame, lower_green, upper_green, erode_amount, dilate_a
     
     return bgra_frame
 
-def process_video_with_opencv(video_path, output_path, lower_green, upper_green, erode_amount, dilate_amount, blur_amount, spill_amount):
+def process_video_with_opencv(video_path, output_path, lower_green, upper_green, erode_amount, dilate_amount, blur_amount, spill_amount, skip_encoding=False):
     """
     Processes a video using a manual ffmpeg pipeline. Audio is ignored.
+    
+    Args:
+        skip_encoding: If True, only processes frames and returns (fps, frame_count, temp_frame_dir)
+                       without encoding to WebM. Used when sticker effects will be applied next.
+    
+    Returns:
+        If skip_encoding=False: None (output_path is created)
+        If skip_encoding=True: (fps, frame_count, temp_frame_dir)
     """
-    temp_frame_dir = "temp_frames"
+    temp_frame_dir = "temp_keyed_frames"
     if os.path.exists(temp_frame_dir):
         shutil.rmtree(temp_frame_dir)
     os.makedirs(temp_frame_dir)
@@ -73,22 +81,38 @@ def process_video_with_opencv(video_path, output_path, lower_green, upper_green,
             
             bgra_frame = process_single_frame(frame, lower_green, upper_green, erode_amount, dilate_amount, blur_amount, spill_amount)
             frame_filename = os.path.join(temp_frame_dir, f"frame_{frame_count:05d}.png")
-            cv2.imwrite(frame_filename, bgra_frame)
+            
+            # CRITICAL: Use PIL to save PNG with alpha, OpenCV can corrupt alpha channel
+            # Convert BGRA (OpenCV) to RGBA (PIL)
+            from PIL import Image
+            b, g, r, a = cv2.split(bgra_frame)
+            rgba_frame = cv2.merge([r, g, b, a])  # Reorder to RGB + Alpha
+            pil_image = Image.fromarray(rgba_frame, 'RGBA')
+            pil_image.save(frame_filename, 'PNG')
+            
             frame_count += 1
             
         video_capture.release()
-        print(f"   ...processed and saved {frame_count} frames.")
+        print(f"   ...processed and saved {frame_count} frames to {temp_frame_dir}")
 
+        # If skip_encoding=True, return the frame info for further processing (sticker effects)
+        if skip_encoding:
+            print(f"   ⏸️  Skipping encoding - frames ready for post-processing")
+            return (original_fps, frame_count, temp_frame_dir)
+
+        # Otherwise, encode to WebM immediately
         print("-> Step 2: Compiling transparent video with ffmpeg...")
         ffmpeg_cmd = [
-            'ffmpeg',
+            'ffmpeg', '-y',
             '-framerate', str(original_fps),
-            '-i', os.path.join(temp_frame_dir, 'frame_%05d.png'), # <--- FIX
+            '-f', 'image2',
+            '-i', os.path.join(temp_frame_dir, 'frame_%05d.png'),
+            '-vf', 'format=yuva420p',  # CRITICAL: Force alpha-aware format filter
             '-c:v', 'libvpx-vp9',
             '-pix_fmt', 'yuva420p',
+            '-auto-alt-ref', '0',  # Required for transparent WebM
             '-crf', '10',
             '-b:v', '0',
-            '-y',
             output_path
         ]
         
@@ -96,10 +120,12 @@ def process_video_with_opencv(video_path, output_path, lower_green, upper_green,
         print(f"   ...successfully created transparent video at {output_path}")
 
     finally:
-        print("-> Step 3: Cleaning up temporary frame files...")
-        if os.path.exists(temp_frame_dir):
-            shutil.rmtree(temp_frame_dir)
-        print("   ...done.")
+        # Only clean up if we encoded (skip_encoding=False)
+        if not skip_encoding:
+            print("-> Step 3: Cleaning up temporary frame files...")
+            if os.path.exists(temp_frame_dir):
+                shutil.rmtree(temp_frame_dir)
+            print("   ...done.")
 
 def stitch_videos_with_ffmpeg(video_paths, output_path, target_resolution=None):
     """

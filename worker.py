@@ -21,6 +21,9 @@ from openai import OpenAI
 
 from video_processor import process_video_with_opencv, stitch_videos_with_ffmpeg
 from s3_storage import storage, upload_file, save_uploaded_file, get_public_url, is_s3_enabled, download_file
+import cv2
+import numpy as np
+from PIL import ImageChops, ImageEnhance, ImageFilter
 
 # --- CONFIGURATION ---
 load_dotenv()
@@ -57,6 +60,481 @@ ANIMATIONS_FOLDER_GENERATED = os.path.join(STATIC_FOLDER, 'animations', 'generat
 UPLOADS_FOLDER = os.path.join(STATIC_FOLDER, 'uploads')
 TRANSPARENT_VIDEOS_FOLDER = os.path.join(STATIC_FOLDER, 'library', 'transparent_videos')
 os.makedirs(TRANSPARENT_VIDEOS_FOLDER, exist_ok=True)
+
+# --- TEXTURE FOLDERS FOR STICKER EFFECT ---
+TEXTURE_DISPLACEMENT_FOLDER = os.path.join(STATIC_FOLDER, 'textures', 'displacement')
+TEXTURE_SCREEN_FOLDER = os.path.join(STATIC_FOLDER, 'textures', 'screen')
+os.makedirs(TEXTURE_DISPLACEMENT_FOLDER, exist_ok=True)
+os.makedirs(TEXTURE_SCREEN_FOLDER, exist_ok=True)
+
+# --- STICKER EFFECT FUNCTIONS ---
+def load_texture_sequence(folder_path):
+    """Load all PNG files from a texture folder and return them sorted."""
+    try:
+        files = sorted([f for f in os.listdir(folder_path) if f.lower().endswith('.png')])
+        if not files:
+            print(f"   ⚠️ No PNG files found in {folder_path}")
+            return []
+        textures = []
+        for file in files:
+            filepath = os.path.join(folder_path, file)
+            textures.append(Image.open(filepath).convert('RGBA'))
+        print(f"   ✅ Loaded {len(textures)} textures from {os.path.basename(folder_path)}/")
+        return textures
+    except Exception as e:
+        print(f"   ❌ Error loading textures from {folder_path}: {e}")
+        return []
+
+def blend_multiply(base, overlay, opacity=1.0):
+    """Multiply blend mode with clipping mask (like Photoshop/After Effects)."""
+    try:
+        # STEP 1: Save original alpha FIRST
+        original_alpha = base.split()[3]
+        alpha_array = np.array(original_alpha)
+        
+        # STEP 2: Convert to numpy arrays
+        base_array = np.array(base)
+        overlay_array = np.array(overlay)
+        
+        # STEP 3: Create alpha mask (3D for RGB masking)
+        alpha_mask = (alpha_array > 0).astype(float)
+        alpha_mask_3d = np.stack([alpha_mask, alpha_mask, alpha_mask], axis=2)
+        
+        # STEP 4: Apply texture ONLY where alpha > 0 (clipping mask)
+        base_rgb = base_array[:, :, :3].astype(float) / 255.0
+        overlay_rgb = overlay_array[:, :, :3].astype(float) / 255.0
+        
+        # Multiply formula: base * overlay
+        result_rgb = base_rgb * overlay_rgb
+        
+        # Apply opacity
+        if opacity < 1.0:
+            result_rgb = result_rgb * opacity + base_rgb * (1 - opacity)
+        
+        # STEP 5: Apply alpha mask - effect ONLY on non-transparent pixels
+        result_rgb = result_rgb * alpha_mask_3d + (base_rgb * (1 - alpha_mask_3d))
+        
+        # Convert back to uint8
+        result_array = np.zeros_like(base_array)
+        result_array[:, :, :3] = (result_rgb * 255).astype(np.uint8)
+        result_array[:, :, 3] = alpha_array  # CRITICAL: Restore original alpha
+        
+        return Image.fromarray(result_array, 'RGBA')
+    except Exception as e:
+        print(f"Multiply blend error: {e}")
+        return base
+
+def blend_add(base, overlay, opacity=1.0):
+    """Add blend mode with clipping mask (like Photoshop/After Effects)."""
+    try:
+        # STEP 1: Save original alpha FIRST
+        original_alpha = base.split()[3]
+        alpha_array = np.array(original_alpha)
+        
+        # STEP 2: Convert to numpy arrays
+        base_array = np.array(base)
+        overlay_array = np.array(overlay)
+        
+        # STEP 3: Create alpha mask (3D for RGB masking)
+        alpha_mask = (alpha_array > 0).astype(float)
+        alpha_mask_3d = np.stack([alpha_mask, alpha_mask, alpha_mask], axis=2)
+        
+        # STEP 4: Apply texture ONLY where alpha > 0 (clipping mask)
+        base_rgb = base_array[:, :, :3].astype(float) / 255.0
+        overlay_rgb = overlay_array[:, :, :3].astype(float) / 255.0
+        
+        # Add (Linear Dodge) formula: base + overlay (clamped to 1.0)
+        result_rgb = np.clip(base_rgb + overlay_rgb, 0, 1.0)
+        
+        # Apply opacity
+        if opacity < 1.0:
+            result_rgb = result_rgb * opacity + base_rgb * (1 - opacity)
+        
+        # STEP 5: Apply alpha mask - effect ONLY on non-transparent pixels
+        result_rgb = result_rgb * alpha_mask_3d + (base_rgb * (1 - alpha_mask_3d))
+        
+        # Convert back to uint8
+        result_array = np.zeros_like(base_array)
+        result_array[:, :, :3] = (result_rgb * 255).astype(np.uint8)
+        result_array[:, :, 3] = alpha_array  # CRITICAL: Restore original alpha
+        
+        return Image.fromarray(result_array, 'RGBA')
+    except Exception as e:
+        print(f"Add blend error: {e}")
+        return base
+
+def apply_displacement(image, displacement_map, intensity=5):
+    """Warp image using displacement map."""
+    try:
+        # Convert to numpy arrays
+        img_array = np.array(image)
+        h, w = img_array.shape[:2]
+        
+        # Resize displacement map to match image size
+        disp_map = displacement_map.resize((w, h), Image.Resampling.BILINEAR).convert('L')
+        disp_array = np.array(disp_map).astype(float) / 255.0  # Normalize to 0-1
+        
+        # Create displacement vectors (center at 0.5, scale by intensity)
+        disp_x = (disp_array - 0.5) * intensity
+        disp_y = (disp_array - 0.5) * intensity
+        
+        # Create mesh grid for remapping
+        map_x, map_y = np.meshgrid(np.arange(w), np.arange(h))
+        map_x = (map_x + disp_x).astype(np.float32)
+        map_y = (map_y + disp_y).astype(np.float32)
+        
+        # Remap the image
+        warped = cv2.remap(img_array, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        
+        return Image.fromarray(warped, 'RGBA')
+    except Exception as e:
+        print(f"   ⚠️ Displacement failed: {e}, returning original")
+        return image
+
+def apply_surface_bevel(image, depth=3, highlight=0.5, shadow=0.5):
+    """Apply bevel & emboss effect using After Effects-style relief map (Overlay blend)."""
+    try:
+        # Convert to grayscale for relief calculation
+        gray = image.convert('L')
+        gray_array = np.array(gray, dtype=np.float32)
+        
+        # Create emboss kernel (relief map)
+        kernel_size = max(3, depth)
+        if kernel_size % 2 == 0:
+            kernel_size += 1
+        
+        # Sobel filters for X and Y gradients
+        grad_x = cv2.Sobel(gray_array, cv2.CV_32F, 1, 0, ksize=kernel_size)
+        grad_y = cv2.Sobel(gray_array, cv2.CV_32F, 0, 1, ksize=kernel_size)
+        
+        # Combine gradients to create relief map
+        relief = grad_x * highlight - grad_y * shadow
+        relief = relief + 128  # Shift to mid-gray (neutral for Overlay)
+        relief = np.clip(relief, 0, 255).astype(np.uint8)
+        
+        # Create relief RGB image
+        relief_rgb = np.stack([relief, relief, relief], axis=2)
+        relief_img = Image.fromarray(relief_rgb, 'RGB')
+        
+        # Apply Overlay blend mode
+        base_rgb = np.array(image.convert('RGB')).astype(float) / 255.0
+        overlay_rgb = np.array(relief_img).astype(float) / 255.0
+        
+        # Overlay formula: base < 0.5 ? 2*base*overlay : 1 - 2*(1-base)*(1-overlay)
+        result_rgb = np.where(
+            base_rgb < 0.5,
+            2 * base_rgb * overlay_rgb,
+            1 - 2 * (1 - base_rgb) * (1 - overlay_rgb)
+        )
+        result_rgb = (result_rgb * 255).astype(np.uint8)
+        
+        # Restore alpha
+        result = Image.fromarray(result_rgb, 'RGB').convert('RGBA')
+        result.putalpha(image.split()[3])
+        return result
+    except Exception as e:
+        print(f"   ⚠️ Surface bevel failed: {e}, returning original")
+        return image
+
+def apply_alpha_bevel(image, size=15, blur=2, angle=70, highlight_intensity=0.6, shadow_intensity=0.6):
+    """Apply bevel effect to the alpha channel boundaries."""
+    try:
+        # Get the current alpha channel
+        alpha = image.split()[3]
+        alpha_array = np.array(alpha, dtype=np.float32)
+        
+        # Calculate gradients (edge normals) of the alpha channel
+        kernel_size = min(size, 31)
+        if kernel_size % 2 == 0:
+            kernel_size += 1  # Must be odd
+        gradient_x = cv2.Sobel(alpha_array, cv2.CV_32F, 1, 0, ksize=min(kernel_size, 31))
+        gradient_y = cv2.Sobel(alpha_array, cv2.CV_32F, 0, 1, ksize=min(kernel_size, 31))
+        
+        # Calculate the angle of each edge normal (in radians)
+        edge_angles = np.arctan2(gradient_y, gradient_x)
+        
+        # Convert light angle from degrees to radians
+        light_angle_rad = np.deg2rad(angle)
+        
+        # Calculate how aligned each edge is with the light direction
+        angle_diff = edge_angles - light_angle_rad
+        alignment = np.cos(angle_diff)
+        
+        # Calculate edge magnitude (strength)
+        edge_magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
+        edge_magnitude = edge_magnitude / (edge_magnitude.max() + 1e-8)  # Normalize
+        
+        # Separate highlights and shadows with different intensities
+        highlight_mask = np.maximum(0, alignment) * edge_magnitude * highlight_intensity
+        shadow_mask = np.maximum(0, -alignment) * edge_magnitude * shadow_intensity
+        
+        # Blur the effect to create smooth bevels
+        if blur > 0:
+            blur_kernel = blur * 2 + 1
+            if blur_kernel % 2 == 0:
+                blur_kernel += 1
+            highlight_mask = cv2.GaussianBlur(highlight_mask, (blur_kernel, blur_kernel), 0)
+            shadow_mask = cv2.GaussianBlur(shadow_mask, (blur_kernel, blur_kernel), 0)
+        
+        # Apply the bevel effect to the image
+        result_array = np.array(image)
+        original_alpha = alpha_array.astype(np.uint8)
+        
+        # Apply highlights and shadows to RGB channels separately
+        for c in range(3):  # RGB channels
+            # Brighten with highlights
+            result_array[:, :, c] = np.clip(
+                result_array[:, :, c].astype(np.float32) + highlight_mask * 255,
+                0, 255
+            ).astype(np.uint8)
+            
+            # Darken with shadows
+            result_array[:, :, c] = np.clip(
+                result_array[:, :, c].astype(np.float32) - shadow_mask * 255,
+                0, 255
+            ).astype(np.uint8)
+        
+        # Keep the original alpha unchanged
+        result_array[:, :, 3] = original_alpha
+        
+        return Image.fromarray(result_array, 'RGBA')
+    except Exception as e:
+        print(f"   ⚠️ Alpha bevel failed: {e}, returning original")
+        return image
+
+def apply_drop_shadow(image, blur=10, offset_x=5, offset_y=5, opacity=0.5):
+    """Apply drop shadow to image."""
+    try:
+        # Create shadow layer
+        alpha = image.split()[3]
+        shadow = Image.new('RGBA', image.size, (0, 0, 0, 0))
+        shadow.putalpha(alpha)
+        
+        # Blur the shadow
+        if blur > 0:
+            shadow = shadow.filter(ImageFilter.GaussianBlur(radius=blur))
+        
+        # Adjust shadow opacity
+        shadow_alpha = shadow.split()[3]
+        shadow_alpha = ImageEnhance.Brightness(shadow_alpha).enhance(opacity)
+        shadow.putalpha(shadow_alpha)
+        
+        # Create result image with shadow
+        result = Image.new('RGBA', image.size, (0, 0, 0, 0))
+        result.paste(shadow, (offset_x, offset_y), shadow)
+        result.paste(image, (0, 0), image)
+        
+        return result
+    except Exception as e:
+        print(f"   ⚠️ Drop shadow failed: {e}, returning original")
+        return image
+
+def apply_sticker_effect_to_frame(frame_pil, disp_texture, screen_texture, 
+                                   displacement_intensity=50, darker_opacity=1.0, screen_opacity=0.7,
+                                   enable_bevel=False, bevel_depth=3, bevel_highlight=0.5, bevel_shadow=0.5,
+                                   enable_alpha_bevel=False, alpha_bevel_size=15, alpha_bevel_blur=2, 
+                                   alpha_bevel_angle=70, alpha_bevel_highlight=0.6, alpha_bevel_shadow=0.6,
+                                   enable_shadow=False, shadow_blur=0, shadow_x=1, shadow_y=1, shadow_opacity=1.0):
+    """Apply sticker effect to a single frame with all advanced effects."""
+    try:
+        # Resize textures to match frame size
+        if disp_texture:
+            disp_texture = disp_texture.resize(frame_pil.size, Image.LANCZOS)
+        if screen_texture:
+            screen_texture = screen_texture.resize(frame_pil.size, Image.LANCZOS)
+        
+        # Step 1: Apply displacement using displacement texture
+        if disp_texture and displacement_intensity > 0:
+            frame_pil = apply_displacement(frame_pil, disp_texture, displacement_intensity)
+        
+        # Step 2: Apply Multiply blend (shadows/creases) using displacement texture
+        if disp_texture and darker_opacity > 0:
+            frame_pil = blend_multiply(frame_pil, disp_texture, darker_opacity)
+        
+        # Step 3: Apply Add blend (highlights) using screen texture
+        if screen_texture and screen_opacity > 0:
+            frame_pil = blend_add(frame_pil, screen_texture, screen_opacity)
+        
+        # Step 4: Apply surface bevel & emboss (relief map) if enabled
+        if enable_bevel:
+            frame_pil = apply_surface_bevel(frame_pil, bevel_depth, bevel_highlight, bevel_shadow)
+        
+        # Step 5: Apply alpha bevel (edge effect) if enabled
+        if enable_alpha_bevel:
+            frame_pil = apply_alpha_bevel(frame_pil, alpha_bevel_size, alpha_bevel_blur, 
+                                         alpha_bevel_angle, alpha_bevel_highlight, alpha_bevel_shadow)
+        
+        # Step 6: Apply drop shadow if enabled
+        if enable_shadow:
+            frame_pil = apply_drop_shadow(frame_pil, shadow_blur, shadow_x, shadow_y, shadow_opacity)
+        
+        return frame_pil
+    except Exception as e:
+        print(f"   ⚠️ Sticker effect failed on frame: {e}")
+        traceback.print_exc()
+        return frame_pil
+
+def apply_sticker_effect_to_video(input_video_path, output_video_path, 
+                                   displacement_intensity=50, darker_opacity=1.0, screen_opacity=0.7,
+                                   enable_bevel=False, bevel_depth=3, bevel_highlight=0.5, bevel_shadow=0.5,
+                                   enable_alpha_bevel=False, alpha_bevel_size=15, alpha_bevel_blur=2, 
+                                   alpha_bevel_angle=70, alpha_bevel_highlight=0.6, alpha_bevel_shadow=0.6,
+                                   enable_shadow=False, shadow_blur=0, shadow_x=1, shadow_y=1, shadow_opacity=1.0):
+    """Apply sticker effect to entire video frame-by-frame with animated textures and all advanced effects."""
+    try:
+        print(f"   🎨 Applying sticker effect to video...")
+        print(f"      Displacement: {displacement_intensity}, Multiply opacity: {darker_opacity}, Add opacity: {screen_opacity}")
+        print(f"      Surface bevel: {enable_bevel}, Alpha bevel: {enable_alpha_bevel}, Drop shadow: {enable_shadow}")
+        
+        # Load texture sequences
+        disp_textures = load_texture_sequence(TEXTURE_DISPLACEMENT_FOLDER)
+        screen_textures = load_texture_sequence(TEXTURE_SCREEN_FOLDER)
+        
+        if not disp_textures and not screen_textures:
+            print(f"   ⚠️ No textures found, skipping sticker effect")
+            return input_video_path  # Return original if no textures
+        
+        # Use ffmpeg to extract frames with alpha channel preserved
+        print(f"      Extracting frames from video with alpha channel...")
+        temp_extract_dir = os.path.join(TRANSPARENT_VIDEOS_FOLDER, f"sticker_extract_{uuid.uuid4().hex[:8]}")
+        os.makedirs(temp_extract_dir, exist_ok=True)
+        
+        # Extract frames as PNG with alpha (PNG automatically preserves alpha)
+        extract_cmd = [
+            'ffmpeg', '-y', '-i', input_video_path,
+            os.path.join(temp_extract_dir, 'frame_%06d.png')
+        ]
+        result = subprocess.run(extract_cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"   ❌ Frame extraction failed: {result.stderr}")
+            shutil.rmtree(temp_extract_dir, ignore_errors=True)
+            return input_video_path
+        
+        # Get frame files
+        frame_files = sorted([f for f in os.listdir(temp_extract_dir) if f.endswith('.png')])
+        if not frame_files:
+            print(f"   ❌ No frames extracted")
+            shutil.rmtree(temp_extract_dir, ignore_errors=True)
+            return input_video_path
+        
+        # Get video properties from first frame
+        first_frame = Image.open(os.path.join(temp_extract_dir, frame_files[0]))
+        width, height = first_frame.size
+        total_frames = len(frame_files)
+        
+        # Get FPS from original video
+        probe_cmd = ['ffprobe', '-v', 'error', '-select_streams', 'v:0', 
+                     '-show_entries', 'stream=r_frame_rate', '-of', 'default=noprint_wrappers=1:nokey=1', 
+                     input_video_path]
+        probe_result = subprocess.run(probe_cmd, capture_output=True, text=True)
+        fps = 30  # Default
+        if probe_result.returncode == 0 and probe_result.stdout.strip():
+            try:
+                fps_parts = probe_result.stdout.strip().split('/')
+                fps = float(fps_parts[0]) / float(fps_parts[1]) if len(fps_parts) == 2 else float(fps_parts[0])
+            except:
+                pass
+        
+        print(f"      Video: {width}x{height} @ {fps}fps, {total_frames} frames")
+        
+        # Create temporary directory for processed frames
+        temp_frames_dir = os.path.join(TRANSPARENT_VIDEOS_FOLDER, f"sticker_temp_{uuid.uuid4().hex[:8]}")
+        os.makedirs(temp_frames_dir, exist_ok=True)
+        
+        frame_idx = 0
+        for frame_file in frame_files:
+            # Load frame with alpha
+            frame_path = os.path.join(temp_extract_dir, frame_file)
+            frame_pil = Image.open(frame_path).convert('RGBA')
+            
+            # Store original alpha before any processing
+            original_alpha = frame_pil.split()[3]
+            
+            # Get textures for this frame (loop if textures are shorter than video)
+            disp_texture = disp_textures[frame_idx % len(disp_textures)] if disp_textures else None
+            screen_texture = screen_textures[frame_idx % len(screen_textures)] if screen_textures else None
+            
+            # Apply sticker effect with all parameters
+            processed_frame = apply_sticker_effect_to_frame(
+                frame_pil, disp_texture, screen_texture,
+                displacement_intensity, darker_opacity, screen_opacity,
+                enable_bevel, bevel_depth, bevel_highlight, bevel_shadow,
+                enable_alpha_bevel, alpha_bevel_size, alpha_bevel_blur, 
+                alpha_bevel_angle, alpha_bevel_highlight, alpha_bevel_shadow,
+                enable_shadow, shadow_blur, shadow_x, shadow_y, shadow_opacity
+            )
+            
+            # CRITICAL: Ensure original alpha is preserved exactly (no modifications to transparent areas)
+            processed_frame.putalpha(original_alpha)
+            
+            # Zero out RGB values in fully transparent areas to prevent compression artifacts
+            frame_array = np.array(processed_frame)
+            alpha_array = np.array(original_alpha)
+            # Where alpha is 0, set RGB to 0 (fully transparent black)
+            mask = (alpha_array == 0)
+            # Apply mask to each RGB channel separately
+            frame_array[:, :, 0] = np.where(mask, 0, frame_array[:, :, 0])  # Red
+            frame_array[:, :, 1] = np.where(mask, 0, frame_array[:, :, 1])  # Green
+            frame_array[:, :, 2] = np.where(mask, 0, frame_array[:, :, 2])  # Blue
+            processed_frame = Image.fromarray(frame_array, 'RGBA')
+            
+            # Save frame
+            frame_path = os.path.join(temp_frames_dir, f"frame_{frame_idx:06d}.png")
+            processed_frame.save(frame_path, 'PNG')
+            
+            frame_idx += 1
+            if frame_idx % 10 == 0:
+                print(f"      Processed {frame_idx}/{total_frames} frames...")
+        
+        print(f"   ✅ Processed all {frame_idx} frames")
+        
+        # Clean up extraction directory
+        shutil.rmtree(temp_extract_dir, ignore_errors=True)
+        
+        # Re-encode video using FFmpeg with high quality settings and alpha preservation
+        print(f"   🎬 Re-encoding video with FFmpeg (preserving alpha)...")
+        ffmpeg_cmd = [
+            'ffmpeg', '-y',
+            '-framerate', str(fps),
+            '-f', 'image2',  # Explicitly specify image sequence format
+            '-i', os.path.join(temp_frames_dir, 'frame_%06d.png'),
+            '-c:v', 'libvpx-vp9',  # VP9 codec for WebM with transparency
+            '-pix_fmt', 'yuva420p',  # Pixel format with alpha channel
+            '-auto-alt-ref', '0',  # CRITICAL: Required for transparent WebM
+            '-metadata:s:v:0', 'alpha_mode="1"',  # Signal that alpha channel exists
+            '-b:v', '8M',  # High bitrate for better quality
+            '-crf', '15',  # Constant Rate Factor (0-63, lower = better quality)
+            '-quality', 'good',  # Quality/speed tradeoff
+            '-cpu-used', '2',  # Speed (0-5, lower = better quality but slower)
+            output_video_path
+        ]
+        
+        print(f"   📝 FFmpeg command: {' '.join(ffmpeg_cmd)}")
+        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"   ❌ FFmpeg error: {result.stderr}")
+            return input_video_path
+        
+        # Verify the output has alpha
+        verify_cmd = ['ffprobe', '-v', 'error', '-select_streams', 'v:0', 
+                      '-show_entries', 'stream=pix_fmt', '-of', 'default=noprint_wrappers=1:nokey=1', 
+                      output_video_path]
+        verify_result = subprocess.run(verify_cmd, capture_output=True, text=True)
+        output_pix_fmt = verify_result.stdout.strip()
+        print(f"   🔍 Output pixel format: {output_pix_fmt}")
+        if 'yuva' not in output_pix_fmt:
+            print(f"   ⚠️ WARNING: Output video may not have alpha channel! Got {output_pix_fmt} instead of yuva420p")
+        
+        # Clean up temp frames
+        shutil.rmtree(temp_frames_dir, ignore_errors=True)
+        
+        print(f"   ✅ Sticker effect video saved: {output_video_path}")
+        return output_video_path
+        
+    except Exception as e:
+        print(f"   ❌ Sticker effect failed: {e}")
+        traceback.print_exc()
+        return input_video_path  # Return original if processing fails
 
 # --- IMAGE PREPROCESSING FOR BOOMERANG ---
 def preprocess_animation_image_for_boomerang(source_image_path, background_color_str):
@@ -114,6 +592,49 @@ def get_db_connection():
     except sqlite3.Error as e:
         print(f"Database connection error: {e}")
         raise
+
+def add_white_outline(image_path, outline_width=3):
+    """
+    Add a white outline around the subject in an image.
+    Works best with transparent/semi-transparent PNGs.
+    """
+    try:
+        from PIL import ImageFilter, ImageOps
+        
+        print(f"   ...adding {outline_width}px white outline to image")
+        
+        # Open image
+        img = Image.open(image_path).convert("RGBA")
+        
+        # Extract alpha channel (transparency mask)
+        alpha = img.split()[3]
+        
+        # Create outline by dilating the alpha mask
+        outline = alpha.filter(ImageFilter.MaxFilter(outline_width * 2 + 1))
+        
+        # Create white outline layer
+        outline_layer = Image.new("RGBA", img.size, (255, 255, 255, 0))
+        outline_layer.putalpha(outline)
+        
+        # Create final image: white outline + original image
+        result = Image.alpha_composite(outline_layer, img)
+        
+        # Save to temp file
+        output_filename = f"outlined_{uuid.uuid4()}.png"
+        output_path = os.path.join(LIBRARY_FOLDER, output_filename)
+        result.save(output_path, 'PNG')
+        
+        print(f"   ...white outline applied, saved to {output_path}")
+        
+        # Upload to S3 if enabled
+        s3_key = f"library/{output_filename}"
+        public_url = upload_file(output_path, s3_key)
+        return public_url
+        
+    except Exception as e:
+        print(f"   ...warning: could not add white outline: {e}")
+        traceback.print_exc()
+        return image_path  # Return original if outline fails
 
 # --- JOB HANDLERS ---
 def handle_boomerang_automation(job, conn):
@@ -193,6 +714,7 @@ def handle_animation(job):
             start_image_path = os.path.join(BASE_DIR, image_url.lstrip('/'))
             if not os.path.exists(start_image_path):
                 raise FileNotFoundError(f"Start image not found at {start_image_path}")
+        
         user_negative_prompt = input_data.get("negative_prompt", "").strip()
         additional_instructions = "contact shadow, drop shadow, change background color"
         final_negative_prompt = f"{user_negative_prompt}, {additional_instructions}" if user_negative_prompt else additional_instructions
@@ -436,6 +958,76 @@ def handle_bytedance_generation(job):
         traceback.print_exc()
         return None, f"Bytedance generation error: {e}"
 
+def handle_flux_generation(job):
+    try:
+        print(f"-> Starting FLUX 1.1 Pro generation for job {job['id']}...")
+        input_data = json.loads(job['input_data'])
+        
+        # Build prompt from object and style
+        full_prompt = f"{input_data['object_prompt']}, in the style of {input_data['style_prompt']}, on a transparent background"
+        
+        # FLUX API input according to black-forest-labs/flux-1.1-pro schema
+        api_input = {
+            "prompt": full_prompt,
+            "aspect_ratio": "1:1",  # 1:1 is perfect for animations
+            "output_format": "png",  # PNG for transparency support
+            "output_quality": 95,  # High quality
+            "safety_tolerance": 4,  # Moderate (1=strict, 6=permissive)
+            "prompt_upsampling": False  # Keep user's exact prompt
+        }
+        
+        print(f"   ...calling black-forest-labs/flux-1.1-pro on Replicate")
+        print(f"   ...prompt: {full_prompt[:100]}...")
+        
+        output = replicate.run("black-forest-labs/flux-1.1-pro", input=api_input)
+        
+        # DEBUG: See what FLUX actually returns
+        print(f"   ...FLUX output type: {type(output)}")
+        print(f"   ...FLUX output: {str(output)[:200]}")
+        
+        # Handle different output types from FLUX
+        output_url = None
+        if isinstance(output, str):
+            # Direct URL string
+            output_url = output
+        elif isinstance(output, list) and len(output) > 0:
+            # List of URLs
+            output_url = output[0]
+        elif hasattr(output, 'url'):
+            # FileOutput object with .url attribute
+            output_url = output.url
+        elif hasattr(output, '__iter__'):
+            # Iterator - convert to list and get first item
+            try:
+                output_list = list(output)
+                if output_list:
+                    output_url = output_list[0] if isinstance(output_list[0], str) else getattr(output_list[0], 'url', None)
+            except Exception as e:
+                print(f"   ...ERROR converting iterator: {e}")
+        
+        if not output_url:
+            print(f"   ...ERROR: Could not extract URL from output type {type(output)}")
+            return None, f"FLUX model did not return an image URL. Got: {type(output).__name__}"
+        
+        print(f"   ...downloading image from Replicate: {output_url}")
+        image_res = requests.get(output_url)
+        image_res.raise_for_status()
+        
+        filename = f"{uuid.uuid4()}.png"
+        filepath = os.path.join(LIBRARY_FOLDER, filename)
+        with open(filepath, "wb") as f:
+            f.write(image_res.content)
+        
+        # Upload to S3 if enabled
+        s3_key = f"library/{filename}"
+        public_url = upload_file(filepath, s3_key)
+        return public_url, None
+        
+    except Exception as e:
+        print(f"   ❌ FLUX generation error: {e}")
+        traceback.print_exc()
+        return None, f"FLUX generation error: {e}"
+
 def handle_background_removal(job):
     try:
         print(f"-> Starting BRIA background removal for job {job['id']}...")
@@ -444,16 +1036,17 @@ def handle_background_removal(job):
         if not image_path: return None, "No image path provided for background removal."
         
         # Handle both S3 URLs and local file paths
+        temp_input_file = None
         if image_path.startswith('http'):
             # It's an S3 URL - download it first
             print(f"   ...downloading image from S3: {image_path}")
             img_response = requests.get(image_path)
             img_response.raise_for_status()
             temp_filename = f"temp_{uuid.uuid4()}.png"
-            temp_filepath = os.path.join(LIBRARY_FOLDER, temp_filename)
-            with open(temp_filepath, "wb") as f:
+            temp_input_file = os.path.join(LIBRARY_FOLDER, temp_filename)
+            with open(temp_input_file, "wb") as f:
                 f.write(img_response.content)
-            full_image_path = temp_filepath
+            input_file_handle = open(temp_input_file, "rb")
         else:
             # It's a local path
             if image_path.startswith('/'):
@@ -462,25 +1055,34 @@ def handle_background_removal(job):
                 full_image_path = os.path.join(BASE_DIR, image_path)
             if not os.path.exists(full_image_path): 
                 return None, f"File not found for background removal: {full_image_path}"
+            input_file_handle = open(full_image_path, "rb")
         
-        print(f"   ...uploading {full_image_path} to bria/remove-background")
-        with open(full_image_path, "rb") as f:
-            transparent_output_url = replicate.run("bria/remove-background", input={"image": f})
-        if not transparent_output_url: return None, "BRIA model did not return an image URL."
-        print(f"   ...downloading final transparent image.")
-        img_res = requests.get(transparent_output_url)
-        img_res.raise_for_status()
-        filename = f"{uuid.uuid4()}.png"
-        filepath = os.path.join(LIBRARY_FOLDER, filename)
-        with open(filepath, "wb") as f: f.write(img_res.content)
+        print(f"   ...uploading to Replicate (BRIA AI-RMBG-2.0)")
+        output = replicate.run(
+            "lucataco/bria-rmbg-2.0:c5e0c6698f9ab8b87b7b51e2149ba0055f278807e7e1764c4e95e790f5cb5e3c",
+            input={"image": input_file_handle}
+        )
+        input_file_handle.close()
         
         # Clean up temp file if we downloaded from S3
-        if image_path.startswith('http'):
+        if temp_input_file:
             try:
-                os.remove(full_image_path)
-                print(f"   ...cleaned up temp file")
+                os.remove(temp_input_file)
+                print(f"   ...cleaned up temp input file")
             except Exception as e:
                 print(f"   ...warning: could not delete temp file: {e}")
+        
+        print(f"   ...downloading result from Replicate")
+        result_url = output if isinstance(output, str) else output[0]
+        result_response = requests.get(result_url)
+        result_response.raise_for_status()
+        
+        filename = f"{uuid.uuid4()}.png"
+        filepath = os.path.join(LIBRARY_FOLDER, filename)
+        with open(filepath, "wb") as f:
+            f.write(result_response.content)
+        
+        print(f"   ...background removed successfully with BRIA")
         
         # Upload to S3 if enabled
         s3_key = f"library/{filename}"
@@ -541,6 +1143,7 @@ def handle_image_generation(job):
     model_id = input_data.get("modelId")
     if model_id == "bytedance-seedream-4": return handle_bytedance_generation(job)
     elif model_id == "replicate-gpt-image-1": return handle_replicate_openai_generation(job)
+    elif model_id == "replicate-flux-1.1-pro": return handle_flux_generation(job)
     else: return handle_leonardo_generation(job)
 
 def handle_openai_vision_analysis(job):
@@ -688,9 +1291,15 @@ def handle_keying(job):
         upper_green = [settings['hue_center'] + settings['hue_tolerance'], 255, 255]
         print(f"   JOB #{job_id}: Color range - Lower: {lower_green}, Upper: {upper_green}")
         
-        # Process video
-        print(f"   JOB #{job_id}: ▶️  Starting video processing...")
-        process_video_with_opencv(
+        # Check if sticker effect is requested BEFORE processing
+        sticker_effect_requested = settings.get('sticker_effect', False)
+        
+        # Process video (keying)
+        print(f"   JOB #{job_id}: ▶️  Starting video keying...")
+        if sticker_effect_requested:
+            print(f"   JOB #{job_id}: 🎨 Sticker effect requested - will skip encoding until after effects are applied")
+        
+        keying_result = process_video_with_opencv(
             video_path=greenscreen_video_path, 
             output_path=final_output_path, 
             lower_green=lower_green, 
@@ -698,17 +1307,137 @@ def handle_keying(job):
             erode_amount=settings['erode'], 
             dilate_amount=settings['dilate'], 
             blur_amount=settings['blur'], 
-            spill_amount=settings['spill']
+            spill_amount=settings['spill'],
+            skip_encoding=sticker_effect_requested  # Skip encoding if sticker effects will be applied
         )
         
-        # Verify output was created
+        # If sticker effect is requested, keying_result = (fps, frame_count, keyed_frames_dir)
+        if sticker_effect_requested:
+            fps, frame_count, keyed_frames_dir = keying_result
+            print(f"   JOB #{job_id}: ✅ Keying complete - {frame_count} frames saved to {keyed_frames_dir}")
+            print(f"   JOB #{job_id}: 🎨 Now applying sticker effects directly to keyed frames...")
+            
+            # Get sticker effect parameters
+            displacement_intensity = settings.get('displacement_intensity', 50)
+            darker_opacity = settings.get('darker_opacity', 1.0)
+            screen_opacity = settings.get('screen_opacity', 0.7)
+            enable_bevel = settings.get('enable_bevel', False)
+            bevel_depth = settings.get('bevel_depth', 3)
+            bevel_highlight = settings.get('bevel_highlight', 0.5)
+            bevel_shadow = settings.get('bevel_shadow', 0.5)
+            enable_alpha_bevel = settings.get('enable_alpha_bevel', False)
+            alpha_bevel_size = settings.get('alpha_bevel_size', 15)
+            alpha_bevel_blur = settings.get('alpha_bevel_blur', 2)
+            alpha_bevel_angle = settings.get('alpha_bevel_angle', 70)
+            alpha_bevel_highlight = settings.get('alpha_bevel_highlight', 0.6)
+            alpha_bevel_shadow = settings.get('alpha_bevel_shadow', 0.6)
+            enable_shadow = settings.get('enable_shadow', False)
+            shadow_blur = settings.get('shadow_blur', 0)
+            shadow_x = settings.get('shadow_x', 1)
+            shadow_y = settings.get('shadow_y', 1)
+            shadow_opacity = settings.get('shadow_opacity', 1.0)
+            
+            print(f"      Displacement: {displacement_intensity}, Multiply: {darker_opacity}, Add: {screen_opacity}")
+            print(f"      Surface bevel: {enable_bevel}, Alpha bevel: {enable_alpha_bevel}, Drop shadow: {enable_shadow}")
+            
+            # Load textures
+            disp_textures = load_texture_sequence(TEXTURE_DISPLACEMENT_FOLDER)
+            screen_textures = load_texture_sequence(TEXTURE_SCREEN_FOLDER)
+            print(f"   JOB #{job_id}: 📦 Loaded {len(disp_textures)} displacement textures, {len(screen_textures)} screen textures")
+            
+            # Process each keyed frame with sticker effects
+            for frame_idx in range(frame_count):
+                frame_filename = f"frame_{frame_idx:05d}.png"
+                frame_path = os.path.join(keyed_frames_dir, frame_filename)
+                
+                if not os.path.exists(frame_path):
+                    print(f"   ⚠️ Warning: Frame {frame_idx} not found at {frame_path}")
+                    continue
+                
+                # Read keyed frame as PIL Image with alpha
+                frame_pil = Image.open(frame_path).convert('RGBA')
+                
+                # Get animated textures for this frame
+                disp_texture = disp_textures[frame_idx % len(disp_textures)] if disp_textures else None
+                screen_texture = screen_textures[frame_idx % len(screen_textures)] if screen_textures else None
+                
+                # Resize textures to match frame size
+                if disp_texture:
+                    disp_texture = disp_texture.resize(frame_pil.size, Image.LANCZOS)
+                if screen_texture:
+                    screen_texture = screen_texture.resize(frame_pil.size, Image.LANCZOS)
+                
+                # Apply sticker effects to this frame
+                processed_frame = apply_sticker_effect_to_frame(
+                    frame_pil, disp_texture, screen_texture,
+                    displacement_intensity, darker_opacity, screen_opacity,
+                    enable_bevel, bevel_depth, bevel_highlight, bevel_shadow,
+                    enable_alpha_bevel, alpha_bevel_size, alpha_bevel_blur, 
+                    alpha_bevel_angle, alpha_bevel_highlight, alpha_bevel_shadow,
+                    enable_shadow, shadow_blur, shadow_x, shadow_y, shadow_opacity
+                )
+                
+                # Save processed frame (overwrite the keyed frame)
+                processed_frame.save(frame_path, 'PNG')
+                
+                if frame_idx % 10 == 0 and frame_idx > 0:
+                    print(f"      Processed {frame_idx}/{frame_count} frames...")
+            
+            print(f"   JOB #{job_id}: ✅ All {frame_count} frames processed with sticker effects")
+            print(f"   JOB #{job_id}: 🎬 Now encoding to final transparent WebM...")
+            
+            # Encode the processed frames to WebM with transparency
+            # CRITICAL: Must use specific flags to preserve alpha from PNG input
+            ffmpeg_cmd = [
+                'ffmpeg', '-y',
+                '-framerate', str(fps),
+                '-f', 'image2',
+                '-i', os.path.join(keyed_frames_dir, 'frame_%05d.png'),
+                '-vf', 'format=yuva420p',  # CRITICAL: Force alpha-aware format filter
+                '-c:v', 'libvpx-vp9',
+                '-pix_fmt', 'yuva420p',
+                '-auto-alt-ref', '0',  # Required for transparent WebM
+                '-b:v', '8M',
+                '-crf', '15',
+                '-quality', 'good',
+                '-cpu-used', '2',
+                final_output_path
+            ]
+            
+            print(f"   📝 FFmpeg command: {' '.join(ffmpeg_cmd)}")
+            result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                print(f"   ❌ FFmpeg encoding error: {result.stderr}")
+                print(f"   📄 FFmpeg stdout: {result.stdout}")
+                shutil.rmtree(keyed_frames_dir, ignore_errors=True)
+                return None, "FFmpeg encoding failed after sticker effects"
+            
+            # Verify output
+            verify_cmd = ['ffprobe', '-v', 'error', '-select_streams', 'v:0', 
+                          '-show_entries', 'stream=pix_fmt', '-of', 'default=noprint_wrappers=1:nokey=1', 
+                          final_output_path]
+            verify_result = subprocess.run(verify_cmd, capture_output=True, text=True)
+            output_pix_fmt = verify_result.stdout.strip()
+            print(f"   🔍 Output pixel format: {output_pix_fmt}")
+            if 'yuva' not in output_pix_fmt:
+                print(f"   ⚠️ WARNING: Output video may not have alpha channel! Got {output_pix_fmt} instead of yuva420p")
+            
+            # Clean up keyed frames directory
+            print(f"   JOB #{job_id}: 🧹 Cleaning up temporary frames...")
+            shutil.rmtree(keyed_frames_dir, ignore_errors=True)
+            
+        else:
+            # No sticker effects - video was encoded directly by process_video_with_opencv
+            print(f"   JOB #{job_id}: ✅ Keying completed (no sticker effects)")
+        
+        # Verify final output was created
         if not os.path.exists(final_output_path):
             error_msg = f"Output file was not created: {final_output_path}"
             print(f"   JOB #{job_id}: ERROR - {error_msg}")
             return None, error_msg
             
         output_size = os.path.getsize(final_output_path)
-        print(f"   JOB #{job_id}: ✅ Keying completed successfully!")
+        print(f"   JOB #{job_id}: ✅ Final video ready!")
         print(f"   JOB #{job_id}: Output file: {final_output_path}")
         print(f"   JOB #{job_id}: Output size: {output_size} bytes")
         

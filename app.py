@@ -7,6 +7,7 @@ import shutil
 import sqlite3
 import base64
 import subprocess
+import traceback
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, jsonify, send_file, Response
 import cv2
@@ -213,39 +214,100 @@ def clear_stuck_command():
     except Exception as e:
         print(f"Error clearing stuck jobs: {e}")
 
-def preprocess_animation_image(source_image_path, background_color_str):
+def preprocess_animation_image(source_image_path, background_color_str, white_outline=False, outline_thickness=3):
+    """
+    Preprocess image for animation:
+    1. Add white outline (if requested)
+    2. Place on colored background (if requested)
+    
+    Order is critical: outline must be applied BEFORE background.
+    """
     try:
-        # Handle both relative and absolute paths more safely
-        if source_image_path.startswith('/'):
-            source_full_path = os.path.join(BASE_DIR, source_image_path.lstrip('/'))
+        # Handle both S3 URLs and local file paths
+        temp_file = None
+        if source_image_path.startswith('http'):
+            # Download from S3 first
+            import requests
+            print(f"   ...downloading image from S3 for preprocessing: {source_image_path}")
+            img_response = requests.get(source_image_path)
+            img_response.raise_for_status()
+            temp_filename = f"temp_preprocess_{uuid.uuid4()}.png"
+            temp_file = os.path.join(UPLOADS_FOLDER, temp_filename)
+            with open(temp_file, "wb") as f:
+                f.write(img_response.content)
+            source_full_path = temp_file
         else:
-            source_full_path = os.path.join(BASE_DIR, source_image_path)
-        if not os.path.exists(source_full_path):
-            print(f"Preprocessing error: Source file not found at {source_full_path}")
-            return source_image_path
-
-        color_map = {"green": (0, 255, 0), "blue": (0, 0, 255)}
-        background_color = color_map.get(background_color_str)
-        if not background_color: return source_image_path
+            # It's a local path
+            if source_image_path.startswith('/'):
+                source_full_path = os.path.join(BASE_DIR, source_image_path.lstrip('/'))
+            else:
+                source_full_path = os.path.join(BASE_DIR, source_image_path)
+            if not os.path.exists(source_full_path):
+                print(f"Preprocessing error: Source file not found at {source_full_path}")
+                return source_image_path
 
         print(f"-> Pre-processing animation input: {source_image_path}")
-        with Image.open(source_full_path).convert("RGBA") as fg_image:
+        fg_image = Image.open(source_full_path).convert("RGBA")
+        
+        # STEP 1: Add white outline if requested (BEFORE background)
+        if white_outline and outline_thickness > 0:
+            from PIL import ImageFilter
+            print(f"   ...adding {outline_thickness}px white outline")
+            
+            # Extract alpha channel
+            alpha = fg_image.split()[3]
+            
+            # Create outline by dilating the alpha mask
+            outline = alpha.filter(ImageFilter.MaxFilter(outline_thickness * 2 + 1))
+            
+            # Create white outline layer
+            outline_layer = Image.new("RGBA", fg_image.size, (255, 255, 255, 0))
+            outline_layer.putalpha(outline)
+            
+            # Composite: white outline + original image
+            fg_image = Image.alpha_composite(outline_layer, fg_image)
+            print(f"   ...white outline applied")
+        
+        # STEP 2: Place on colored background if requested (AFTER outline)
+        color_map = {"green": (0, 255, 0), "blue": (0, 0, 255)}
+        background_color = color_map.get(background_color_str)
+        
+        if background_color:
+            print(f"   ...placing image on {background_color_str} background")
             bg_image = Image.new("RGBA", fg_image.size, background_color)
             new_size = (int(fg_image.width * 0.85), int(fg_image.height * 0.85))
             fg_image_resized = fg_image.resize(new_size, Image.Resampling.LANCZOS)
             paste_position = ((bg_image.width - fg_image_resized.width) // 2, (bg_image.height - fg_image_resized.height) // 2)
             bg_image.paste(fg_image_resized, paste_position, fg_image_resized)
-            output_filename = f"preprocessed_{uuid.uuid4()}.png"
-            output_full_path = os.path.join(UPLOADS_FOLDER, output_filename)
-            bg_image.convert("RGB").save(output_full_path, 'PNG')
-            print(f"   ...saved pre-processed image to {output_full_path}")
-            
-            # Upload to S3 if enabled
-            s3_key = f"uploads/{output_filename}"
-            public_url = upload_file(output_full_path, s3_key)
-            return public_url
+            fg_image = bg_image.convert("RGB")
+        else:
+            fg_image = fg_image.convert("RGB")
+        
+        output_filename = f"preprocessed_{uuid.uuid4()}.png"
+        output_full_path = os.path.join(UPLOADS_FOLDER, output_filename)
+        fg_image.save(output_full_path, 'PNG')
+        print(f"   ...saved pre-processed image to {output_full_path}")
+        
+        # Clean up temp file if downloaded from S3
+        if temp_file:
+            try:
+                os.remove(temp_file)
+                print(f"   ...cleaned up temp file")
+            except Exception as e:
+                print(f"   ...warning: could not delete temp file: {e}")
+        
+        # Upload to S3 if enabled
+        s3_key = f"uploads/{output_filename}"
+        public_url = upload_file(output_full_path, s3_key)
+        return public_url
     except Exception as e:
         print(f"Error during image pre-processing: {e}")
+        # Clean up temp file on error
+        if temp_file and os.path.exists(temp_file):
+            try:
+                os.remove(temp_file)
+            except:
+                pass
         return source_image_path
 
 
@@ -313,10 +375,18 @@ def fine_tune_page(job_id):
 def save_keying_settings(job_id):
     try:
         settings = {
-            "hue_center": int(request.form.get('hue_center', 60)), "hue_tolerance": int(request.form.get('hue_tolerance', 25)),
-            "saturation_min": int(request.form.get('saturation_min', 50)), "value_min": int(request.form.get('value_min', 50)),
-            "erode": int(request.form.get('erode', 0)), "dilate": int(request.form.get('dilate', 0)),
-            "blur": int(request.form.get('blur', 5)), "spill": int(request.form.get('spill', 2))
+            "hue_center": int(request.form.get('hue_center', 60)), 
+            "hue_tolerance": int(request.form.get('hue_tolerance', 25)),
+            "saturation_min": int(request.form.get('saturation_min', 50)), 
+            "value_min": int(request.form.get('value_min', 50)),
+            "erode": int(request.form.get('erode', 0)), 
+            "dilate": int(request.form.get('dilate', 0)),
+            "blur": int(request.form.get('blur', 5)), 
+            "spill": int(request.form.get('spill', 2)),
+            # Sticker effect parameters
+            "sticker_effect": request.form.get('sticker_effect') == 'on',  # Checkbox value
+            "displacement_intensity": int(request.form.get('displacement_intensity', 3)),
+            "screen_opacity": float(request.form.get('screen_opacity', 0.5))
         }
         
         with get_db_connection() as conn:
@@ -328,16 +398,19 @@ def save_keying_settings(job_id):
                 return jsonify({"success": False, "error": f"Job {job_id} not found"}), 404
                 
             if job:
+                sticker_status = "✅ ENABLED" if settings['sticker_effect'] else "❌ Disabled"
                 print(f"-> Saving keying settings for job {job_id} ({job['job_type']}) - was {job['status']}, now pending_process")
+                print(f"   🎨 Sticker Effect: {sticker_status} (Displacement: {settings['displacement_intensity']}, Screen: {settings['screen_opacity']})")
             
             cursor.execute("UPDATE jobs SET status = ?, keying_settings = ? WHERE id = ?", ('pending_process', json.dumps(settings), job_id))
             conn.commit()
             
-            print(f"   ...settings saved: {settings}")
+            print(f"   ...settings saved successfully")
         
         return jsonify({"success": True, "message": "Keying settings saved. Click 'Process Pending Jobs' to apply."})
     except Exception as e:
         print(f"Error saving keying settings: {e}")
+        traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route("/api/update-job-input/<int:job_id>", methods=["POST"])
@@ -744,55 +817,31 @@ def image_tool():
             s3_key = f"uploads/{filename}"
             style_image_url = save_uploaded_file(style_ref_image, s3_key)
             
-            style_system_prompt = """You are an Art Style Forensics analyzer.
-Your task is to describe the artistic style, technique, and visual language of an image so that an AI image model can reproduce its style.
+            style_system_prompt = """You are the best image describer in the world, known for creating beautiful icon-style images.
+Start immediately with the description, as if giving a direct order.
 
-🚫 Do NOT:
-- Mention the subject matter or content.
-- Mention color names.
-- Describe camera, lens, or lighting.
+Core Directives:
+- Do not literally name or describe what the object is.
+- Do not describe any visual data, shape, or outline of the object — only its style and overall feel.
+- Do not describe or mention any text, fonts, colors, shadows, glow, or background.
+- The background must remain matte white.
 
-🎨 Focus ONLY on:
-- How the image looks made (medium, materials, process).
-- The surface, forms, composition, and visual treatment.
+Composition Rules:
+- The main object is isolated and centered in the frame, not touching the edges.
+- Describe only if the image is transparent or has visible grain or gradient effects.
+- If the reference includes elements that break the silhouette (for example, Gothic spikes or rivets), you may describe them only in stylistic terms that support the aesthetic.
+- If the image looks like a one-liner or scribble, say so.
+- Do not describe collections as collections — only the style or artistic unity they convey.
 
-🔀 Style Branches
+Style & Technique Description:
+- Focus only on the genre, style, artistic movement, and general visual language.
+- Mention grain style and gradient form/style, but never the colors.
+- If the image appears pixelated, vectorized, sculpted, hand-drawn, or digital, describe that generally.
+- Do not mention any era or year unless asked to give it in 2–3 words (e.g., "Bauhaus modernism," "Gothic revival," "Pop art").
+- If the reference image includes outlines, describe them; otherwise, omit.
 
-1. Drawing / Print / Painting
-Always assume variable line width.
-Describe medium, technique, surface textures, composition, tonal handling, mood, and negatives (what to avoid).
-
-2. Photography
-State "no line work; object style analysis applied."
-Focus on:
-- Movement/genre (brutalist, art deco, minimalist, etc.)
-- Form language (modular, curved, abstract, etc.)
-- Surface/material qualities (rough, polished, matte, etc.)
-- Geometry & composition (symmetry, rhythm, repetition)
-Then add tone, mood, and negatives.
-
-3. 3D Render
-State "no line work; 3D render style analysis applied."
-Focus on:
-- Rendering technique (flat toon, PBR, wireframe, low-poly, etc.)
-- Surface/material treatment (smooth, glossy, matte, procedural, etc.)
-- Geometry language (blocky, organic, parametric, etc.)
-- Visual finish (anti-aliased, gradients, etc.)
-Then add tone, mood, and negatives.
-
-🧩 Output Format (Always in This Order)
-Medium
-Technique/Process
-Line & Stroke Analysis (or note "no line work")
-Textures & Surface
-Composition & Shapes
-Palette/Tone (no color words)
-Mood/Atmosphere (1–3 short adjectives)
-Negative Cues for Recreation (what to avoid)
-
-✅ Final Rule
-Write a concise summary under 900 characters total.
-Use short, clear sentences and section headers exactly as listed above."""
+Task:
+Create a description focusing entirely on the art style, genre, and aesthetic character — never on the subject itself."""
             
             style_input_data = json.dumps({
                 "image_path": style_image_url,
@@ -813,11 +862,18 @@ Use short, clear sentences and section headers exactly as listed above."""
             s3_key = f"uploads/{filename}"
             color_image_url = save_uploaded_file(color_ref_image, s3_key)
             
-            color_system_prompt = """Analyze the provided image and identify the 5 most prominent colors of the SUBJECT/FOREGROUND. 
+            color_system_prompt = """Extract the 5 most prominent colors from the SUBJECT/FOREGROUND (ignore backgrounds).
 
-IMPORTANT CHROMA KEY RULE: If both green AND blue colors appear in the image, EXCLUDE the less prominent one from the palette entirely. Skip it and move to the next color to maintain 5 total colors. This is because images will later be animated on green or blue screen backgrounds - we don't want the palette to include the future chroma key background color if it appears minimally in the original image.
+CHROMA KEY RULE: If both green AND blue appear, exclude the less prominent one (it will be the animation background later).
 
-For each color, provide its hexadecimal code and a simple, descriptive name (e.g., 'dark slate blue', 'light coral'). Return the response as a valid JSON object with a single key "palette" which is an array of objects. Each object in the array should have two keys: "hex" and "name". Example: {"palette": [{"hex": "#2F4F4F", "name": "dark slate grey"}, ...]}"""
+For each color:
+- Hex code (e.g., #2F4F4F)
+- Simple name (e.g., 'dark slate grey')
+
+REQUIRED FORMAT - Return valid JSON only:
+{"palette": [{"hex": "#2F4F4F", "name": "dark slate grey"}, {"hex": "#F08080", "name": "light coral"}, ...]}
+
+No explanation text, just the JSON object."""
             
             color_input_data = json.dumps({
                 "image_path": color_image_url,
@@ -892,13 +948,21 @@ def generate_animation():
     if request.form.get("boomerang_automation") == "true" and end_image_url:
         # Create A-B-A loop automation job
         background_option = request.form.get("background", "as-is")
+        white_outline = request.form.get("white_outline") == "true"
+        outline_thickness = int(request.form.get("outline_thickness", 3))
+        
+        # Preprocess BOTH start and end images for A-B-A loop
+        processed_image_url = preprocess_animation_image(image_url, background_option, white_outline, outline_thickness)
+        processed_end_image_url = preprocess_animation_image(end_image_url, background_option, white_outline, outline_thickness)
         
         all_input_data = {
-            "image_url": image_url,
-            "end_image_url": end_image_url,
+            "image_url": processed_image_url,
+            "end_image_url": processed_end_image_url,
             "prompt": prompt,
             "negative_prompt": request.form.get("negative_prompt", ""),
             "background": background_option,
+            "white_outline": white_outline,
+            "outline_thickness": outline_thickness,
             "video_model": request.form.getlist("video_model")[0] if request.form.getlist("video_model") else "kling-v2.1",
             "seamless_loop": request.form.get("seamless_loop") == "true",
             "kling_duration": int(request.form.get("kling_duration", 5)),
@@ -923,7 +987,9 @@ def generate_animation():
         return jsonify({"error": "Missing animation prompt"}), 400
     
     background_option = request.form.get("background", "as-is")
-    processed_image_url = preprocess_animation_image(image_url, background_option)
+    white_outline = request.form.get("white_outline") == "true"
+    outline_thickness = int(request.form.get("outline_thickness", 3))
+    processed_image_url = preprocess_animation_image(image_url, background_option, white_outline, outline_thickness)
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -934,6 +1000,7 @@ def generate_animation():
                 "prompt": prompt, 
                 "negative_prompt": request.form.get("negative_prompt", ""),
                 "seamless_loop": request.form.get("seamless_loop") == "true", 
+                "white_outline": request.form.get("white_outline") == "true",
                 "video_model": model,
                 "kling_duration": int(request.form.get("kling_duration", 5)), 
                 "kling_mode": request.form.get("kling_mode", "pro"),
@@ -1559,6 +1626,320 @@ def preview_frame():
     return send_file(io.BytesIO(img_encoded.tobytes()), mimetype='image/png')
 
 # Initialize database when app is imported (for Gunicorn/production)
+# --- STICKER EFFECT TEST PAGE ---
+@app.route("/sticker-test")
+def sticker_test_page():
+    """Test page for single-frame sticker effect"""
+    return render_template("sticker_test.html")
+
+@app.route("/test-sticker-effect", methods=["POST"])
+def test_sticker_effect():
+    """Apply sticker effect to a single image for testing"""
+    try:
+        from PIL import Image, ImageFilter, ImageChops, ImageEnhance
+        import cv2
+        import numpy as np
+        
+        # Get uploaded image
+        if 'image' not in request.files:
+            return jsonify({"success": False, "error": "No image uploaded"}), 400
+        
+        image_file = request.files['image']
+        hue_center = int(request.form.get('hue_center', 60))
+        hue_tolerance = int(request.form.get('hue_tolerance', 25))
+        displacement_intensity = int(request.form.get('displacement_intensity', 50))
+        darker_opacity = float(request.form.get('darker_opacity', 1.0))
+        screen_opacity = float(request.form.get('screen_opacity', 0.7))
+        
+        # Drop shadow parameters
+        enable_shadow = request.form.get('enable_shadow') == 'true'
+        shadow_blur = int(request.form.get('shadow_blur', 0))
+        shadow_x = int(request.form.get('shadow_x', 1))
+        shadow_y = int(request.form.get('shadow_y', 1))
+        shadow_opacity = float(request.form.get('shadow_opacity', 1.0))
+        
+        # Bevel & emboss parameters
+        enable_bevel = request.form.get('enable_bevel') == 'true'
+        bevel_depth = int(request.form.get('bevel_depth', 3))
+        bevel_highlight = float(request.form.get('bevel_highlight', 0.5))
+        bevel_shadow = float(request.form.get('bevel_shadow', 0.5))
+        
+        # Alpha bevel parameters
+        enable_alpha_bevel = request.form.get('enable_alpha_bevel') == 'true'
+        alpha_bevel_size = int(request.form.get('alpha_bevel_size', 15))
+        alpha_bevel_blur = int(request.form.get('alpha_bevel_blur', 2))
+        alpha_bevel_angle = float(request.form.get('alpha_bevel_angle', 70))
+        alpha_bevel_highlight = float(request.form.get('alpha_bevel_highlight', 0.6))
+        alpha_bevel_shadow = float(request.form.get('alpha_bevel_shadow', 0.6))
+        
+        # Save uploaded image
+        temp_input_path = os.path.join(LIBRARY_FOLDER, f"test_input_{uuid.uuid4().hex[:8]}.png")
+        image_file.save(temp_input_path)
+        
+        # Step 1: Apply chroma keying
+        img = cv2.imread(temp_input_path)
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        
+        # Create mask
+        lower_bound = np.array([max(0, hue_center - hue_tolerance), 50, 50])
+        upper_bound = np.array([min(180, hue_center + hue_tolerance), 255, 255])
+        mask = cv2.inRange(hsv, lower_bound, upper_bound)
+        mask_inv = cv2.bitwise_not(mask)
+        
+        # Apply mask to create transparent image
+        b, g, r = cv2.split(img)
+        rgba = cv2.merge((b, g, r, mask_inv))
+        
+        # Save keyed image
+        keyed_path = os.path.join(LIBRARY_FOLDER, f"test_keyed_{uuid.uuid4().hex[:8]}.png")
+        cv2.imwrite(keyed_path, rgba)
+        
+        # Step 2: Apply sticker effect
+        keyed_pil = Image.open(keyed_path).convert('RGBA')
+        
+        # Load textures
+        disp_folder = os.path.join(STATIC_FOLDER, 'textures', 'displacement')
+        screen_folder = os.path.join(STATIC_FOLDER, 'textures', 'screen')
+        
+        disp_files = sorted([f for f in os.listdir(disp_folder) if f.endswith('.png')])
+        screen_files = sorted([f for f in os.listdir(screen_folder) if f.endswith('.png')])
+        
+        if not disp_files or not screen_files:
+            return jsonify({"success": False, "error": "Texture files not found"}), 500
+        
+        # Use first frame of each texture
+        disp_texture = Image.open(os.path.join(disp_folder, disp_files[0])).convert('RGBA')
+        screen_texture = Image.open(os.path.join(screen_folder, screen_files[0])).convert('RGBA')
+        
+        # Apply displacement
+        if displacement_intensity > 0:
+            img_array = np.array(keyed_pil)
+            h, w = img_array.shape[:2]
+            disp_map = disp_texture.resize((w, h), Image.Resampling.BILINEAR).convert('L')
+            disp_array = np.array(disp_map).astype(float) / 255.0
+            
+            disp_x = (disp_array - 0.5) * displacement_intensity
+            disp_y = (disp_array - 0.5) * displacement_intensity
+            
+            map_x, map_y = np.meshgrid(np.arange(w), np.arange(h))
+            map_x = (map_x + disp_x).astype(np.float32)
+            map_y = (map_y + disp_y).astype(np.float32)
+            
+            warped = cv2.remap(img_array, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+            keyed_pil = Image.fromarray(warped, 'RGBA')
+        
+        # Resize textures to match image
+        disp_texture = disp_texture.resize(keyed_pil.size, Image.Resampling.BILINEAR)
+        screen_texture = screen_texture.resize(keyed_pil.size, Image.Resampling.BILINEAR)
+        
+        # Store original alpha for later use with bevel
+        original_alpha = keyed_pil.split()[3]
+        
+        # Apply Multiply blend mode (displacement texture) with opacity
+        if darker_opacity > 0:
+            base_rgb = np.array(keyed_pil.convert('RGB')).astype(float) / 255.0
+            overlay_rgb = np.array(disp_texture.convert('RGB')).astype(float) / 255.0
+            
+            # Multiply blend mode: result = base * overlay
+            result_rgb = base_rgb * overlay_rgb
+            result_rgb = (result_rgb * 255).astype(np.uint8)
+            
+            # Blend with original based on opacity
+            if darker_opacity < 1.0:
+                base_rgb_uint = (base_rgb * 255).astype(np.uint8)
+                result_rgb = (result_rgb * darker_opacity + base_rgb_uint * (1 - darker_opacity)).astype(np.uint8)
+            
+            result = Image.fromarray(result_rgb, 'RGB').convert('RGBA')
+            result.putalpha(keyed_pil.split()[3])  # Keep original alpha
+            keyed_pil = result
+        
+        # Apply Add (Linear Dodge) blend mode (screen texture)
+        base_rgb = np.array(keyed_pil.convert('RGB')).astype(float) / 255.0
+        overlay_rgb = np.array(screen_texture.convert('RGB')).astype(float) / 255.0
+        
+        # Add blend mode: result = base + overlay (clamped to 1.0)
+        result_rgb = np.clip(base_rgb + overlay_rgb, 0, 1.0)
+        result_rgb = (result_rgb * 255).astype(np.uint8)
+        
+        # Blend with original based on opacity
+        if screen_opacity < 1.0:
+            base_rgb_uint = (base_rgb * 255).astype(np.uint8)
+            result_rgb = (result_rgb * screen_opacity + base_rgb_uint * (1 - screen_opacity)).astype(np.uint8)
+        
+        result = Image.fromarray(result_rgb, 'RGB').convert('RGBA')
+        result.putalpha(keyed_pil.split()[3])  # Keep original alpha
+        
+        # Apply bevel & emboss AFTER blend modes (using After Effects style)
+        if enable_bevel:
+            # Create a grayscale embossed/relief map
+            grey = result.convert('L')  # Convert to greyscale
+            grey_array = np.array(grey).astype(float)
+            
+            # Create emboss kernel (like After Effects)
+            emboss_strength = bevel_depth * 0.5
+            
+            # Shift image to create relief effect
+            shifted_right = np.roll(grey_array, bevel_depth, axis=1)
+            shifted_down = np.roll(grey_array, bevel_depth, axis=0)
+            shifted_left = np.roll(grey_array, -bevel_depth, axis=1)
+            shifted_up = np.roll(grey_array, -bevel_depth, axis=0)
+            
+            # Calculate relief (differences create the 3D effect)
+            relief_x = (shifted_right - shifted_left) * bevel_highlight
+            relief_y = (shifted_down - shifted_up) * bevel_shadow
+            relief = relief_x + relief_y
+            
+            # Normalize to 0-255 range and center at 128 (middle grey)
+            relief = relief + 128
+            relief = np.clip(relief, 0, 255).astype(np.uint8)
+            
+            # Create RGB emboss map (grey image)
+            emboss_map = Image.fromarray(relief, 'L').convert('RGB')
+            
+            # Apply Overlay blend mode (like After Effects)
+            base_rgb = np.array(result.convert('RGB')).astype(float) / 255.0
+            overlay_rgb = np.array(emboss_map).astype(float) / 255.0
+            
+            # Overlay blend mode: 
+            # if base < 0.5: result = 2 * base * overlay
+            # else: result = 1 - 2 * (1 - base) * (1 - overlay)
+            mask = base_rgb < 0.5
+            result_rgb = np.where(
+                mask,
+                2 * base_rgb * overlay_rgb,
+                1 - 2 * (1 - base_rgb) * (1 - overlay_rgb)
+            )
+            result_rgb = (result_rgb * 255).astype(np.uint8)
+            
+            result = Image.fromarray(result_rgb, 'RGB').convert('RGBA')
+            result.putalpha(original_alpha)  # Keep original alpha
+        
+        # Apply alpha bevel (like After Effects - gradient-based with light angle)
+        if enable_alpha_bevel:
+            # Get the current alpha channel
+            alpha = result.split()[3]
+            alpha_array = np.array(alpha, dtype=np.float32)
+            
+            # Calculate gradients (edge normals) of the alpha channel
+            # Use larger kernel for deeper bevels
+            kernel_size = min(alpha_bevel_size, 31)
+            if kernel_size % 2 == 0:
+                kernel_size += 1  # Must be odd
+            gradient_x = cv2.Sobel(alpha_array, cv2.CV_32F, 1, 0, ksize=min(kernel_size, 31))
+            gradient_y = cv2.Sobel(alpha_array, cv2.CV_32F, 0, 1, ksize=min(kernel_size, 31))
+            
+            # Calculate the angle of each edge normal (in radians)
+            edge_angles = np.arctan2(gradient_y, gradient_x)
+            
+            # Convert light angle from degrees to radians
+            light_angle_rad = np.deg2rad(alpha_bevel_angle)
+            
+            # Calculate how aligned each edge is with the light direction
+            # Dot product between edge normal and light direction
+            # cos(angle_difference) tells us if edge faces light (positive) or away (negative)
+            angle_diff = edge_angles - light_angle_rad
+            alignment = np.cos(angle_diff)
+            
+            # Calculate edge magnitude (strength)
+            edge_magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
+            edge_magnitude = edge_magnitude / (edge_magnitude.max() + 1e-8)  # Normalize
+            
+            # Separate highlights and shadows with different intensities
+            # Positive alignment = highlight, negative = shadow
+            highlight_mask = np.maximum(0, alignment) * edge_magnitude * alpha_bevel_highlight
+            shadow_mask = np.maximum(0, -alignment) * edge_magnitude * alpha_bevel_shadow
+            
+            # Blur the effect to create smooth bevels (separate control from depth)
+            if alpha_bevel_blur > 0:
+                blur_kernel = alpha_bevel_blur * 2 + 1
+                if blur_kernel % 2 == 0:
+                    blur_kernel += 1
+                highlight_mask = cv2.GaussianBlur(highlight_mask, (blur_kernel, blur_kernel), 0)
+                shadow_mask = cv2.GaussianBlur(shadow_mask, (blur_kernel, blur_kernel), 0)
+            
+            # Apply the bevel effect to the image
+            result_array = np.array(result)
+            original_alpha = alpha_array.astype(np.uint8)
+            
+            # Apply highlights and shadows to RGB channels separately
+            for c in range(3):  # RGB channels
+                # Brighten with highlights
+                result_array[:, :, c] = np.clip(
+                    result_array[:, :, c].astype(np.float32) + highlight_mask * 255,
+                    0, 255
+                ).astype(np.uint8)
+                
+                # Darken with shadows
+                result_array[:, :, c] = np.clip(
+                    result_array[:, :, c].astype(np.float32) - shadow_mask * 255,
+                    0, 255
+                ).astype(np.uint8)
+            
+            # Keep the original alpha unchanged
+            result_array[:, :, 3] = original_alpha
+            
+            result = Image.fromarray(result_array, 'RGBA')
+        
+        # Apply drop shadow (create a composite with shadow layer)
+        if enable_shadow:
+            # Get the alpha channel
+            alpha = result.split()[3]
+            
+            # Create shadow layer (black image with alpha)
+            shadow_layer = Image.new('RGBA', result.size, (0, 0, 0, 0))
+            shadow_color = (0, 0, 0, int(255 * shadow_opacity))
+            
+            # Fill shadow with black where there's alpha
+            shadow_array = np.array(shadow_layer)
+            alpha_array = np.array(alpha)
+            shadow_array[:, :, 0] = 0  # R
+            shadow_array[:, :, 1] = 0  # G
+            shadow_array[:, :, 2] = 0  # B
+            shadow_array[:, :, 3] = (alpha_array * shadow_opacity).astype(np.uint8)  # A
+            shadow_layer = Image.fromarray(shadow_array, 'RGBA')
+            
+            # Blur the shadow
+            if shadow_blur > 0:
+                from PIL import ImageFilter
+                shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(radius=shadow_blur))
+            
+            # Create canvas with shadow offset
+            max_offset = max(abs(shadow_x), abs(shadow_y)) + shadow_blur
+            canvas_size = (result.width + max_offset * 2, result.height + max_offset * 2)
+            canvas = Image.new('RGBA', canvas_size, (0, 0, 0, 0))
+            
+            # Paste shadow with offset
+            shadow_pos = (max_offset + shadow_x, max_offset + shadow_y)
+            canvas.paste(shadow_layer, shadow_pos, shadow_layer)
+            
+            # Paste original image on top
+            image_pos = (max_offset, max_offset)
+            canvas.paste(result, image_pos, result)
+            
+            result = canvas
+        
+        # Save final result
+        sticker_path = os.path.join(LIBRARY_FOLDER, f"test_sticker_{uuid.uuid4().hex[:8]}.png")
+        result.save(sticker_path, 'PNG')
+        
+        # Clean up temp file
+        os.remove(temp_input_path)
+        
+        # Return URLs
+        keyed_url = keyed_path.replace(STATIC_FOLDER, '/static')
+        sticker_url = sticker_path.replace(STATIC_FOLDER, '/static')
+        
+        return jsonify({
+            "success": True,
+            "keyed_url": keyed_url,
+            "sticker_url": sticker_url
+        })
+        
+    except Exception as e:
+        print(f"Sticker test error: {e}")
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
 print("=" * 50)
 print("🔧 INITIALIZING DATABASE...")
 print(f"📁 Database path: {DATABASE_PATH}")
@@ -1572,6 +1953,136 @@ except Exception as e:
     import traceback
     traceback.print_exc()
     # Don't raise - let the app start anyway and show better errors
+
+@app.route("/sticker-debug")
+def sticker_debug_page():
+    """Debug page for sticker effect step-by-step analysis"""
+    return render_template("sticker_debug.html")
+
+@app.route("/debug-sticker-effect", methods=["POST"])
+def debug_sticker_effect():
+    """Process a single frame through each sticker effect step and return intermediate results"""
+    try:
+        if 'image' not in request.files:
+            return jsonify({"success": False, "error": "No image uploaded"}), 400
+        
+        image_file = request.files['image']
+        
+        # Create debug output folder
+        debug_folder = os.path.join(LIBRARY_FOLDER, "debug_steps")
+        os.makedirs(debug_folder, exist_ok=True)
+        
+        # Import worker functions
+        from worker import (
+            load_texture_sequence, apply_displacement, blend_multiply, blend_add,
+            apply_surface_bevel, apply_alpha_bevel, apply_drop_shadow,
+            TEXTURE_DISPLACEMENT_FOLDER, TEXTURE_SCREEN_FOLDER
+        )
+        
+        # Save and load the uploaded image directly
+        temp_image_path = os.path.join(debug_folder, f"uploaded_{uuid.uuid4().hex[:8]}.png")
+        image_file.save(temp_image_path)
+        
+        # Load the frame
+        frame_pil = Image.open(temp_image_path).convert('RGBA')
+        original_alpha = frame_pil.split()[3]
+        
+        # Debug: Check alpha channel
+        alpha_array = np.array(original_alpha)
+        alpha_stats = {
+            'min': int(alpha_array.min()),
+            'max': int(alpha_array.max()),
+            'transparent_pixels': int(np.sum(alpha_array == 0)),
+            'total_pixels': int(alpha_array.size)
+        }
+        print(f"Alpha channel stats: {alpha_stats}")
+        
+        # Load textures
+        disp_textures = load_texture_sequence(TEXTURE_DISPLACEMENT_FOLDER)
+        screen_textures = load_texture_sequence(TEXTURE_SCREEN_FOLDER)
+        
+        if not disp_textures or not screen_textures:
+            return jsonify({"success": False, "error": "Textures not found"}), 500
+        
+        # Get textures for this frame (use first texture for single frame test)
+        disp_texture = disp_textures[0].resize(frame_pil.size, Image.LANCZOS)
+        screen_texture = screen_textures[0].resize(frame_pil.size, Image.LANCZOS)
+        
+        # Step-by-step processing with intermediate saves
+        steps = {}
+        session_id = uuid.uuid4().hex[:8]
+        
+        # Step 1: Original
+        original_path = f"/static/library/debug_steps/{session_id}_1_original.png"
+        frame_pil.save(os.path.join(BASE_DIR, original_path.lstrip('/')), 'PNG')
+        steps['original'] = original_path
+        
+        # Step 2: After Displacement
+        frame_pil = apply_displacement(frame_pil, disp_texture, intensity=50)
+        displaced_path = f"/static/library/debug_steps/{session_id}_2_displacement.png"
+        frame_pil.save(os.path.join(BASE_DIR, displaced_path.lstrip('/')), 'PNG')
+        steps['after_displacement'] = displaced_path
+        
+        # Step 3: After Multiply Blend
+        frame_pil = blend_multiply(frame_pil, disp_texture, opacity=1.0)
+        multiply_path = f"/static/library/debug_steps/{session_id}_3_multiply.png"
+        frame_pil.save(os.path.join(BASE_DIR, multiply_path.lstrip('/')), 'PNG')
+        steps['after_multiply'] = multiply_path
+        
+        # Step 4: After Add Blend
+        frame_pil = blend_add(frame_pil, screen_texture, opacity=0.7)
+        add_path = f"/static/library/debug_steps/{session_id}_4_add.png"
+        frame_pil.save(os.path.join(BASE_DIR, add_path.lstrip('/')), 'PNG')
+        steps['after_add'] = add_path
+        
+        # Step 5: After Surface Bevel
+        frame_pil = apply_surface_bevel(frame_pil, depth=3, highlight=0.5, shadow=0.5)
+        bevel_path = f"/static/library/debug_steps/{session_id}_5_surface_bevel.png"
+        frame_pil.save(os.path.join(BASE_DIR, bevel_path.lstrip('/')), 'PNG')
+        steps['after_surface_bevel'] = bevel_path
+        
+        # Step 6: After Alpha Bevel
+        frame_pil = apply_alpha_bevel(frame_pil, size=15, blur=2, angle=70, 
+                                      highlight_intensity=0.6, shadow_intensity=0.6)
+        alpha_bevel_path = f"/static/library/debug_steps/{session_id}_6_alpha_bevel.png"
+        frame_pil.save(os.path.join(BASE_DIR, alpha_bevel_path.lstrip('/')), 'PNG')
+        steps['after_alpha_bevel'] = alpha_bevel_path
+        
+        # Step 7: After Drop Shadow
+        frame_pil = apply_drop_shadow(frame_pil, blur=0, offset_x=1, offset_y=1, opacity=1.0)
+        shadow_path = f"/static/library/debug_steps/{session_id}_7_drop_shadow.png"
+        frame_pil.save(os.path.join(BASE_DIR, shadow_path.lstrip('/')), 'PNG')
+        steps['after_drop_shadow'] = shadow_path
+        
+        # Step 8: Final - Restore original alpha and zero out transparent RGB
+        frame_pil.putalpha(original_alpha)
+        frame_array = np.array(frame_pil)
+        alpha_array = np.array(original_alpha)
+        mask = (alpha_array == 0)
+        frame_array[:, :, 0] = np.where(mask, 0, frame_array[:, :, 0])
+        frame_array[:, :, 1] = np.where(mask, 0, frame_array[:, :, 1])
+        frame_array[:, :, 2] = np.where(mask, 0, frame_array[:, :, 2])
+        frame_pil = Image.fromarray(frame_array, 'RGBA')
+        
+        final_path = f"/static/library/debug_steps/{session_id}_8_final.png"
+        frame_pil.save(os.path.join(BASE_DIR, final_path.lstrip('/')), 'PNG')
+        steps['final'] = final_path
+        
+        # Cleanup temp image
+        if os.path.exists(temp_image_path):
+            os.remove(temp_image_path)
+        
+        return jsonify({
+            "success": True, 
+            "steps": steps,
+            "alpha_stats": alpha_stats,
+            "message": f"Analyzed frame - {alpha_stats['transparent_pixels']}/{alpha_stats['total_pixels']} pixels are transparent ({100*alpha_stats['transparent_pixels']/alpha_stats['total_pixels']:.1f}%)"
+        })
+        
+    except Exception as e:
+        print(f"Debug sticker effect error: {e}")
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':
     # Initialize database on startup (for direct execution)
