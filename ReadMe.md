@@ -24,6 +24,14 @@ A comprehensive Flask-based application for AI-powered image generation, animati
 ### 🎞️ **Professional Video Processing**
 - **Auto-Key Feature**: One-click automatic chroma keying for all videos (animations, stitched, uploaded)
 - **Manual Keyer Tool**: Advanced HSV controls with real-time preview and click-to-sample color picker
+- **Advanced Sticker Effects**: Complete post-processing pipeline for keyed videos
+  - **Displacement Mapping**: Animated texture warping with intensity control
+  - **Blend Mode Textures**: Multiply (darken) and Add (brighten) with opacity control
+  - **Surface Bevel & Emboss**: 3D relief effects using Sobel gradients
+  - **Alpha Bevel**: Edge lighting effects with customizable depth, blur, angle, and intensity
+  - **Drop Shadow**: Dimensional shadows with blur, offset, and opacity controls
+  - **Clipping Mask Technology**: Textures only apply to non-transparent areas
+- **Posterize Time**: Stop-motion effect (12fps or 8fps) while maintaining playback speed
 - **Zoom & Pan Controls**: Zoom in/out (0.5x-4x), reset zoom, constrained panning within frame boundaries
 - **Grid Overlay**: Customizable grid size and color for precise alignment
 - **Color Sampler**: Click anywhere on video to automatically set HSV keying values
@@ -33,7 +41,7 @@ A comprehensive Flask-based application for AI-powered image generation, animati
 - **Priority Processing**: Keying jobs automatically jump to top of queue
 - **Transparent Display**: Checkerboard background for keyed videos in thumbnails and modal viewer
 - **Download Options**: Separate buttons for original and keyed versions
-- **Background Removal**: BRIA AI-powered transparent image generation
+- **Background Removal**: 851-labs AI-powered transparent image generation
 
 ### 🎯 **Modern UI & Workflow**
 - **Tool Switching System**: Clean top toolbar for accessing different tools
@@ -52,6 +60,7 @@ A comprehensive Flask-based application for AI-powered image generation, animati
 - **Action Buttons**: Context-aware buttons based on job type and status
 - **Job Selection**: Click to select, batch delete, stitch, or invert selection
 - **Status Indicators**: Visual feedback for queued, processing, completed, and failed jobs
+- **Failed Job Recovery**: Retry button to requeue failed jobs, delete option, inline error messages
 - **Thumbnail Previews**: Auto-playing video thumbnails with hover controls and cache-busting
 - **Priority Queue**: Keying jobs automatically jump to top of queue for immediate processing
 - **Edit Job Loading**: Reference images automatically load when editing previous jobs
@@ -365,6 +374,19 @@ kling_app/
 - ✅ **Path Handling**: Fixed image path construction and URL normalization for better reliability
 - ✅ **API Response Handling**: Enhanced JavaScript to handle both array and object response formats from /api/jobs
 - ✅ **Worker Process Management**: Improved worker restart and code update handling
+
+### Advanced Sticker Effects & Video Processing (October 20-27, 2025)
+- ✅ **Complete Sticker Effect Pipeline**: Displacement mapping, blend mode textures, surface bevel, alpha bevel, drop shadow
+- ✅ **Clipping Mask Technology**: Textures apply only to non-transparent pixels, preserving alpha channel throughout
+- ✅ **Posterize Time Feature**: Stop-motion effect at 12fps or 8fps while maintaining playback speed
+- ✅ **Failed Job Recovery System**: Retry button, delete option, and inline error messages for failed jobs
+- ✅ **Background Removal Update**: Switched to 851-labs model for improved reliability
+- ✅ **Enhanced Image Generation**: Updated prompts with "isolated and centered", FLUX uses "white matte flat background"
+- ✅ **Style Analyzer Improvements**: Removed character limit (now 1500 max_tokens), focus on movement/genre naming
+- ✅ **Outline Thickness**: Increased max thickness from 10 to 30 pixels for animation preprocessing
+- ✅ **Double-Submit Protection**: Prevents duplicate jobs with cooldown timers and button disabling
+- ✅ **Alpha Preservation**: PNG-based workflow with single WebM encoding pass ensures transparency maintained
+- ✅ **Quality Settings**: 8M bitrate, CRF 15, good quality preset for optimal video output
 
 ### Enhanced UI/UX & Video Keying Tools (October 13, 2025)
 - ✅ **Processing Animations**: Spinner overlay on thumbnails for jobs in progress states

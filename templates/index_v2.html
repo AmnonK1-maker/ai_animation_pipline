@@ -902,7 +902,7 @@
                         <div class="slider-label">
                             <span>Outline Thickness: <span id="outline-thickness-value">3</span>px</span>
                         </div>
-                        <input type="range" class="slider" id="outline-thickness-slider" min="1" max="10" value="3" oninput="updateOutlineThickness()">
+                        <input type="range" class="slider" id="outline-thickness-slider" min="1" max="30" value="3" oninput="updateOutlineThickness()">
                     </div>
                 </div>
             </div>
@@ -1011,7 +1011,7 @@
                         <div class="slider-label">
                             <span>Outline Thickness: <span id="loop-outline-thickness-value">3</span>px</span>
                         </div>
-                        <input type="range" class="slider" id="loop-outline-thickness-slider" min="1" max="10" value="3" oninput="updateLoopOutlineThickness()">
+                        <input type="range" class="slider" id="loop-outline-thickness-slider" min="1" max="30" value="3" oninput="updateLoopOutlineThickness()">
                     </div>
                 </div>
             </div>
@@ -1243,6 +1243,32 @@
                                 <input type="range" class="slider" id="keyer-shadow-opacity" min="0" max="1" value="1" step="0.1" oninput="updateSliderValue('keyer-shadow-opacity')">
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- POSTERIZE TIME SECTION -->
+            <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 2px solid #dee2e6;">
+                <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 16px;">⏱️ Posterize Time (Stop-Motion Effect)</h3>
+                <p style="margin: 0 0 15px 0; font-size: 13px; color: #666;">Reduce frame rate for a stop-motion aesthetic while keeping playback speed</p>
+                
+                <div class="checkbox-item" style="margin-bottom: 10px;">
+                    <label style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="keyer-posterize-enabled" onchange="toggleKeyerPosterize()">
+                        <span style="font-weight: 600;">Enable Posterize Time</span>
+                    </label>
+                </div>
+                
+                <div id="keyer-posterize-controls" style="display: none; padding-left: 15px;">
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <label class="radio-item" style="display: flex; align-items: center; gap: 8px;">
+                            <input type="radio" name="keyer-posterize-fps" id="keyer-posterize-12" value="12" checked>
+                            <span>12 FPS (Moderate stop-motion feel)</span>
+                        </label>
+                        <label class="radio-item" style="display: flex; align-items: center; gap: 8px;">
+                            <input type="radio" name="keyer-posterize-fps" id="keyer-posterize-8" value="8">
+                            <span>8 FPS (Dramatic stop-motion effect)</span>
+                        </label>
                     </div>
                 </div>
             </div>
@@ -1582,6 +1608,12 @@ function toggleKeyerShadow() {
     controls.style.display = checkbox.checked ? 'block' : 'none';
 }
 
+function toggleKeyerPosterize() {
+    const checkbox = document.getElementById('keyer-posterize-enabled');
+    const controls = document.getElementById('keyer-posterize-controls');
+    controls.style.display = checkbox.checked ? 'block' : 'none';
+}
+
 function debouncedPreviewKeying() {
     // Clear existing timer
     if (previewDebounceTimer) {
@@ -1846,6 +1878,19 @@ function formatJobType(jobType) {
 function getJobActions(job) {
     const actions = [];
     
+    // Actions for failed jobs - allow retry/reset
+    if (job.status === 'failed') {
+        actions.push(`<button class="job-action-btn" style="background: #ffc107; color: #000;" onclick="retryFailedJob(${job.id})">Retry</button>`);
+        actions.push(`<button class="job-action-btn" style="background: #dc3545;" onclick="deleteJob(${job.id})">Delete</button>`);
+        
+        // Show error message if available
+        if (job.error_message) {
+            actions.push(`<div style="margin-top: 8px; padding: 8px; background: #fff3cd; border-radius: 4px; font-size: 11px; color: #856404; word-break: break-word;">⚠️ ${job.error_message}</div>`);
+        }
+        
+        return actions.join('');
+    }
+    
     // Common actions for completed jobs
     if (job.status === 'completed') {
         if (job.job_type === 'image_generation') {
@@ -1977,7 +2022,14 @@ function invertSelection() {
 }
 
 // ===== IMAGE GENERATION =====
+let isGeneratingImage = false;
 function generateImage() {
+    // Prevent double submission
+    if (isGeneratingImage) {
+        console.log('⚠️ Image generation already in progress, ignoring duplicate request');
+        return;
+    }
+    
     const formData = new FormData();
     formData.append('object_prompt', document.getElementById('img-object-prompt').value);
     formData.append('style_prompt', document.getElementById('img-style-prompt').value);
@@ -1999,6 +2051,13 @@ function generateImage() {
         return;
     }
     
+    // Set flag and disable button
+    isGeneratingImage = true;
+    const generateBtn = event.target;
+    const originalText = generateBtn.textContent;
+    generateBtn.textContent = 'Generating...';
+    generateBtn.disabled = true;
+    
     fetch('/image-tool', { method: 'POST', body: formData })
         .then(res => res.json())
         .then(data => {
@@ -2007,12 +2066,32 @@ function generateImage() {
                 console.log('✓ Image generation started');
             } else {
                 console.error('Error: ' + (data.error || 'Unknown error'));
+                alert('Error: ' + (data.error || 'Unknown error'));
             }
+        })
+        .catch(error => {
+            console.error('Fetch error:', error);
+            alert('Network error: ' + error.message);
+        })
+        .finally(() => {
+            // Re-enable button after 2 seconds
+            setTimeout(() => {
+                isGeneratingImage = false;
+                generateBtn.textContent = originalText;
+                generateBtn.disabled = false;
+            }, 2000);
         });
 }
 
 // ===== ANIMATION GENERATION =====
+let isGeneratingAnimation = false;
 function generateAnimation() {
+    // Prevent double submission
+    if (isGeneratingAnimation) {
+        console.log('⚠️ Animation generation already in progress, ignoring duplicate request');
+        return;
+    }
+    
     const formData = new FormData();
     
     const startFrame = document.getElementById('anim-start-frame').files[0];
@@ -2065,6 +2144,13 @@ function generateAnimation() {
         return;
     }
     
+    // Set flag and disable button
+    isGeneratingAnimation = true;
+    const generateBtn = event.target;
+    const originalText = generateBtn.textContent;
+    generateBtn.textContent = 'Generating...';
+    generateBtn.disabled = true;
+    
     fetch('/generate-animation', { method: 'POST', body: formData })
         .then(res => res.json())
         .then(data => {
@@ -2085,6 +2171,14 @@ function generateAnimation() {
         .catch(err => {
             console.error('Animation generation error:', err);
             alert('Failed to submit animation job');
+        })
+        .finally(() => {
+            // Re-enable button after 2 seconds
+            setTimeout(() => {
+                isGeneratingAnimation = false;
+                generateBtn.textContent = originalText;
+                generateBtn.disabled = false;
+            }, 2000);
         });
 }
 
@@ -2899,7 +2993,10 @@ function processKeying() {
         shadow_blur: parseInt(document.getElementById('keyer-shadow-blur').value),
         shadow_x: parseInt(document.getElementById('keyer-shadow-x').value),
         shadow_y: parseInt(document.getElementById('keyer-shadow-y').value),
-        shadow_opacity: parseFloat(document.getElementById('keyer-shadow-opacity').value)
+        shadow_opacity: parseFloat(document.getElementById('keyer-shadow-opacity').value),
+        // Posterize time parameters
+        posterize_enabled: document.getElementById('keyer-posterize-enabled').checked,
+        posterize_fps: document.querySelector('input[name="keyer-posterize-fps"]:checked')?.value || '12'
     };
     
     console.log('Processing keying with settings:', settings, 'for job:', currentKeyingJobId);
@@ -3393,6 +3490,48 @@ function deleteSelected() {
             alert('Error deleting jobs: ' + err.message);
         });
     }
+}
+
+function deleteJob(jobId) {
+    if (confirm('Delete this job?')) {
+        fetch('/api/batch-delete-items', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ job_ids: [jobId] })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                loadJobs();
+            } else {
+                alert('Error deleting job: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => {
+            alert('Error deleting job: ' + err.message);
+        });
+    }
+}
+
+function retryFailedJob(jobId) {
+    // Reset the job status to 'queued' so the worker picks it up again
+    fetch('/api/retry-job', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_id: jobId })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            console.log('Job reset to queued:', jobId);
+            loadJobs(); // Refresh the job list
+        } else {
+            alert('Error retrying job: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(err => {
+        alert('Error retrying job: ' + err.message);
+    });
 }
 
 function deleteAll() {

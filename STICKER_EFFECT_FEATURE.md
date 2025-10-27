@@ -193,3 +193,4 @@ Inspired by After Effects' alpha bevel, Photoshop's blend modes, and real-world 
 **Last Updated**: October 26, 2025
 **Version**: 1.0.0
 
+

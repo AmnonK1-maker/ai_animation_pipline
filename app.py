@@ -824,12 +824,11 @@ Core Directives:
 - Do not literally name or describe what the object is.
 - Do not describe any visual data, shape, or outline of the object — only its style and overall feel.
 - Do not describe or mention any text, fonts, colors, shadows, glow, or background.
-- The background must remain matte white.
+
 
 Composition Rules:
-- The main object is isolated and centered in the frame, not touching the edges.
 - Describe only if the image is transparent or has visible grain or gradient effects.
-- If the reference includes elements that break the silhouette (for example, Gothic spikes or rivets), you may describe them only in stylistic terms that support the aesthetic.
+- If the reference includes elements that break the silhouette (for example, Gothic spikes or rivets), describe them only in stylistic terms that support the aesthetic.
 - If the image looks like a one-liner or scribble, say so.
 - Do not describe collections as collections — only the style or artistic unity they convey.
 
@@ -837,7 +836,7 @@ Style & Technique Description:
 - Focus only on the genre, style, artistic movement, and general visual language.
 - Mention grain style and gradient form/style, but never the colors.
 - If the image appears pixelated, vectorized, sculpted, hand-drawn, or digital, describe that generally.
-- Do not mention any era or year unless asked to give it in 2–3 words (e.g., "Bauhaus modernism," "Gothic revival," "Pop art").
+- Do not mention any era or year but name the movement/genre (e.g., "Bauhaus modernism," "Gothic revival," "Pop art").
 - If the reference image includes outlines, describe them; otherwise, omit.
 
 Task:
@@ -1298,6 +1297,27 @@ def batch_delete_items():
             return jsonify({"success": True, "message": f"{len(job_ids)} items deleted."})
     except Exception as e:
         return jsonify({"success": False, "error": f"A server error occurred: {e}"}), 500
+
+@app.route("/api/retry-job", methods=["POST"])
+def retry_job():
+    """Reset a failed job to 'queued' status so it can be retried"""
+    data = request.get_json()
+    job_id = data.get('job_id')
+    if not job_id:
+        return jsonify({"success": False, "error": "No job ID provided."}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            # Clear error message and reset to queued
+            cursor.execute(
+                "UPDATE jobs SET status = 'queued', error_message = NULL WHERE id = ?",
+                (job_id,)
+            )
+            conn.commit()
+            return jsonify({"success": True, "message": f"Job {job_id} reset to queued."})
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Server error: {e}"}), 500
 
 @app.route("/api/video-metadata", methods=['POST'])
 def get_video_metadata():

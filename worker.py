@@ -964,7 +964,7 @@ def handle_flux_generation(job):
         input_data = json.loads(job['input_data'])
         
         # Build prompt from object and style
-        full_prompt = f"{input_data['object_prompt']}, in the style of {input_data['style_prompt']}, on a transparent background"
+        full_prompt = f"{input_data['object_prompt']}, in the style of {input_data['style_prompt']}, isolated and centered in the frame not touching the edges, on a white matte flat background, on a transparent background"
         
         # FLUX API input according to black-forest-labs/flux-1.1-pro schema
         api_input = {
@@ -1057,10 +1057,15 @@ def handle_background_removal(job):
                 return None, f"File not found for background removal: {full_image_path}"
             input_file_handle = open(full_image_path, "rb")
         
-        print(f"   ...uploading to Replicate (BRIA AI-RMBG-2.0)")
+        print(f"   ...uploading to Replicate (851-labs/background-remover)")
         output = replicate.run(
-            "lucataco/bria-rmbg-2.0:c5e0c6698f9ab8b87b7b51e2149ba0055f278807e7e1764c4e95e790f5cb5e3c",
-            input={"image": input_file_handle}
+            "851-labs/background-remover:a029dff38972b5fda4ec5d75d7d1cd25aeff621d2cf4946a41055d7db66b80bc",
+            input={
+                "image": input_file_handle,
+                "threshold": 0,
+                "background_type": "rgba",
+                "format": "png"
+            }
         )
         input_file_handle.close()
         
@@ -1073,7 +1078,14 @@ def handle_background_removal(job):
                 print(f"   ...warning: could not delete temp file: {e}")
         
         print(f"   ...downloading result from Replicate")
-        result_url = output if isinstance(output, str) else output[0]
+        # Handle FileOutput object from 851-labs
+        if hasattr(output, 'url'):
+            result_url = output.url
+        elif isinstance(output, str):
+            result_url = output
+        else:
+            result_url = output[0] if isinstance(output, list) and output else str(output)
+        print(f"   ...result URL: {result_url}")
         result_response = requests.get(result_url)
         result_response.raise_for_status()
         
@@ -1082,7 +1094,7 @@ def handle_background_removal(job):
         with open(filepath, "wb") as f:
             f.write(result_response.content)
         
-        print(f"   ...background removed successfully with BRIA")
+        print(f"   ...background removed successfully with 851-labs")
         
         # Upload to S3 if enabled
         s3_key = f"library/{filename}"
@@ -1091,7 +1103,7 @@ def handle_background_removal(job):
     except Exception as e:
         print(f"   ❌ Background removal error: {e}")
         traceback.print_exc()
-        return None, f"BRIA background removal error: {e}"
+        return None, f"851-labs background removal error: {e}"
 
 def handle_leonardo_generation(job):
     try:
@@ -1291,13 +1303,20 @@ def handle_keying(job):
         upper_green = [settings['hue_center'] + settings['hue_tolerance'], 255, 255]
         print(f"   JOB #{job_id}: Color range - Lower: {lower_green}, Upper: {upper_green}")
         
-        # Check if sticker effect is requested BEFORE processing
+        # Check if sticker effect OR posterize is requested BEFORE processing
         sticker_effect_requested = settings.get('sticker_effect', False)
+        posterize_requested = settings.get('posterize_enabled', False)
+        skip_encoding_needed = sticker_effect_requested or posterize_requested
         
         # Process video (keying)
         print(f"   JOB #{job_id}: ▶️  Starting video keying...")
-        if sticker_effect_requested:
-            print(f"   JOB #{job_id}: 🎨 Sticker effect requested - will skip encoding until after effects are applied")
+        if skip_encoding_needed:
+            effects_list = []
+            if sticker_effect_requested:
+                effects_list.append("sticker effects")
+            if posterize_requested:
+                effects_list.append("posterize time")
+            print(f"   JOB #{job_id}: 🎨 {', '.join(effects_list)} requested - will skip encoding until after effects are applied")
         
         keying_result = process_video_with_opencv(
             video_path=greenscreen_video_path, 
@@ -1308,95 +1327,142 @@ def handle_keying(job):
             dilate_amount=settings['dilate'], 
             blur_amount=settings['blur'], 
             spill_amount=settings['spill'],
-            skip_encoding=sticker_effect_requested  # Skip encoding if sticker effects will be applied
+            skip_encoding=skip_encoding_needed  # Skip encoding if any post-effects will be applied
         )
         
-        # If sticker effect is requested, keying_result = (fps, frame_count, keyed_frames_dir)
-        if sticker_effect_requested:
+        # If any post-processing is requested, keying_result = (fps, frame_count, keyed_frames_dir)
+        if skip_encoding_needed:
             fps, frame_count, keyed_frames_dir = keying_result
             print(f"   JOB #{job_id}: ✅ Keying complete - {frame_count} frames saved to {keyed_frames_dir}")
-            print(f"   JOB #{job_id}: 🎨 Now applying sticker effects directly to keyed frames...")
             
-            # Get sticker effect parameters
-            displacement_intensity = settings.get('displacement_intensity', 50)
-            darker_opacity = settings.get('darker_opacity', 1.0)
-            screen_opacity = settings.get('screen_opacity', 0.7)
-            enable_bevel = settings.get('enable_bevel', False)
-            bevel_depth = settings.get('bevel_depth', 3)
-            bevel_highlight = settings.get('bevel_highlight', 0.5)
-            bevel_shadow = settings.get('bevel_shadow', 0.5)
-            enable_alpha_bevel = settings.get('enable_alpha_bevel', False)
-            alpha_bevel_size = settings.get('alpha_bevel_size', 15)
-            alpha_bevel_blur = settings.get('alpha_bevel_blur', 2)
-            alpha_bevel_angle = settings.get('alpha_bevel_angle', 70)
-            alpha_bevel_highlight = settings.get('alpha_bevel_highlight', 0.6)
-            alpha_bevel_shadow = settings.get('alpha_bevel_shadow', 0.6)
-            enable_shadow = settings.get('enable_shadow', False)
-            shadow_blur = settings.get('shadow_blur', 0)
-            shadow_x = settings.get('shadow_x', 1)
-            shadow_y = settings.get('shadow_y', 1)
-            shadow_opacity = settings.get('shadow_opacity', 1.0)
+            # STEP 1: Apply sticker effects if requested
+            if sticker_effect_requested:
+                print(f"   JOB #{job_id}: 🎨 Applying sticker effects to keyed frames...")
+                
+                # Get sticker effect parameters
+                displacement_intensity = settings.get('displacement_intensity', 50)
+                darker_opacity = settings.get('darker_opacity', 1.0)
+                screen_opacity = settings.get('screen_opacity', 0.7)
+                enable_bevel = settings.get('enable_bevel', False)
+                bevel_depth = settings.get('bevel_depth', 3)
+                bevel_highlight = settings.get('bevel_highlight', 0.5)
+                bevel_shadow = settings.get('bevel_shadow', 0.5)
+                enable_alpha_bevel = settings.get('enable_alpha_bevel', False)
+                alpha_bevel_size = settings.get('alpha_bevel_size', 15)
+                alpha_bevel_blur = settings.get('alpha_bevel_blur', 2)
+                alpha_bevel_angle = settings.get('alpha_bevel_angle', 70)
+                alpha_bevel_highlight = settings.get('alpha_bevel_highlight', 0.6)
+                alpha_bevel_shadow = settings.get('alpha_bevel_shadow', 0.6)
+                enable_shadow = settings.get('enable_shadow', False)
+                shadow_blur = settings.get('shadow_blur', 0)
+                shadow_x = settings.get('shadow_x', 1)
+                shadow_y = settings.get('shadow_y', 1)
+                shadow_opacity = settings.get('shadow_opacity', 1.0)
+                
+                print(f"      Displacement: {displacement_intensity}, Multiply: {darker_opacity}, Add: {screen_opacity}")
+                print(f"      Surface bevel: {enable_bevel}, Alpha bevel: {enable_alpha_bevel}, Drop shadow: {enable_shadow}")
+                
+                # Load textures
+                disp_textures = load_texture_sequence(TEXTURE_DISPLACEMENT_FOLDER)
+                screen_textures = load_texture_sequence(TEXTURE_SCREEN_FOLDER)
+                print(f"   JOB #{job_id}: 📦 Loaded {len(disp_textures)} displacement textures, {len(screen_textures)} screen textures")
+                
+                # Process each keyed frame with sticker effects
+                for frame_idx in range(frame_count):
+                    frame_filename = f"frame_{frame_idx:05d}.png"
+                    frame_path = os.path.join(keyed_frames_dir, frame_filename)
+                    
+                    if not os.path.exists(frame_path):
+                        print(f"   ⚠️ Warning: Frame {frame_idx} not found at {frame_path}")
+                        continue
+                    
+                    # Read keyed frame as PIL Image with alpha
+                    frame_pil = Image.open(frame_path).convert('RGBA')
+                    
+                    # Get animated textures for this frame
+                    disp_texture = disp_textures[frame_idx % len(disp_textures)] if disp_textures else None
+                    screen_texture = screen_textures[frame_idx % len(screen_textures)] if screen_textures else None
+                    
+                    # Resize textures to match frame size
+                    if disp_texture:
+                        disp_texture = disp_texture.resize(frame_pil.size, Image.LANCZOS)
+                    if screen_texture:
+                        screen_texture = screen_texture.resize(frame_pil.size, Image.LANCZOS)
+                    
+                    # Apply sticker effects to this frame
+                    processed_frame = apply_sticker_effect_to_frame(
+                        frame_pil, disp_texture, screen_texture,
+                        displacement_intensity, darker_opacity, screen_opacity,
+                        enable_bevel, bevel_depth, bevel_highlight, bevel_shadow,
+                        enable_alpha_bevel, alpha_bevel_size, alpha_bevel_blur, 
+                        alpha_bevel_angle, alpha_bevel_highlight, alpha_bevel_shadow,
+                        enable_shadow, shadow_blur, shadow_x, shadow_y, shadow_opacity
+                    )
+                    
+                    # Save processed frame (overwrite the keyed frame)
+                    processed_frame.save(frame_path, 'PNG')
+                    
+                    if frame_idx % 10 == 0 and frame_idx > 0:
+                        print(f"      Processed {frame_idx}/{frame_count} frames...")
+                
+                print(f"   JOB #{job_id}: ✅ All {frame_count} frames processed with sticker effects")
             
-            print(f"      Displacement: {displacement_intensity}, Multiply: {darker_opacity}, Add: {screen_opacity}")
-            print(f"      Surface bevel: {enable_bevel}, Alpha bevel: {enable_alpha_bevel}, Drop shadow: {enable_shadow}")
+            # STEP 2: Apply posterize time if requested
+            output_fps = fps  # Default to original FPS
+            if posterize_requested:
+                target_fps = int(settings.get('posterize_fps', 12))  # Convert to int
+                print(f"   JOB #{job_id}: ⏱️  Applying posterize time: {fps}fps → {target_fps}fps")
+                
+                # Calculate frame interval: keep every Nth frame
+                frame_interval = int(fps / target_fps)
+                print(f"   JOB #{job_id}: 📐 Frame interval: keeping every {frame_interval} frame(s)")
+                
+                # Get all frame files
+                all_frames = sorted([f for f in os.listdir(keyed_frames_dir) if f.startswith('frame_') and f.endswith('.png')])
+                print(f"   JOB #{job_id}: 📋 Found {len(all_frames)} total frames")
+                
+                # Delete frames that don't match the interval
+                frames_to_keep = []
+                for i, frame_file in enumerate(all_frames):
+                    if i % frame_interval == 0:
+                        frames_to_keep.append(frame_file)
+                    else:
+                        frame_path = os.path.join(keyed_frames_dir, frame_file)
+                        os.remove(frame_path)
+                
+                print(f"   JOB #{job_id}: 🗑️  Deleted {len(all_frames) - len(frames_to_keep)} frames, kept {len(frames_to_keep)}")
+                
+                # Rename remaining frames to be sequential
+                for new_idx, old_frame_file in enumerate(frames_to_keep):
+                    old_path = os.path.join(keyed_frames_dir, old_frame_file)
+                    new_filename = f"frame_{new_idx:05d}.png"
+                    new_path = os.path.join(keyed_frames_dir, new_filename)
+                    
+                    if old_path != new_path:
+                        os.rename(old_path, new_path)
+                
+                print(f"   JOB #{job_id}: ✅ Frames renumbered sequentially: 0 to {len(frames_to_keep)-1}")
+                
+                # Update frame count and output FPS
+                frame_count = len(frames_to_keep)
+                output_fps = target_fps
+                print(f"   JOB #{job_id}: 🎬 Will encode at {output_fps}fps for stop-motion effect")
             
-            # Load textures
-            disp_textures = load_texture_sequence(TEXTURE_DISPLACEMENT_FOLDER)
-            screen_textures = load_texture_sequence(TEXTURE_SCREEN_FOLDER)
-            print(f"   JOB #{job_id}: 📦 Loaded {len(disp_textures)} displacement textures, {len(screen_textures)} screen textures")
-            
-            # Process each keyed frame with sticker effects
-            for frame_idx in range(frame_count):
-                frame_filename = f"frame_{frame_idx:05d}.png"
-                frame_path = os.path.join(keyed_frames_dir, frame_filename)
-                
-                if not os.path.exists(frame_path):
-                    print(f"   ⚠️ Warning: Frame {frame_idx} not found at {frame_path}")
-                    continue
-                
-                # Read keyed frame as PIL Image with alpha
-                frame_pil = Image.open(frame_path).convert('RGBA')
-                
-                # Get animated textures for this frame
-                disp_texture = disp_textures[frame_idx % len(disp_textures)] if disp_textures else None
-                screen_texture = screen_textures[frame_idx % len(screen_textures)] if screen_textures else None
-                
-                # Resize textures to match frame size
-                if disp_texture:
-                    disp_texture = disp_texture.resize(frame_pil.size, Image.LANCZOS)
-                if screen_texture:
-                    screen_texture = screen_texture.resize(frame_pil.size, Image.LANCZOS)
-                
-                # Apply sticker effects to this frame
-                processed_frame = apply_sticker_effect_to_frame(
-                    frame_pil, disp_texture, screen_texture,
-                    displacement_intensity, darker_opacity, screen_opacity,
-                    enable_bevel, bevel_depth, bevel_highlight, bevel_shadow,
-                    enable_alpha_bevel, alpha_bevel_size, alpha_bevel_blur, 
-                    alpha_bevel_angle, alpha_bevel_highlight, alpha_bevel_shadow,
-                    enable_shadow, shadow_blur, shadow_x, shadow_y, shadow_opacity
-                )
-                
-                # Save processed frame (overwrite the keyed frame)
-                processed_frame.save(frame_path, 'PNG')
-                
-                if frame_idx % 10 == 0 and frame_idx > 0:
-                    print(f"      Processed {frame_idx}/{frame_count} frames...")
-            
-            print(f"   JOB #{job_id}: ✅ All {frame_count} frames processed with sticker effects")
             print(f"   JOB #{job_id}: 🎬 Now encoding to final transparent WebM...")
             
             # Encode the processed frames to WebM with transparency
             # CRITICAL: Must use specific flags to preserve alpha from PNG input
+            # Use output_fps (which may be modified by posterize time)
             ffmpeg_cmd = [
                 'ffmpeg', '-y',
-                '-framerate', str(fps),
+                '-framerate', str(output_fps),
                 '-f', 'image2',
                 '-i', os.path.join(keyed_frames_dir, 'frame_%05d.png'),
                 '-vf', 'format=yuva420p',  # CRITICAL: Force alpha-aware format filter
                 '-c:v', 'libvpx-vp9',
                 '-pix_fmt', 'yuva420p',
                 '-auto-alt-ref', '0',  # Required for transparent WebM
+                '-metadata:s:v:0', 'alpha_mode=1',  # Explicitly mark alpha channel
                 '-b:v', '8M',
                 '-crf', '15',
                 '-quality', 'good',
