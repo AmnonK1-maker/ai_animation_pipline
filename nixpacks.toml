@@ -1,0 +1,11 @@
+# Nixpacks configuration for Railway
+# Uses native Python build instead of Docker
+
+[phases.setup]
+nixPkgs = ["python311", "ffmpeg", "opencv4"]
+
+[phases.install]
+cmds = ["pip install -r requirements.txt"]
+
+[start]
+cmd = "gunicorn --config gunicorn_config.py app:app"
