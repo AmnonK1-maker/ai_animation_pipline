@@ -24,11 +24,34 @@ from s3_storage import storage, upload_file, save_uploaded_file, get_public_url,
 import cv2
 import numpy as np
 from PIL import ImageChops, ImageEnhance, ImageFilter
+import psutil
+import gc
 
 # --- CONFIGURATION ---
 load_dotenv()
 LEONARDO_API_KEY = os.environ.get("LEONARDO_API_KEY")
 REPLICATE_API_KEY = os.environ.get("REPLICATE_API_KEY")
+
+# --- MEMORY MONITORING UTILITIES ---
+def get_memory_usage():
+    """Get current memory usage in MB"""
+    process = psutil.Process(os.getpid())
+    mem_info = process.memory_info()
+    return {
+        'rss_mb': mem_info.rss / 1024 / 1024,  # Resident Set Size (actual RAM used)
+        'vms_mb': mem_info.vms / 1024 / 1024,  # Virtual Memory Size
+    }
+
+def log_memory(job_id, context=""):
+    """Log current memory usage with context"""
+    mem = get_memory_usage()
+    print(f"   JOB #{job_id}: 💾 Memory Usage {context}: {mem['rss_mb']:.1f} MB RSS, {mem['vms_mb']:.1f} MB VMS")
+    return mem
+
+def clear_memory():
+    """Force garbage collection to free memory"""
+    gc.collect()
+    gc.collect()  # Call twice for thorough cleanup
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 # Parallel processing configuration
@@ -1265,6 +1288,9 @@ def handle_keying(job):
         print(f"   JOB #{job_id}: Job type: {job['job_type']}")
         print(f"   JOB #{job_id}: Input video: {job['result_data']}")
         
+        # Log initial memory
+        log_memory(job_id, "at start")
+        
         # Handle both S3 URLs and local file paths
         video_url = job['result_data']
         if video_url.startswith('http'):
@@ -1335,9 +1361,13 @@ def handle_keying(job):
             fps, frame_count, keyed_frames_dir = keying_result
             print(f"   JOB #{job_id}: ✅ Keying complete - {frame_count} frames saved to {keyed_frames_dir}")
             
+            # Log memory after keying
+            log_memory(job_id, "after keying")
+            
             # STEP 1: Apply sticker effects if requested
             if sticker_effect_requested:
                 print(f"   JOB #{job_id}: 🎨 Applying sticker effects to keyed frames...")
+                log_memory(job_id, "before sticker effects")
                 
                 # Get sticker effect parameters
                 displacement_intensity = settings.get('displacement_intensity', 50)
@@ -1402,14 +1432,26 @@ def handle_keying(job):
                     # Save processed frame (overwrite the keyed frame)
                     processed_frame.save(frame_path, 'PNG')
                     
+                    # Clear frame from memory immediately
+                    del frame_pil, processed_frame
+                    if disp_texture:
+                        del disp_texture
+                    if screen_texture:
+                        del screen_texture
+                    
                     if frame_idx % 10 == 0 and frame_idx > 0:
                         print(f"      Processed {frame_idx}/{frame_count} frames...")
+                        log_memory(job_id, f"at frame {frame_idx}/{frame_count}")
+                        clear_memory()  # Periodic cleanup during processing
                 
                 print(f"   JOB #{job_id}: ✅ All {frame_count} frames processed with sticker effects")
+                log_memory(job_id, "after sticker effects")
+                clear_memory()  # Force cleanup before next step
             
             # STEP 2: Apply posterize time if requested
             output_fps = fps  # Default to original FPS
             if posterize_requested:
+                log_memory(job_id, "before posterize time")
                 target_fps = int(settings.get('posterize_fps', 12))  # Convert to int
                 print(f"   JOB #{job_id}: ⏱️  Applying posterize time: {fps}fps → {target_fps}fps")
                 
@@ -1447,8 +1489,11 @@ def handle_keying(job):
                 frame_count = len(frames_to_keep)
                 output_fps = target_fps
                 print(f"   JOB #{job_id}: 🎬 Will encode at {output_fps}fps for stop-motion effect")
+                log_memory(job_id, "after posterize time")
+                clear_memory()  # Force cleanup before encoding
             
             print(f"   JOB #{job_id}: 🎬 Now encoding to final transparent WebM...")
+            log_memory(job_id, "before encoding")
             
             # Encode the processed frames to WebM with transparency
             # CRITICAL: Must use specific flags to preserve alpha from PNG input
@@ -1490,7 +1535,10 @@ def handle_keying(job):
             
             # Clean up keyed frames directory
             print(f"   JOB #{job_id}: 🧹 Cleaning up temporary frames...")
+            log_memory(job_id, "before cleanup")
             shutil.rmtree(keyed_frames_dir, ignore_errors=True)
+            clear_memory()
+            log_memory(job_id, "after cleanup")
             
         else:
             # No sticker effects - video was encoded directly by process_video_with_opencv
