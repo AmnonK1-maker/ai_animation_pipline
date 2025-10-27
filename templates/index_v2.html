@@ -1273,7 +1273,74 @@
                 </div>
             </div>
             
+            <!-- EXPORT OPTIONS SECTION -->
+            <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 2px solid #dee2e6;">
+                <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 16px;">💾 Export Options</h3>
+                <p style="margin: 0 0 15px 0; font-size: 13px; color: #666;">Export additional formats alongside the WebM video</p>
+                
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <label class="checkbox-item" style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="keyer-export-gif">
+                        <span style="font-weight: 600;">Export as GIF</span>
+                    </label>
+                    <p style="margin: 0 0 0 28px; font-size: 12px; color: #666;">Creates an animated GIF with transparency support</p>
+                    
+                    <label class="checkbox-item" style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="keyer-export-png-zip">
+                        <span style="font-weight: 600;">Export PNG Sequence (ZIP)</span>
+                    </label>
+                    <p style="margin: 0 0 0 28px; font-size: 12px; color: #666;">All frames as individual PNG files in a ZIP archive</p>
+                </div>
+            </div>
+            
             <button class="btn-primary" onclick="processKeying()">Save & Process</button>
+        </div>
+        
+        <!-- TRIM VIDEO TOOL -->
+        <div class="tool-content" id="tool-trim-video" style="display: none;">
+            <h2 class="tool-title">✂️ Trim Animation</h2>
+            <p style="color: #666; margin-bottom: 20px;">Select the portion of the video you want to keep</p>
+            
+            <div class="video-preview-container" id="trim-video-preview-container" style="display: none;">
+                <div class="video-preview-wrapper">
+                    <video class="video-preview" id="trim-video-preview" controls crossorigin="anonymous"></video>
+                </div>
+                
+                <div class="keying-controls">
+                    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                        <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 16px;">⏱️ Time Selection</h3>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; font-weight: 600; margin-bottom: 5px;">In Point (Start):</label>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <input type="number" id="trim-in-point" min="0" step="0.1" value="0" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                <button class="frame-btn" onclick="setTrimInPoint()" style="background: #28a745;">Set Current Time</button>
+                                <button class="frame-btn" onclick="goToTrimInPoint()">Go To</button>
+                            </div>
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; font-weight: 600; margin-bottom: 5px;">Out Point (End):</label>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <input type="number" id="trim-out-point" min="0" step="0.1" value="0" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                <button class="frame-btn" onclick="setTrimOutPoint()" style="background: #28a745;">Set Current Time</button>
+                                <button class="frame-btn" onclick="goToTrimOutPoint()">Go To</button>
+                            </div>
+                        </div>
+                        
+                        <div style="background: #e3f2fd; padding: 12px; border-radius: 6px; border-left: 4px solid #2196f3;">
+                            <strong>Duration:</strong> <span id="trim-duration-display">0.0s</span>
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                        <button class="frame-btn" onclick="prevFrameTrim()">◄ Prev Frame</button>
+                        <button class="frame-btn" onclick="nextFrameTrim()">Next Frame ►</button>
+                    </div>
+                </div>
+            </div>
+            
+            <button class="btn-primary" onclick="trimVideo()">✂️ Trim & Save</button>
         </div>
         
         <!-- REMOVE BACKGROUND TOOL -->
@@ -1348,6 +1415,22 @@ let currentPollSpeed = 3000; // Start at 3 seconds
 let mediaViewerIndex = 0;
 let viewableJobs = [];
 let previewDebounceTimer = null; // For debouncing preview updates
+
+// ===== URL HELPER =====
+// Helper function to handle both local paths and S3 URLs
+function getImageUrl(url) {
+    if (!url) return '';
+    // If it's already a full URL (starts with http:// or https://), use as-is
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+        return url;
+    }
+    // If it starts with /, use as-is
+    if (url.startsWith('/')) {
+        return url;
+    }
+    // Otherwise, prepend /
+    return '/' + url;
+}
 
 // ===== TOOL SWITCHING =====
 document.querySelectorAll('.tool-btn').forEach(btn => {
@@ -1785,8 +1868,16 @@ function renderJobCard(job) {
     // Prefer keyed result over original for display
     if ((job.status === 'completed' || job.status === 'pending_review')) {
         if (job.keyed_result_data) {
-            mediaUrl = job.keyed_result_data;
-            thumbnail = job.keyed_result_data;
+            // Handle keyed_result_data which can be string (old) or JSON (new)
+            try {
+                const keyedData = JSON.parse(job.keyed_result_data);
+                mediaUrl = keyedData.webm || job.keyed_result_data;
+                thumbnail = keyedData.webm || job.keyed_result_data;
+            } catch (e) {
+                // Old format - direct URL string
+                mediaUrl = job.keyed_result_data;
+                thumbnail = job.keyed_result_data;
+            }
             hasViewableMedia = true;
             isKeyedVideo = true;
         } else if (job.result_data) {
@@ -1809,7 +1900,7 @@ function renderJobCard(job) {
         // Add checkerboard background for keyed videos
         // Add cache-busting timestamp to ensure video updates after keying
         const cacheBuster = `?t=${Date.now()}`;
-        const thumbnailUrl = thumbnail + cacheBuster;
+        const thumbnailUrl = getImageUrl(thumbnail) + cacheBuster;
         const bgStyle = isKeyedVideo ? `background-image: linear-gradient(45deg, #ddd 25%, transparent 25%), linear-gradient(-45deg, #ddd 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ddd 75%), linear-gradient(-45deg, transparent 75%, #ddd 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0px; background-color: #fff;` : '';
         thumbnailContent = `<video src="${thumbnailUrl}" class="job-thumbnail clickable-thumbnail" 
                                onclick="openMediaViewer(${job.id})" 
@@ -1819,7 +1910,7 @@ function renderJobCard(job) {
         // Image thumbnail
         const clickable = hasViewableMedia ? 'clickable-thumbnail' : '';
         const onclick = hasViewableMedia ? `onclick="openMediaViewer(${job.id})"` : '';
-        thumbnailContent = `<img src="${thumbnail}" class="job-thumbnail ${clickable}" ${onclick} alt="${job.job_type}">`;
+        thumbnailContent = `<img src="${getImageUrl(thumbnail)}" class="job-thumbnail ${clickable}" ${onclick} alt="${job.job_type}">`;
     } else {
         thumbnailContent = `<div class="job-thumbnail" style="background: #f0f0f0; display: flex; align-items: center; justify-content: center; color: #999;">No preview</div>`;
     }
@@ -1903,6 +1994,7 @@ function getJobActions(job) {
         if (job.job_type === 'animation') {
             actions.push(`<button class="job-action-btn" onclick="regenerateJob(${job.id})">Regenerate</button>`);
             actions.push(`<button class="job-action-btn" onclick="editJob(${job.id})">Edit</button>`);
+            actions.push(`<button class="job-action-btn" onclick="editAnimation(${job.id})">✂️ Trim</button>`);
             actions.push(`<button class="job-action-btn" onclick="selectForStitch(${job.id})">Stitch</button>`);
             actions.push(`<button class="job-action-btn" onclick="createLoopFromJob(${job.id})">Loop Creator</button>`);
             
@@ -1919,6 +2011,7 @@ function getJobActions(job) {
         }
         
         if (job.job_type === 'boomerang_automation') {
+            actions.push(`<button class="job-action-btn" onclick="editAnimation(${job.id})">✂️ Trim</button>`);
             actions.push(`<button class="job-action-btn" onclick="selectForStitch(${job.id})">Stitch</button>`);
             
             if (!job.keyed_result_data) {
@@ -1936,6 +2029,7 @@ function getJobActions(job) {
         }
         
         if (job.job_type === 'video_stitching') {
+            actions.push(`<button class="job-action-btn" onclick="editAnimation(${job.id})">✂️ Trim</button>`);
             actions.push(`<button class="job-action-btn" onclick="selectForStitch(${job.id})">Stitch</button>`);
             
             // Show keying buttons for stitched videos
@@ -2996,7 +3090,10 @@ function processKeying() {
         shadow_opacity: parseFloat(document.getElementById('keyer-shadow-opacity').value),
         // Posterize time parameters
         posterize_enabled: document.getElementById('keyer-posterize-enabled').checked,
-        posterize_fps: document.querySelector('input[name="keyer-posterize-fps"]:checked')?.value || '12'
+        posterize_fps: document.querySelector('input[name="keyer-posterize-fps"]:checked')?.value || '12',
+        // Export options
+        export_gif: document.getElementById('keyer-export-gif').checked,
+        export_png_zip: document.getElementById('keyer-export-png-zip').checked
     };
     
     console.log('Processing keying with settings:', settings, 'for job:', currentKeyingJobId);
@@ -3051,6 +3148,151 @@ function removeBackground() {
             alert('Failed to submit background removal job');
         });
 }
+
+// ===== TRIM VIDEO =====
+let currentTrimJobId = null;
+let trimVideoFPS = 30;
+
+function editAnimation(jobId) {
+    const job = allJobs.find(j => j.id === jobId);
+    if (!job) {
+        alert('Job not found');
+        return;
+    }
+    
+    // Get the video URL (handle both keyed and original)
+    let videoUrl;
+    if (job.keyed_result_data) {
+        try {
+            const keyedData = JSON.parse(job.keyed_result_data);
+            videoUrl = keyedData.webm || job.keyed_result_data;
+        } catch (e) {
+            videoUrl = job.keyed_result_data;
+        }
+    } else if (job.result_data) {
+        videoUrl = job.result_data;
+    } else {
+        alert('No video found for this job');
+        return;
+    }
+    
+    // Track which job we're editing
+    currentTrimJobId = jobId;
+    
+    // Switch to trim tool
+    switchTool('trim-video');
+    
+    // Load the video
+    const videoPreview = document.getElementById('trim-video-preview');
+    const videoPreviewContainer = document.getElementById('trim-video-preview-container');
+    
+    if (videoPreview && videoPreviewContainer) {
+        videoPreview.src = videoUrl + '?t=' + Date.now();
+        videoPreviewContainer.style.display = 'block';
+        
+        // When video loads, set default out point to end
+        videoPreview.addEventListener('loadedmetadata', function onLoaded() {
+            document.getElementById('trim-in-point').value = 0;
+            document.getElementById('trim-out-point').value = videoPreview.duration.toFixed(2);
+            document.getElementById('trim-out-point').max = videoPreview.duration;
+            document.getElementById('trim-in-point').max = videoPreview.duration;
+            trimVideoFPS = 30; // Default FPS
+            updateTrimDuration();
+            videoPreview.removeEventListener('loadedmetadata', onLoaded);
+        }, {once: true});
+    }
+}
+
+function setTrimInPoint() {
+    const video = document.getElementById('trim-video-preview');
+    const input = document.getElementById('trim-in-point');
+    input.value = video.currentTime.toFixed(2);
+    updateTrimDuration();
+}
+
+function setTrimOutPoint() {
+    const video = document.getElementById('trim-video-preview');
+    const input = document.getElementById('trim-out-point');
+    input.value = video.currentTime.toFixed(2);
+    updateTrimDuration();
+}
+
+function goToTrimInPoint() {
+    const video = document.getElementById('trim-video-preview');
+    const input = document.getElementById('trim-in-point');
+    video.currentTime = parseFloat(input.value) || 0;
+}
+
+function goToTrimOutPoint() {
+    const video = document.getElementById('trim-video-preview');
+    const input = document.getElementById('trim-out-point');
+    video.currentTime = parseFloat(input.value) || 0;
+}
+
+function updateTrimDuration() {
+    const inPoint = parseFloat(document.getElementById('trim-in-point').value) || 0;
+    const outPoint = parseFloat(document.getElementById('trim-out-point').value) || 0;
+    const duration = Math.max(0, outPoint - inPoint);
+    document.getElementById('trim-duration-display').textContent = duration.toFixed(2) + 's';
+}
+
+function prevFrameTrim() {
+    const video = document.getElementById('trim-video-preview');
+    const frameDuration = 1 / trimVideoFPS;
+    video.currentTime = Math.max(0, video.currentTime - frameDuration);
+}
+
+function nextFrameTrim() {
+    const video = document.getElementById('trim-video-preview');
+    const frameDuration = 1 / trimVideoFPS;
+    video.currentTime = Math.min(video.duration, video.currentTime + frameDuration);
+}
+
+function trimVideo() {
+    if (!currentTrimJobId) {
+        alert('No video loaded');
+        return;
+    }
+    
+    const inPoint = parseFloat(document.getElementById('trim-in-point').value) || 0;
+    const outPoint = parseFloat(document.getElementById('trim-out-point').value) || 0;
+    
+    if (outPoint <= inPoint) {
+        alert('Out point must be after in point');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('job_id', currentTrimJobId);
+    formData.append('in_point', inPoint);
+    formData.append('out_point', outPoint);
+    
+    fetch('/api/trim-video', { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                alert('Video trimmed successfully!');
+                loadJobs();
+                currentTrimJobId = null;
+            } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => {
+            console.error('Trim error:', err);
+            alert('Failed to trim video');
+        });
+}
+
+// Update duration display when in/out points change
+document.addEventListener('DOMContentLoaded', function() {
+    const inInput = document.getElementById('trim-in-point');
+    const outInput = document.getElementById('trim-out-point');
+    if (inInput && outInput) {
+        inInput.addEventListener('input', updateTrimDuration);
+        outInput.addEventListener('input', updateTrimDuration);
+    }
+});
 
 // ===== JOB ACTIONS =====
 function regenerateJob(jobId) {
@@ -3149,7 +3391,7 @@ function editJob(jobId) {
                         const placeholder = document.getElementById('anim-frame-placeholder');
                         if (previewImg && placeholder) {
                             // Handle both absolute URLs (S3) and relative paths (local)
-                            previewImg.src = imageUrl.startsWith('http') ? imageUrl : '/' + imageUrl.replace(/^\//, '');
+                            previewImg.src = getImageUrl(imageUrl);
                             previewImg.style.display = 'block';
                             placeholder.style.display = 'none';
                             console.log('Loaded animation start frame:', imageUrl);
@@ -3327,8 +3569,62 @@ function downloadJob(jobId) {
 
 function downloadKeyed(jobId) {
     const job = allJobs.find(j => j.id === jobId);
-    if (job && job.keyed_result_data) {
+    if (!job || !job.keyed_result_data) {
+        console.log('No keyed result data for job', jobId);
+        return;
+    }
+    
+    console.log(`Download keyed for job ${jobId}, keyed_result_data:`, job.keyed_result_data);
+    
+    // Try to parse as JSON (new format with multiple exports)
+    let exportData;
+    try {
+        exportData = JSON.parse(job.keyed_result_data);
+        console.log('Parsed as JSON:', exportData);
+    } catch (e) {
+        // Old format - just a URL string
+        console.log('Old format detected (plain string URL), downloading directly');
         window.open(job.keyed_result_data, '_blank');
+        return;
+    }
+    
+    // New format - show options
+    const downloads = [];
+    if (exportData.webm) downloads.push({label: 'WebM Video (Transparent)', url: exportData.webm});
+    if (exportData.gif) downloads.push({label: 'GIF (Animated, Transparent)', url: exportData.gif});
+    if (exportData.png_zip) downloads.push({label: 'PNG Sequence (ZIP Archive)', url: exportData.png_zip});
+    
+    console.log('Available downloads:', downloads);
+    
+    if (downloads.length === 0) {
+        alert('No downloads available');
+        return;
+    }
+    
+    if (downloads.length === 1) {
+        // Only one option, download directly
+        console.log('Only one format available, downloading:', downloads[0].label);
+        window.open(downloads[0].url, '_blank');
+        return;
+    }
+    
+    // Multiple options - show a menu
+    console.log(`Multiple formats available (${downloads.length}), showing menu`);
+    let message = '🎬 Choose Download Format:\n\n';
+    downloads.forEach((d, i) => {
+        message += `${i + 1}. ${d.label}\n`;
+    });
+    message += '\nEnter number (1-' + downloads.length + ') or Cancel:';
+    
+    const choice = prompt(message);
+    if (choice && !isNaN(choice)) {
+        const index = parseInt(choice) - 1;
+        if (index >= 0 && index < downloads.length) {
+            console.log('User selected:', downloads[index].label);
+            window.open(downloads[index].url, '_blank');
+        } else {
+            alert('Invalid selection. Please choose a number between 1 and ' + downloads.length);
+        }
     }
 }
 
@@ -3586,7 +3882,16 @@ function showMediaAtIndex(index) {
     jobType.textContent = formatJobType(job.job_type);
     
     // Prefer keyed_result_data if available, otherwise use result_data
-    const mediaUrl = job.keyed_result_data || job.result_data;
+    // Handle keyed_result_data which can be a string (old format) or JSON (new format with exports)
+    let mediaUrl = job.result_data;
+    if (job.keyed_result_data) {
+        try {
+            const keyedData = JSON.parse(job.keyed_result_data);
+            mediaUrl = keyedData.webm || job.keyed_result_data; // Use webm if JSON, otherwise string
+        } catch (e) {
+            mediaUrl = job.keyed_result_data; // Old format - direct URL string
+        }
+    }
     
     console.log(`Showing job ${job.id}, type: ${job.job_type}, isVideo: ${isVideoJob}, url: ${mediaUrl}, keyed: ${!!job.keyed_result_data}`);
     
@@ -3595,7 +3900,7 @@ function showMediaAtIndex(index) {
         modalImage.style.display = 'none';
         modalVideo.pause(); // Pause before changing source
         modalVideo.style.display = 'block';
-        modalVideo.src = mediaUrl + '?t=' + Date.now(); // Cache busting
+        modalVideo.src = getImageUrl(mediaUrl) + '?t=' + Date.now(); // Cache busting
         modalVideo.load();
         
         // Add transparency grid for keyed videos
@@ -3616,7 +3921,7 @@ function showMediaAtIndex(index) {
         modalVideo.pause();
         modalVideo.src = '';
         modalImage.style.display = 'block';
-        modalImage.src = mediaUrl;
+        modalImage.src = getImageUrl(mediaUrl);
         
         // Add transparency grid for PNG images
         if (mediaUrl && mediaUrl.toLowerCase().endsWith('.png')) {

@@ -89,6 +89,21 @@ if not PRODUCTION_MODE:
 else:
     print("🚀 Running in PRODUCTION mode")
 
+# --- JINJA2 FILTERS ---
+@app.template_filter('smart_url')
+def smart_url_filter(url):
+    """Handle both local paths and S3/CloudFront URLs"""
+    if not url:
+        return ''
+    # If it's already a full URL, use as-is
+    if url.startswith('http://') or url.startswith('https://'):
+        return url
+    # If it starts with /, use as-is
+    if url.startswith('/'):
+        return url
+    # Otherwise, prepend /
+    return '/' + url
+
 # --- DATABASE HELPER ---
 def get_db_connection():
     """Creates a database connection with WAL mode enabled for high concurrency."""
@@ -1606,6 +1621,101 @@ def cancel_job(job_id):
             
     except Exception as e:
         print(f"ERROR in /api/cancel-job: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/trim-video", methods=["POST"])
+def trim_video():
+    """Trim a video to specified in/out points"""
+    try:
+        job_id = int(request.form.get('job_id'))
+        in_point = float(request.form.get('in_point'))
+        out_point = float(request.form.get('out_point'))
+        
+        if out_point <= in_point:
+            return jsonify({"success": False, "error": "Out point must be after in point"}), 400
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            job = cursor.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            
+            if not job:
+                return jsonify({"success": False, "error": "Job not found"}), 404
+            
+            # Get the video URL to trim
+            video_url = None
+            if job['keyed_result_data']:
+                try:
+                    keyed_data = json.loads(job['keyed_result_data'])
+                    video_url = keyed_data.get('webm') or job['keyed_result_data']
+                except:
+                    video_url = job['keyed_result_data']
+            elif job['result_data']:
+                video_url = job['result_data']
+            else:
+                return jsonify({"success": False, "error": "No video found for this job"}), 404
+            
+            # Handle S3 URLs or local paths
+            if video_url.startswith('http'):
+                # Download from S3 first
+                import requests
+                print(f"-> Downloading video from S3 for trimming: {video_url}")
+                response = requests.get(video_url)
+                response.raise_for_status()
+                temp_input = f"temp_trim_input_{uuid.uuid4().hex[:8]}.webm"
+                input_path = os.path.join(TRANSPARENT_VIDEOS_FOLDER, temp_input)
+                with open(input_path, 'wb') as f:
+                    f.write(response.content)
+            else:
+                input_path = os.path.join(BASE_DIR, video_url.lstrip('/'))
+                if not os.path.exists(input_path):
+                    return jsonify({"success": False, "error": "Video file not found"}), 404
+            
+            # Create output filename
+            output_filename = f"trimmed_{job_id}_{uuid.uuid4().hex[:8]}.webm"
+            output_path = os.path.join(TRANSPARENT_VIDEOS_FOLDER, output_filename)
+            
+            # Trim video using ffmpeg
+            duration = out_point - in_point
+            ffmpeg_cmd = [
+                'ffmpeg', '-y',
+                '-i', input_path,
+                '-ss', str(in_point),
+                '-t', str(duration),
+                '-c', 'copy',  # Copy codec for fast trimming
+                output_path
+            ]
+            
+            print(f"-> Trimming video: {in_point}s to {out_point}s (duration: {duration}s)")
+            result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                print(f"   ❌ FFmpeg trim error: {result.stderr}")
+                return jsonify({"success": False, "error": "FFmpeg trimming failed"}), 500
+            
+            # Upload trimmed video to S3 if enabled
+            s3_key = f"library/transparent_videos/{output_filename}"
+            trimmed_url = upload_file(output_path, s3_key)
+            
+            # Update the job's result_data with trimmed video
+            cursor.execute(
+                "UPDATE jobs SET result_data = ?, prompt = ? WHERE id = ?",
+                (trimmed_url, f"{job['prompt']} [Trimmed {in_point:.1f}s-{out_point:.1f}s]", job_id)
+            )
+            conn.commit()
+            
+            # Clean up temp input file if we downloaded from S3
+            if video_url.startswith('http') and os.path.exists(input_path):
+                try:
+                    os.remove(input_path)
+                except:
+                    pass
+            
+            print(f"   ✅ Video trimmed successfully: {trimmed_url}")
+            return jsonify({"success": True, "video_url": trimmed_url})
+            
+    except Exception as e:
+        print(f"ERROR in /api/trim-video: {e}")
+        traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/preview-frame', methods=['POST'])

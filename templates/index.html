@@ -1314,6 +1314,21 @@ For each color, provide its hexadecimal code and a simple, descriptive name (e.g
     // Debug mode - set to false for production
     window.DEBUG_MODE = true;
     
+    // Helper function to handle both local paths and S3 URLs
+    function getImageUrl(url) {
+        if (!url) return '';
+        // If it's already a full URL (starts with http:// or https://), use as-is
+        if (url.startsWith('http://') || url.startsWith('https://')) {
+            return url;
+        }
+        // If it starts with /, use as-is
+        if (url.startsWith('/')) {
+            return url;
+        }
+        // Otherwise, prepend /
+        return '/' + url;
+    }
+    
     // Enhanced error handling system
     function showUserFriendlyError(message, details = null, type = 'error') {
         if (type === 'error') {
@@ -1972,7 +1987,7 @@ For each color, provide its hexadecimal code and a simple, descriptive name (e.g
         // Create stacked thumbnails for completed jobs
         let stackedThumbnailsHTML = '<div class="stacked-thumbnails">';
         completedJobs.slice(0, 3).forEach((job, index) => {
-            stackedThumbnailsHTML += `<img src="/${job.result_data}" class="stacked-thumbnail clickable-image" alt="Generated Image" onclick="event.stopPropagation(); openImageModal('/${job.result_data}')">`;
+            stackedThumbnailsHTML += `<img src="${getImageUrl(job.result_data)}" class="stacked-thumbnail clickable-image" alt="Generated Image" onclick="event.stopPropagation(); openImageModal(getImageUrl(job.result_data))">`;
         });
         stackedThumbnailsHTML += '</div>';
         
@@ -2026,11 +2041,11 @@ For each color, provide its hexadecimal code and a simple, descriptive name (e.g
         `;
         
         jobs.forEach(job => {
-            if (job.status === 'completed' && job.result_data) {
+                if (job.status === 'completed' && job.result_data) {
                 html += `
                     <div class="image-item">
                         <input type="checkbox" class="image-checkbox selection-checkbox" data-job-id="${job.id}">
-                        <img src="/${job.result_data}" alt="Generated Image" class="clickable-image" onclick="event.stopPropagation(); openImageModal('/${job.result_data}')">
+                        <img src="${getImageUrl(job.result_data)}" alt="Generated Image" class="clickable-image" onclick="event.stopPropagation(); openImageModal(getImageUrl(job.result_data))">
                     </div>
                 `;
                 } else {
@@ -2065,17 +2080,17 @@ For each color, provide its hexadecimal code and a simple, descriptive name (e.g
                 const inputData = JSON.parse(job.input_data || '{}');
                 const imagePath = inputData.image_path;
                 if (imagePath) {
-                    thumbnailHTML = `<img src="/${imagePath}" class="enhanced-job-thumbnail ${thumbnailClass} clickable-image" alt="Analysis Input" onclick="event.stopPropagation(); openImageModal('/${imagePath}')">`;
+                    thumbnailHTML = `<img src="${getImageUrl(imagePath)}" class="enhanced-job-thumbnail ${thumbnailClass} clickable-image" alt="Analysis Input" onclick="event.stopPropagation(); openImageModal(getImageUrl(imagePath))">`;
                 } else if (job.result_data && job.result_data.includes('static/uploads/')) {
                     // Fallback: for old jobs where result_data contains the image path
-                    thumbnailHTML = `<img src="/${job.result_data}" class="enhanced-job-thumbnail ${thumbnailClass} clickable-image" alt="Analysis Input" onclick="event.stopPropagation(); openImageModal('/${job.result_data}')">`;
+                    thumbnailHTML = `<img src="${getImageUrl(job.result_data)}" class="enhanced-job-thumbnail ${thumbnailClass} clickable-image" alt="Analysis Input" onclick="event.stopPropagation(); openImageModal(getImageUrl(job.result_data))">`;
                 } else if (job.status === 'completed') {
                     thumbnailHTML = `<div class="enhanced-job-thumbnail ${thumbnailClass}" style="background: #d4edda; color: #155724; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 11px;">Analysis Complete</div>`;
                 }
             } catch (e) {
                 // If parsing fails, try to use result_data as image path for old jobs
                 if (job.result_data && job.result_data.includes('static/uploads/')) {
-                    thumbnailHTML = `<img src="/${job.result_data}" class="enhanced-job-thumbnail ${thumbnailClass} clickable-image" alt="Analysis Input" onclick="event.stopPropagation(); openImageModal('/${job.result_data}')">`;
+                    thumbnailHTML = `<img src="${getImageUrl(job.result_data)}" class="enhanced-job-thumbnail ${thumbnailClass} clickable-image" alt="Analysis Input" onclick="event.stopPropagation(); openImageModal(getImageUrl(job.result_data))">`;
                 } else if (job.status === 'completed') {
                     thumbnailHTML = `<div class="enhanced-job-thumbnail ${thumbnailClass}" style="background: #d4edda; color: #155724; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 11px;">Analysis Complete</div>`;
                 }
@@ -2109,7 +2124,7 @@ For each color, provide its hexadecimal code and a simple, descriptive name (e.g
                 thumbnailHTML = `<div style="position: relative; display: inline-block;">${pendingIcon}${keyedIcon}<video src="${videoPath}${cacheBuster}" class="enhanced-job-thumbnail ${thumbnailClass}" playsinline muted loop autoplay preload="auto" style="object-fit: cover;"></video></div>`;
             } else {
                 const pendingIcon = job.status === 'pending_process' ? '<div style="position: absolute; top: 5px; right: 5px; background: rgba(156, 39, 176, 0.95); color: white; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">⏸</div>' : '';
-                thumbnailHTML = `<div style="position: relative; display: inline-block;">${pendingIcon}<img src="/${job.result_data}" class="enhanced-job-thumbnail ${thumbnailClass} clickable-image" alt="Result" onclick="event.stopPropagation(); openImageModal('/${job.result_data}')"></div>`;
+                thumbnailHTML = `<div style="position: relative; display: inline-block;">${pendingIcon}<img src="${getImageUrl(job.result_data)}" class="enhanced-job-thumbnail ${thumbnailClass} clickable-image" alt="Result" onclick="event.stopPropagation(); openImageModal(getImageUrl(job.result_data))"></div>`;
             }
         } else if (job.status === 'processing' || job.status === 'keying_processing') {
             thumbnailHTML = `<div class="content-placeholder enhanced-job-thumbnail ${thumbnailClass}">Processing...</div>`;
@@ -2193,7 +2208,7 @@ For each color, provide its hexadecimal code and a simple, descriptive name (e.g
                                         // Small image column with job info below (if we have an image)
                                         if (imagePath) {
                                             html += `<div style="flex: 0 0 150px;">
-                                                <img src="/${imagePath}" style="width: 100%; border-radius: 8px;" class="clickable-image" alt="Analysis Input" onclick="event.stopPropagation(); openImageModal('/${imagePath}')">
+                                                <img src="${getImageUrl(imagePath)}" style="width: 100%; border-radius: 8px;" class="clickable-image" alt="Analysis Input" onclick="event.stopPropagation(); openImageModal(getImageUrl(imagePath))">
                                                 <div style="text-align: center; font-size: 11px; color: #666; margin-top: 5px;">Input Image</div>
                                                 <div style="margin-top: 10px; padding: 8px; background: #f8f9fa; border-radius: 4px; font-size: 11px;">
                                                     <div style="margin-bottom: 4px;"><strong>Created:</strong><br>${new Date(job.created_at).toLocaleString()}</div>
@@ -2283,7 +2298,7 @@ For each color, provide its hexadecimal code and a simple, descriptive name (e.g
                                             }
                                             return html;
                                         })() :
-                                        `<img src="/${job.result_data}" style="max-width: 500px; width: 100%; border-radius: 8px;" class="clickable-image" alt="Result" onclick="event.stopPropagation(); openImageModal('/${job.result_data}')">`
+                                        `<img src="${getImageUrl(job.result_data)}" style="max-width: 500px; width: 100%; border-radius: 8px;" class="clickable-image" alt="Result" onclick="event.stopPropagation(); openImageModal(getImageUrl(job.result_data))">`
                                     ) : ''
                                 )
                             }
@@ -3197,7 +3212,7 @@ For each color, provide its hexadecimal code and a simple, descriptive name (e.g
                                     padding: 8px;
                                     overflow: hidden;
                                 ">
-                                <img src="/${job.result_data.replace(/^\/+/, '')}" alt="Job ${job.id}" style="
+                                <img src="${getImageUrl(job.result_data)}" alt="Job ${job.id}" style="
                                         max-width: 100%; 
                                         max-height: 100%; 
                                         object-fit: contain;

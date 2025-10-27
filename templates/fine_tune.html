@@ -94,7 +94,7 @@
     <p>Use the frame-by-frame buttons for precise positioning, then click 'Preview Frame' to see your changes.</p>
     
     <div class="video-container">
-        <video id="video-preview" src="/{{ job.result_data }}" playsinline controls crossorigin="anonymous"></video>
+        <video id="video-preview" src="{{ job.result_data | smart_url }}" playsinline controls crossorigin="anonymous"></video>
         <img id="image-preview" src="" alt="Keying Preview" style="display: none; cursor: pointer;" title="Click to return to video" crossorigin="anonymous">
     </div>
 
