@@ -7,8 +7,6 @@ requests
 Pillow
 openai
 python-dotenv
-scipy
-psutil
 
 # Production server
 gunicorn
