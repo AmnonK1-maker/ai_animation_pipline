@@ -1625,18 +1625,18 @@ def cancel_job(job_id):
 
 @app.route("/api/trim-video", methods=["POST"])
 def trim_video():
-    """Trim a video to specified in/out points"""
+    """Create a new job to trim a video to specified in/out points"""
     try:
-        job_id = int(request.form.get('job_id'))
+        source_job_id = int(request.form.get('job_id'))
         in_point = float(request.form.get('in_point'))
         out_point = float(request.form.get('out_point'))
         pingpong = request.form.get('pingpong') == '1'
         
         print(f"\n=== TRIM VIDEO REQUEST ===", flush=True)
-        print(f"Job ID: {job_id}", flush=True)
+        print(f"Source Job ID: {source_job_id}", flush=True)
         print(f"In Point: {in_point}s", flush=True)
         print(f"Out Point: {out_point}s", flush=True)
-        print(f"Pingpong: {pingpong} (raw value: '{request.form.get('pingpong')}')", flush=True)
+        print(f"Pingpong: {pingpong}", flush=True)
         print(f"=========================\n", flush=True)
         
         if out_point <= in_point:
@@ -1644,129 +1644,53 @@ def trim_video():
         
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            job = cursor.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            source_job = cursor.execute("SELECT * FROM jobs WHERE id = ?", (source_job_id,)).fetchone()
             
-            if not job:
+            if not source_job:
                 return jsonify({"success": False, "error": "Job not found"}), 404
             
             # Get the video URL to trim
             video_url = None
-            if job['keyed_result_data']:
+            if source_job['keyed_result_data']:
                 try:
-                    keyed_data = json.loads(job['keyed_result_data'])
-                    video_url = keyed_data.get('webm') or job['keyed_result_data']
+                    keyed_data = json.loads(source_job['keyed_result_data'])
+                    video_url = keyed_data.get('webm') or source_job['keyed_result_data']
                 except:
-                    video_url = job['keyed_result_data']
-            elif job['result_data']:
-                video_url = job['result_data']
+                    video_url = source_job['keyed_result_data']
+            elif source_job['result_data']:
+                video_url = source_job['result_data']
             else:
                 return jsonify({"success": False, "error": "No video found for this job"}), 404
             
-            # Handle S3 URLs or local paths
-            if video_url.startswith('http'):
-                # Download from S3 first
-                import requests
-                print(f"-> Downloading video from S3 for trimming: {video_url}")
-                response = requests.get(video_url)
-                response.raise_for_status()
-                temp_input = f"temp_trim_input_{uuid.uuid4().hex[:8]}.webm"
-                input_path = os.path.join(TRANSPARENT_VIDEOS_FOLDER, temp_input)
-                with open(input_path, 'wb') as f:
-                    f.write(response.content)
-            else:
-                input_path = os.path.join(BASE_DIR, video_url.lstrip('/'))
-                if not os.path.exists(input_path):
-                    return jsonify({"success": False, "error": "Video file not found"}), 404
-            
-            # Create output filename
-            output_filename = f"trimmed_{job_id}_{uuid.uuid4().hex[:8]}.webm"
-            output_path = os.path.join(TRANSPARENT_VIDEOS_FOLDER, output_filename)
-            
-            # Trim video using ffmpeg
-            duration = out_point - in_point
-            
-            if pingpong:
-                # For pingpong loop: create forward then backward (reverse) sequence
-                print(f"-> Creating pingpong loop: {in_point}s to {out_point}s (duration: {duration}s)", flush=True)
-                
-                # Use FFmpeg complex filter to create pingpong effect
-                # Split the video, reverse one copy, concatenate them
-                # NOTE: We use trim filter INSIDE filter_complex instead of -t flag
-                # because -t would limit input before the filter runs
-                ffmpeg_cmd = [
-                    'ffmpeg', '-y',
-                    '-ss', str(in_point),
-                    '-i', input_path,
-                    '-filter_complex',
-                    f'[0:v]trim=duration={duration},setpts=PTS-STARTPTS,split[main][copy]; '
-                    f'[copy]reverse[rev]; [main][rev]concat=n=2:v=1:a=0[out]',
-                    '-map', '[out]',
-                    '-c:v', 'libvpx-vp9',
-                    '-pix_fmt', 'yuva420p',
-                    '-auto-alt-ref', '0',
-                    '-b:v', '0',  # Use constant quality mode (CRF-based)
-                    '-crf', '10',  # High quality (0-63, lower = better quality)
-                    '-quality', 'best',  # Use best quality encoding (slowest but highest quality)
-                    '-cpu-used', '0',  # Slowest/best quality (0-5, lower = better)
-                    output_path
-                ]
-            else:
-                # Normal trim without pingpong
-                print(f"-> Trimming video: {in_point}s to {out_point}s (duration: {duration}s)")
-                
-                # For WebM files with transparency, we need to re-encode properly
-                # Use VP9 codec with alpha channel support
-                ffmpeg_cmd = [
-                    'ffmpeg', '-y',
-                    '-ss', str(in_point),  # Seek before input for faster processing
-                    '-i', input_path,
-                    '-t', str(duration),
-                    '-c:v', 'libvpx-vp9',  # VP9 video codec
-                    '-pix_fmt', 'yuva420p',  # Pixel format with alpha
-                    '-auto-alt-ref', '0',  # Required for transparent WebM
-                    '-b:v', '2M',  # Bitrate
-                    '-crf', '30',  # Quality (lower = better, 23-30 is good range)
-                    output_path
-                ]
-            
-            print(f"-> Running FFmpeg command...")
-            print(f"   Command: {' '.join(ffmpeg_cmd)}")
-            result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
-            print(f"   FFmpeg stdout: {result.stdout}")
-            print(f"   FFmpeg stderr: {result.stderr[:500] if result.stderr else 'None'}")
-            
-            if result.returncode != 0:
-                print(f"   ❌ FFmpeg trim error: {result.stderr}")
-                # Return the actual FFmpeg error for debugging
-                error_msg = result.stderr.split('\n')[-5:] if result.stderr else "Unknown error"
-                return jsonify({"success": False, "error": f"FFmpeg trimming failed: {error_msg}"}), 500
-            
-            # Upload trimmed video to S3 if enabled
-            s3_key = f"library/transparent_videos/{output_filename}"
-            trimmed_url = upload_file(output_path, s3_key)
-            
-            # Update the job's result_data with trimmed video
+            # Create a NEW job for the trim operation
             prompt_suffix = f"[Trimmed {in_point:.1f}s-{out_point:.1f}s"
             if pingpong:
                 prompt_suffix += " - Pingpong Loop]"
             else:
                 prompt_suffix += "]"
             
+            new_prompt = f"{source_job['prompt']} {prompt_suffix}"
+            
+            # Store trim parameters as JSON in input_data
+            trim_params = json.dumps({
+                'source_video_url': video_url,
+                'in_point': in_point,
+                'out_point': out_point,
+                'pingpong': pingpong
+            })
+            
+            # Create new job with job_type 'trim'
             cursor.execute(
-                "UPDATE jobs SET result_data = ?, prompt = ? WHERE id = ?",
-                (trimmed_url, f"{job['prompt']} {prompt_suffix}", job_id)
+                """INSERT INTO jobs 
+                (job_type, prompt, status, input_data, created_at) 
+                VALUES (?, ?, ?, ?, ?)""",
+                ('trim', new_prompt, 'queued', trim_params, datetime.now().isoformat())
             )
+            new_job_id = cursor.lastrowid
             conn.commit()
             
-            # Clean up temp input file if we downloaded from S3
-            if video_url.startswith('http') and os.path.exists(input_path):
-                try:
-                    os.remove(input_path)
-                except:
-                    pass
-            
-            print(f"   ✅ Video trimmed successfully: {trimmed_url}")
-            return jsonify({"success": True, "video_url": trimmed_url})
+            print(f"   ✅ Created trim job #{new_job_id}")
+            return jsonify({"success": True, "job_id": new_job_id})
             
     except Exception as e:
         print(f"ERROR in /api/trim-video: {e}")

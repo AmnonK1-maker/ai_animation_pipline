@@ -1878,7 +1878,7 @@ function renderJobCard(job) {
     const statusClass = `status-${job.status.split('_')[0]}`;
     
     // Determine if this is a video or image job
-    const isVideoJob = ['animation', 'boomerang_automation', 'video_stitching', 'video_upload'].includes(job.job_type);
+    const isVideoJob = ['animation', 'boomerang_automation', 'video_stitching', 'video_upload', 'trim'].includes(job.job_type);
     
     // Get thumbnail and media URL
     let thumbnail = '';
@@ -1982,7 +1982,8 @@ function formatJobType(jobType) {
         'video_stitching': 'Stitched Video',
         'background_removal': 'Transparent Image',
         'keying_queued': 'Keyed Video',
-        'keying_processing': 'Keyed Video'
+        'keying_processing': 'Keyed Video',
+        'trim': 'Trimmed Video'
     };
     return map[jobType] || jobType;
 }
@@ -2065,6 +2066,21 @@ function getJobActions(job) {
         
         if (job.job_type === 'video_upload') {
             // Show keying buttons for uploaded videos
+            if (!job.keyed_result_data) {
+                actions.push(`<button class="job-action-btn" onclick="autoKeyJob(${job.id})">Auto Key</button>`);
+                actions.push(`<button class="job-action-btn" onclick="manualKeyJob(${job.id})">Key</button>`);
+            } else {
+                actions.push(`<button class="job-action-btn" onclick="downloadKeyed(${job.id})">Download Keyed</button>`);
+                actions.push(`<button class="job-action-btn" onclick="reKeyJob(${job.id})">Re-Key</button>`);
+            }
+        }
+        
+        if (job.job_type === 'trim') {
+            // Trimmed videos can be trimmed again, stitched, or keyed
+            actions.push(`<button class="job-action-btn" onclick="editAnimation(${job.id})">✂️ Trim</button>`);
+            actions.push(`<button class="job-action-btn" onclick="selectForStitch(${job.id})">Stitch</button>`);
+            
+            // Show keying buttons for trimmed videos
             if (!job.keyed_result_data) {
                 actions.push(`<button class="job-action-btn" onclick="autoKeyJob(${job.id})">Auto Key</button>`);
                 actions.push(`<button class="job-action-btn" onclick="manualKeyJob(${job.id})">Key</button>`);
@@ -3294,31 +3310,23 @@ function trimVideo() {
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                // Save the job ID before clearing it
-                const trimmedJobId = currentTrimJobId;
+                // Clear current job ID
                 currentTrimJobId = null;
                 
                 // Close the trim tool and go back to the job list
                 switchTool(null);
                 
-                // Reload the jobs to show the updated video
+                // Reload jobs to show the new trim job in queue
                 loadJobs();
                 
-                // Wait a bit longer for jobs to reload, then open the media viewer
-                setTimeout(() => {
-                    openMediaViewer(trimmedJobId);
-                    const message = pingpong 
-                        ? 'Pingpong loop created successfully! The video now plays forward then backward continuously.'
-                        : 'Video trimmed successfully! The trimmed version has replaced the original.';
-                    alert(message);
-                }, 1500);
+                console.log('✓ Trim job created:', data.job_id);
             } else {
                 alert('Error: ' + (data.error || 'Unknown error'));
             }
         })
         .catch(err => {
             console.error('Trim error:', err);
-            alert('Failed to trim video');
+            alert('Failed to create trim job');
         });
 }
 
@@ -3920,7 +3928,7 @@ function showMediaAtIndex(index) {
     if (index < 0 || index >= viewableJobs.length) return;
     
     const job = viewableJobs[index];
-    const isVideoJob = ['animation', 'boomerang_automation', 'video_stitching', 'video_upload'].includes(job.job_type);
+    const isVideoJob = ['animation', 'boomerang_automation', 'video_stitching', 'video_upload', 'trim'].includes(job.job_type);
     
     const modalImage = document.getElementById('modal-image');
     const modalVideo = document.getElementById('modal-video');

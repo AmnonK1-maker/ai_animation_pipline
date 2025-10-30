@@ -535,8 +535,6 @@ def apply_sticker_effect_to_video(input_video_path, output_video_path,
             '-i', os.path.join(temp_frames_dir, 'frame_%06d.png'),
             '-c:v', 'libvpx-vp9',
             '-pix_fmt', 'yuva420p',
-            '-auto-alt-ref', '0',
-            '-metadata:s:v:0', 'alpha_mode=1',  # lowercase - Wix requires this!
             '-crf', '15',
             '-b:v', '0',
             output_video_path
@@ -832,6 +830,109 @@ def handle_animation(job):
     except Exception as e:
         traceback.print_exc()
         return None, f"Animation generation error: {e}"
+
+def handle_trim(job):
+    """Handle video trimming jobs"""
+    try:
+        job_id = job['id']
+        print(f"-> Starting trim job #{job_id}...")
+        
+        # Parse trim parameters from input_data
+        trim_params = json.loads(job['input_data'])
+        source_video_url = trim_params['source_video_url']
+        in_point = float(trim_params['in_point'])
+        out_point = float(trim_params['out_point'])
+        pingpong = trim_params.get('pingpong', False)
+        
+        print(f"   Source: {source_video_url}")
+        print(f"   In Point: {in_point}s")
+        print(f"   Out Point: {out_point}s")
+        print(f"   Pingpong: {pingpong}")
+        
+        # Handle S3 URLs or local paths
+        if source_video_url.startswith('http'):
+            # Download from S3 first
+            import requests
+            print(f"   Downloading video from S3...")
+            response = requests.get(source_video_url)
+            response.raise_for_status()
+            temp_input = f"temp_trim_input_{uuid.uuid4().hex[:8]}.webm"
+            input_path = os.path.join(TRANSPARENT_VIDEOS_FOLDER, temp_input)
+            with open(input_path, 'wb') as f:
+                f.write(response.content)
+            cleanup_input = True
+        else:
+            input_path = os.path.join(BASE_DIR, source_video_url.lstrip('/'))
+            if not os.path.exists(input_path):
+                return None, "Source video file not found"
+            cleanup_input = False
+        
+        # Create output filename
+        output_filename = f"trimmed_{job_id}_{uuid.uuid4().hex[:8]}.webm"
+        output_path = os.path.join(TRANSPARENT_VIDEOS_FOLDER, output_filename)
+        
+        # Trim video using ffmpeg
+        duration = out_point - in_point
+        
+        if pingpong:
+            # For pingpong loop: create forward then backward (reverse) sequence
+            print(f"   Creating pingpong loop...")
+            
+            ffmpeg_cmd = [
+                'ffmpeg', '-y',
+                '-ss', str(in_point),
+                '-i', input_path,
+                '-filter_complex',
+                f'[0:v]trim=duration={duration},setpts=PTS-STARTPTS,split[main][copy]; '
+                f'[copy]reverse[rev]; [main][rev]concat=n=2:v=1:a=0[out]',
+                '-map', '[out]',
+                '-c:v', 'libvpx-vp9',
+                '-pix_fmt', 'yuva420p',
+                '-b:v', '0',
+                '-crf', '10',
+                '-quality', 'best',
+                '-cpu-used', '0',
+                output_path
+            ]
+        else:
+            # Normal trim without pingpong
+            print(f"   Trimming video...")
+            
+            ffmpeg_cmd = [
+                'ffmpeg', '-y',
+                '-ss', str(in_point),
+                '-i', input_path,
+                '-t', str(duration),
+                '-c:v', 'libvpx-vp9',
+                '-pix_fmt', 'yuva420p',
+                '-b:v', '0',
+                '-crf', '10',
+                output_path
+            ]
+        
+        print(f"   Running FFmpeg...")
+        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            print(f"   ❌ FFmpeg trim error: {result.stderr}")
+            if cleanup_input and os.path.exists(input_path):
+                os.remove(input_path)
+            return None, f"FFmpeg trimming failed: {result.stderr[:500]}"
+        
+        # Upload trimmed video to S3 if enabled
+        s3_key = f"library/transparent_videos/{output_filename}"
+        trimmed_url = upload_file(output_path, s3_key)
+        
+        # Clean up temp input file if downloaded from S3
+        if cleanup_input and os.path.exists(input_path):
+            os.remove(input_path)
+        
+        print(f"   ✅ Video trimmed successfully: {trimmed_url}")
+        return trimmed_url, None
+        
+    except Exception as e:
+        traceback.print_exc()
+        return None, f"Trim error: {e}"
 
 def handle_video_stitching(job):
     temp_video_a = None
@@ -1578,8 +1679,6 @@ def handle_keying(job):
                 '-i', os.path.join(keyed_frames_dir, 'frame_%05d.png'),
                 '-c:v', 'libvpx-vp9',
                 '-pix_fmt', 'yuva420p',
-                '-auto-alt-ref', '0',
-                '-metadata:s:v:0', 'alpha_mode=1',  # lowercase - Wix requires this!
                 '-crf', '15',
                 '-b:v', '0',
                 final_output_path
@@ -1876,6 +1975,7 @@ def process_job(job, conn):
     elif job_type in ['style_analysis', 'palette_analysis', 'animation_prompting']: return handle_openai_vision_analysis(job)
     elif job_type == 'video_stitching': return handle_video_stitching(job)
     elif job_type == 'boomerang_automation': return handle_boomerang_automation(job, conn)
+    elif job_type == 'trim': return handle_trim(job)
     elif job_type == 'animation' and status in ['queued', 'processing']: return handle_animation(job)
     else: return None, f"Unknown job type/status: {job_type}/{status}"
 
