@@ -105,18 +105,11 @@ def process_video_with_opencv(video_path, output_path, lower_green, upper_green,
         ffmpeg_cmd = [
             'ffmpeg', '-y',
             '-framerate', str(original_fps),
-            '-f', 'image2',
-            '-start_number', '0',  # Start from frame 0 (frames are numbered 00000, 00001, etc)
             '-i', os.path.join(temp_frame_dir, 'frame_%05d.png'),
-            '-vf', 'format=yuva420p',  # CRITICAL: Force alpha-aware format filter
             '-c:v', 'libvpx-vp9',
-            '-pix_fmt', 'yuva420p',  # Pixel format with alpha channel
-            '-auto-alt-ref', '0',  # CRITICAL: Required for transparent WebM
-            '-metadata:s:v:0', 'alpha_mode=1',  # Signal that alpha channel exists
-            '-b:v', '8M',  # High bitrate for quality
-            '-crf', '10',  # Quality level (lower = better)
-            '-quality', 'good',  # Quality/speed tradeoff
-            '-cpu-used', '2',  # Speed preset
+            '-pix_fmt', 'yuva420p',
+            '-crf', '10',
+            '-b:v', '0',
             output_path
         ]
         

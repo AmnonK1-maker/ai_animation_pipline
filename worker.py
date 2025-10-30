@@ -532,18 +532,11 @@ def apply_sticker_effect_to_video(input_video_path, output_video_path,
         ffmpeg_cmd = [
             'ffmpeg', '-y',
             '-framerate', str(fps),
-            '-f', 'image2',  # Explicitly specify image sequence format
-            '-start_number', '0',  # Start from frame 0 (frames are numbered 000000, 000001, etc)
             '-i', os.path.join(temp_frames_dir, 'frame_%06d.png'),
-            '-vf', 'format=yuva420p',  # CRITICAL: Force alpha-aware format filter
-            '-c:v', 'libvpx-vp9',  # VP9 codec for WebM with transparency
-            '-pix_fmt', 'yuva420p',  # Pixel format with alpha channel
-            '-auto-alt-ref', '0',  # CRITICAL: Required for transparent WebM
-            '-metadata:s:v:0', 'alpha_mode=1',  # Signal that alpha channel exists
-            '-b:v', '8M',  # High bitrate for quality
-            '-crf', '15',  # Constant Rate Factor (0-63, lower = better quality)
-            '-quality', 'good',  # Quality/speed tradeoff
-            '-cpu-used', '2',  # Speed (0-5, lower = better quality but slower)
+            '-c:v', 'libvpx-vp9',
+            '-pix_fmt', 'yuva420p',
+            '-crf', '15',
+            '-b:v', '0',
             output_video_path
         ]
         
@@ -1576,23 +1569,15 @@ def handle_keying(job):
             log_memory(job_id, "before encoding")
             
             # Encode the processed frames to WebM with transparency
-            # CRITICAL: Must use specific flags to preserve alpha from PNG input
             # Use output_fps (which may be modified by posterize time)
             ffmpeg_cmd = [
                 'ffmpeg', '-y',
                 '-framerate', str(output_fps),
-                '-f', 'image2',
-                '-start_number', '0',  # Start from frame 0 (frames are numbered 00000, 00001, etc)
                 '-i', os.path.join(keyed_frames_dir, 'frame_%05d.png'),
-                '-vf', 'format=yuva420p',  # CRITICAL: Force alpha-aware format filter
                 '-c:v', 'libvpx-vp9',
-                '-pix_fmt', 'yuva420p',  # Pixel format with alpha channel
-                '-auto-alt-ref', '0',  # CRITICAL: Required for transparent WebM
-                '-metadata:s:v:0', 'alpha_mode=1',  # Explicitly mark alpha channel
-                '-b:v', '8M',  # High bitrate for quality
-                '-crf', '15',  # Quality level (lower = better)
-                '-quality', 'good',  # Quality/speed tradeoff
-                '-cpu-used', '2',  # Speed preset
+                '-pix_fmt', 'yuva420p',
+                '-crf', '15',
+                '-b:v', '0',
                 final_output_path
             ]
             
