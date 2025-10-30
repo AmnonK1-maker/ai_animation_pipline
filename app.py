@@ -1630,6 +1630,14 @@ def trim_video():
         job_id = int(request.form.get('job_id'))
         in_point = float(request.form.get('in_point'))
         out_point = float(request.form.get('out_point'))
+        pingpong = request.form.get('pingpong') == '1'
+        
+        print(f"\n=== TRIM VIDEO REQUEST ===", flush=True)
+        print(f"Job ID: {job_id}", flush=True)
+        print(f"In Point: {in_point}s", flush=True)
+        print(f"Out Point: {out_point}s", flush=True)
+        print(f"Pingpong: {pingpong} (raw value: '{request.form.get('pingpong')}')", flush=True)
+        print(f"=========================\n", flush=True)
         
         if out_point <= in_point:
             return jsonify({"success": False, "error": "Out point must be after in point"}), 400
@@ -1676,30 +1684,77 @@ def trim_video():
             
             # Trim video using ffmpeg
             duration = out_point - in_point
-            ffmpeg_cmd = [
-                'ffmpeg', '-y',
-                '-i', input_path,
-                '-ss', str(in_point),
-                '-t', str(duration),
-                '-c', 'copy',  # Copy codec for fast trimming
-                output_path
-            ]
             
-            print(f"-> Trimming video: {in_point}s to {out_point}s (duration: {duration}s)")
+            if pingpong:
+                # For pingpong loop: create forward then backward (reverse) sequence
+                print(f"-> Creating pingpong loop: {in_point}s to {out_point}s (duration: {duration}s)", flush=True)
+                
+                # Use FFmpeg complex filter to create pingpong effect
+                # Split the video, reverse one copy, concatenate them
+                # NOTE: We use trim filter INSIDE filter_complex instead of -t flag
+                # because -t would limit input before the filter runs
+                ffmpeg_cmd = [
+                    'ffmpeg', '-y',
+                    '-ss', str(in_point),
+                    '-i', input_path,
+                    '-filter_complex',
+                    f'[0:v]trim=duration={duration},setpts=PTS-STARTPTS,split[main][copy]; '
+                    f'[copy]reverse[rev]; [main][rev]concat=n=2:v=1:a=0[out]',
+                    '-map', '[out]',
+                    '-c:v', 'libvpx-vp9',
+                    '-pix_fmt', 'yuva420p',
+                    '-auto-alt-ref', '0',
+                    '-b:v', '0',  # Use constant quality mode (CRF-based)
+                    '-crf', '10',  # High quality (0-63, lower = better quality)
+                    '-quality', 'best',  # Use best quality encoding (slowest but highest quality)
+                    '-cpu-used', '0',  # Slowest/best quality (0-5, lower = better)
+                    output_path
+                ]
+            else:
+                # Normal trim without pingpong
+                print(f"-> Trimming video: {in_point}s to {out_point}s (duration: {duration}s)")
+                
+                # For WebM files with transparency, we need to re-encode properly
+                # Use VP9 codec with alpha channel support
+                ffmpeg_cmd = [
+                    'ffmpeg', '-y',
+                    '-ss', str(in_point),  # Seek before input for faster processing
+                    '-i', input_path,
+                    '-t', str(duration),
+                    '-c:v', 'libvpx-vp9',  # VP9 video codec
+                    '-pix_fmt', 'yuva420p',  # Pixel format with alpha
+                    '-auto-alt-ref', '0',  # Required for transparent WebM
+                    '-b:v', '2M',  # Bitrate
+                    '-crf', '30',  # Quality (lower = better, 23-30 is good range)
+                    output_path
+                ]
+            
+            print(f"-> Running FFmpeg command...")
+            print(f"   Command: {' '.join(ffmpeg_cmd)}")
             result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+            print(f"   FFmpeg stdout: {result.stdout}")
+            print(f"   FFmpeg stderr: {result.stderr[:500] if result.stderr else 'None'}")
             
             if result.returncode != 0:
                 print(f"   ❌ FFmpeg trim error: {result.stderr}")
-                return jsonify({"success": False, "error": "FFmpeg trimming failed"}), 500
+                # Return the actual FFmpeg error for debugging
+                error_msg = result.stderr.split('\n')[-5:] if result.stderr else "Unknown error"
+                return jsonify({"success": False, "error": f"FFmpeg trimming failed: {error_msg}"}), 500
             
             # Upload trimmed video to S3 if enabled
             s3_key = f"library/transparent_videos/{output_filename}"
             trimmed_url = upload_file(output_path, s3_key)
             
             # Update the job's result_data with trimmed video
+            prompt_suffix = f"[Trimmed {in_point:.1f}s-{out_point:.1f}s"
+            if pingpong:
+                prompt_suffix += " - Pingpong Loop]"
+            else:
+                prompt_suffix += "]"
+            
             cursor.execute(
                 "UPDATE jobs SET result_data = ?, prompt = ? WHERE id = ?",
-                (trimmed_url, f"{job['prompt']} [Trimmed {in_point:.1f}s-{out_point:.1f}s]", job_id)
+                (trimmed_url, f"{job['prompt']} {prompt_suffix}", job_id)
             )
             conn.commit()
             

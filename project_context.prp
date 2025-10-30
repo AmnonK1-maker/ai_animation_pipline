@@ -406,14 +406,60 @@ python3 worker.py                      # Terminal 2: Background processor (optio
 
 **Status**: The application has undergone a complete UI transformation and is production-ready with modern, streamlined workflows. 
 
-**Latest Update (October 20-27, 2025)**: Advanced Sticker Effects System with complete post-processing pipeline (displacement mapping, blend mode textures, surface bevel & emboss, alpha bevel, drop shadow), Posterize Time feature for stop-motion effects (12fps/8fps), Failed Job Recovery System with retry/delete functionality, updated background removal to 851-labs model, enhanced image generation prompts, style analyzer improvements (1500 max_tokens, movement/genre focus), increased outline thickness (max 30px), double-submit protection, PNG-based workflow for alpha preservation, quality settings optimization (8M bitrate, CRF 15).
-
-**Previous Updates**: 
-- October 13, 2025 (enhanced UI/UX and video keying tools)
-- October 12, 2025 (complete UI overhaul)
-- October 8-9, 2025 (cloud deployment + S3 integration)
-- October 5, 2025 PM (critical stability fixes)
-- October 5, 2025 AM (UX improvements)
-- October 4, 2025 (auto-keying workflow)
-- October 3, 2025 (GPT-4o Vision integration)
-- October 1, 2025 (animation image selection fixes)
+## Export Features & Video Trimming (October 30, 2025) - All Working 📤
+|- **GIF Export**: Export keyed animations as animated GIFs with palette optimization
+|- **PNG Sequence Export**: Export frame sequences as ZIP files for external compositing
+|- **Video Trimming Tool**: Edit animations with in/out point selection
+|- **Pingpong Loop Creation**: Forward-then-backward seamless loops with high quality encoding
+|- **Direct Download**: Files download directly instead of opening in new browser tabs
+|- **Multi-Format Downloads**: Choose between WebM, GIF, or PNG ZIP when downloading keyed videos
+|- **Alpha Channel Fix**: WebM videos now properly preserve transparency when downloaded/uploaded externally
+|- **FFmpeg Encoding Updates**: Explicit `-vf 'format=yuva420p'` and `-start_number 0` flags for robust alpha preservation
+|- **Database Cleanup**: Automatic job limit (30 most recent) prevents browser freezing with large job queues
+|- **Trim Tool Features**:
+|  - Video preview with playback controls
+|  - Frame-by-frame navigation (prev/next frame buttons)
+|  - In/Out point selection with time display
+|  - Duration calculation
+|  - Jump to in/out points instantly
+|  - Pingpong loop checkbox with high-quality encoding (CRF 10, best quality, cpu-used 0)
+|  - Re-encodes with full transparency support for WebM
+|
+|### Technical Implementation:
+|- **Export Workflow**: PNG sequence kept in memory after keying, GIF/ZIP exports occur before final WebM encoding
+|- **GIF Quality**: Two-pass palette generation using `palettegen` and `paletteuse` filters with Bayer dithering
+|- **ZIP Compression**: Level 6 compression for balanced size/speed
+|- **Trimming Method**: FFmpeg with `-ss` and `-t` flags for fast seeking
+|- **Pingpong Implementation**: Complex filter using `trim`, `setpts`, `split`, `reverse`, and `concat` filters
+|- **Result Storage**: New JSON format in `keyed_result_data` with `webm`, `gif`, and `png_zip` URLs
+|- **Backward Compatibility**: JavaScript parsing handles both old string format and new JSON format
+|- **Alpha Preservation**: Fixed WebM encoding in both `video_processor.py` and `worker.py` with explicit format conversion
+|- **Force Download**: HTML5 download attribute with proper MIME type and filename extraction
+|
+|### Files Modified:
+|- `worker.py`: Added GIF/ZIP export logic in `handle_keying()`, updated WebM encoding with alpha flags
+|- `video_processor.py`: Updated WebM encoding to use `-vf 'format=yuva420p'` and `-start_number 0`
+|- `app.py`: Added `/api/trim-video` endpoint with pingpong support and high-quality encoding
+|- `templates/index_v2.html`: Added export checkboxes, trim tool UI, pingpong checkbox, download options modal, force download function
+|
+|### Known Issues Resolved:
+|- ✅ **GIF Transparency**: Uses palette-based transparency (GIF limitations apply)
+|- ✅ **Worker Code Updates**: Workers must be restarted to pick up code changes
+|- ✅ **Trim Tool Display**: Fixed inline style preventing tool from showing
+|- ✅ **Pingpong Duration**: Fixed `-t` flag issue by using `trim` filter inside `filter_complex`
+|- ✅ **Download Behavior**: Replaced window.open with force download using HTML5 attributes
+|- ✅ **Alpha Channel Loss**: Fixed FFmpeg encoding to preserve transparency in all scenarios
+|- ✅ **App Freezing**: Implemented database cleanup to limit jobs to 30 most recent
+|
+|**Latest Update (October 30, 2025)**: Export Features (GIF, PNG ZIP), Video Trimming Tool with Pingpong Loops, Direct Download Functionality, Alpha Channel Transparency Fixes for WebM encoding, Database Cleanup System, Multi-format download options modal, Force download implementation, High-quality pingpong encoding (CRF 10), Complex filter for proper pingpong looping.
+|
+|**Previous Updates**: 
+|- October 20-27, 2025 (advanced sticker effects system)
+|- October 13, 2025 (enhanced UI/UX and video keying tools)
+|- October 12, 2025 (complete UI overhaul)
+|- October 8-9, 2025 (cloud deployment + S3 integration)
+|- October 5, 2025 PM (critical stability fixes)
+|- October 5, 2025 AM (UX improvements)
+|- October 4, 2025 (auto-keying workflow)
+|- October 3, 2025 (GPT-4o Vision integration)
+|- October 1, 2025 (animation image selection fixes)

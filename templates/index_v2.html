@@ -1297,7 +1297,7 @@
         </div>
         
         <!-- TRIM VIDEO TOOL -->
-        <div class="tool-content" id="tool-trim-video" style="display: none;">
+        <div class="tool-content" id="tool-trim-video">
             <h2 class="tool-title">✂️ Trim Animation</h2>
             <p style="color: #666; margin-bottom: 20px;">Select the portion of the video you want to keep</p>
             
@@ -1338,6 +1338,14 @@
                         <button class="frame-btn" onclick="nextFrameTrim()">Next Frame ►</button>
                     </div>
                 </div>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <label class="checkbox-item" style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="trim-pingpong" style="width: 18px; height: 18px;">
+                    <span style="font-weight: 600;">🔄 Create Pingpong Loop</span>
+                </label>
+                <p style="margin: 5px 0 0 28px; font-size: 12px; color: #666;">Video plays forward then backward continuously (A→B→A loop)</p>
             </div>
             
             <button class="btn-primary" onclick="trimVideo()">✂️ Trim & Save</button>
@@ -1441,6 +1449,8 @@ document.querySelectorAll('.tool-btn').forEach(btn => {
 });
 
 function switchTool(toolName) {
+    console.log('switchTool called with:', toolName);
+    
     // Remove active class from all buttons
     document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
     
@@ -1451,10 +1461,21 @@ function switchTool(toolName) {
     const btn = document.querySelector(`[data-tool="${toolName}"]`);
     const content = document.getElementById(`tool-${toolName}`);
     
-    if (btn && content) {
-        btn.classList.add('active');
+    console.log('Button found:', btn);
+    console.log('Content found:', content);
+    
+    if (content) {
+        // Always activate content if it exists (button is optional for programmatic switches)
         content.classList.add('active');
         currentTool = toolName;
+        console.log('Tool activated:', toolName);
+        
+        // Activate button if it exists
+        if (btn) {
+            btn.classList.add('active');
+        }
+    } else {
+        console.error('Tool content not found for:', toolName);
     }
 }
 
@@ -3256,6 +3277,7 @@ function trimVideo() {
     
     const inPoint = parseFloat(document.getElementById('trim-in-point').value) || 0;
     const outPoint = parseFloat(document.getElementById('trim-out-point').value) || 0;
+    const pingpong = document.getElementById('trim-pingpong').checked;
     
     if (outPoint <= inPoint) {
         alert('Out point must be after in point');
@@ -3266,14 +3288,30 @@ function trimVideo() {
     formData.append('job_id', currentTrimJobId);
     formData.append('in_point', inPoint);
     formData.append('out_point', outPoint);
+    formData.append('pingpong', pingpong ? '1' : '0');
     
     fetch('/api/trim-video', { method: 'POST', body: formData })
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                alert('Video trimmed successfully!');
-                loadJobs();
+                // Save the job ID before clearing it
+                const trimmedJobId = currentTrimJobId;
                 currentTrimJobId = null;
+                
+                // Close the trim tool and go back to the job list
+                switchTool(null);
+                
+                // Reload the jobs to show the updated video
+                loadJobs();
+                
+                // Wait a bit longer for jobs to reload, then open the media viewer
+                setTimeout(() => {
+                    openMediaViewer(trimmedJobId);
+                    const message = pingpong 
+                        ? 'Pingpong loop created successfully! The video now plays forward then backward continuously.'
+                        : 'Video trimmed successfully! The trimmed version has replaced the original.';
+                    alert(message);
+                }, 1500);
             } else {
                 alert('Error: ' + (data.error || 'Unknown error'));
             }
@@ -3563,8 +3601,20 @@ function reKeyJob(jobId) {
 function downloadJob(jobId) {
     const job = allJobs.find(j => j.id === jobId);
     if (job && job.result_data) {
-        window.open(job.result_data, '_blank');
+        const ext = job.result_data.split('.').pop().split('?')[0]; // Get extension
+        forceDownload(job.result_data, `job_${jobId}.${ext}`);
     }
+}
+
+// Helper function to force download instead of opening in new tab
+function forceDownload(url, filename) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename || url.split('/').pop();
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    console.log('✓ Initiated download:', filename || url);
 }
 
 function downloadKeyed(jobId) {
@@ -3584,15 +3634,15 @@ function downloadKeyed(jobId) {
     } catch (e) {
         // Old format - just a URL string
         console.log('Old format detected (plain string URL), downloading directly');
-        window.open(job.keyed_result_data, '_blank');
+        forceDownload(job.keyed_result_data, `keyed_${jobId}.webm`);
         return;
     }
     
     // New format - show options
     const downloads = [];
-    if (exportData.webm) downloads.push({label: 'WebM Video (Transparent)', url: exportData.webm});
-    if (exportData.gif) downloads.push({label: 'GIF (Animated, Transparent)', url: exportData.gif});
-    if (exportData.png_zip) downloads.push({label: 'PNG Sequence (ZIP Archive)', url: exportData.png_zip});
+    if (exportData.webm) downloads.push({label: 'WebM Video (Transparent)', url: exportData.webm, ext: 'webm'});
+    if (exportData.gif) downloads.push({label: 'GIF (Animated, Transparent)', url: exportData.gif, ext: 'gif'});
+    if (exportData.png_zip) downloads.push({label: 'PNG Sequence (ZIP Archive)', url: exportData.png_zip, ext: 'zip'});
     
     console.log('Available downloads:', downloads);
     
@@ -3604,7 +3654,7 @@ function downloadKeyed(jobId) {
     if (downloads.length === 1) {
         // Only one option, download directly
         console.log('Only one format available, downloading:', downloads[0].label);
-        window.open(downloads[0].url, '_blank');
+        forceDownload(downloads[0].url, `keyed_${jobId}.${downloads[0].ext}`);
         return;
     }
     
@@ -3621,7 +3671,7 @@ function downloadKeyed(jobId) {
         const index = parseInt(choice) - 1;
         if (index >= 0 && index < downloads.length) {
             console.log('User selected:', downloads[index].label);
-            window.open(downloads[index].url, '_blank');
+            forceDownload(downloads[index].url, `keyed_${jobId}.${downloads[index].ext}`);
         } else {
             alert('Invalid selection. Please choose a number between 1 and ' + downloads.length);
         }

@@ -533,15 +533,15 @@ def apply_sticker_effect_to_video(input_video_path, output_video_path,
             'ffmpeg', '-y',
             '-framerate', str(fps),
             '-f', 'image2',  # Explicitly specify image sequence format
+            '-start_number', '0',  # Start from frame 0 (frames are numbered 000000, 000001, etc)
             '-i', os.path.join(temp_frames_dir, 'frame_%06d.png'),
+            '-vf', 'format=yuva420p',  # Force conversion to yuva420p with alpha
             '-c:v', 'libvpx-vp9',  # VP9 codec for WebM with transparency
             '-pix_fmt', 'yuva420p',  # Pixel format with alpha channel
             '-auto-alt-ref', '0',  # CRITICAL: Required for transparent WebM
-            '-metadata:s:v:0', 'alpha_mode="1"',  # Signal that alpha channel exists
-            '-b:v', '8M',  # High bitrate for better quality
+            '-metadata:s:v:0', 'alpha_mode=1',  # Signal that alpha channel exists
+            '-b:v', '0',  # Use constant quality mode
             '-crf', '15',  # Constant Rate Factor (0-63, lower = better quality)
-            '-quality', 'good',  # Quality/speed tradeoff
-            '-cpu-used', '2',  # Speed (0-5, lower = better quality but slower)
             output_video_path
         ]
         
@@ -1339,10 +1339,16 @@ def handle_keying(job):
         upper_green = [settings['hue_center'] + settings['hue_tolerance'], 255, 255]
         print(f"   JOB #{job_id}: Color range - Lower: {lower_green}, Upper: {upper_green}")
         
-        # Check if sticker effect OR posterize is requested BEFORE processing
+        # Check if sticker effect OR posterize OR any exports are requested BEFORE processing
         sticker_effect_requested = settings.get('sticker_effect', False)
         posterize_requested = settings.get('posterize_enabled', False)
-        skip_encoding_needed = sticker_effect_requested or posterize_requested
+        export_gif = settings.get('export_gif', False)
+        export_png_zip = settings.get('export_png_zip', False)
+        skip_encoding_needed = sticker_effect_requested or posterize_requested or export_gif or export_png_zip
+        
+        # Initialize export URLs (will be set if exports are requested)
+        gif_url = None
+        zip_url = None
         
         # Process video (keying)
         print(f"   JOB #{job_id}: ▶️  Starting video keying...")
@@ -1352,7 +1358,11 @@ def handle_keying(job):
                 effects_list.append("sticker effects")
             if posterize_requested:
                 effects_list.append("posterize time")
-            print(f"   JOB #{job_id}: 🎨 {', '.join(effects_list)} requested - will skip encoding until after effects are applied")
+            if export_gif:
+                effects_list.append("GIF export")
+            if export_png_zip:
+                effects_list.append("PNG ZIP export")
+            print(f"   JOB #{job_id}: 🎨 {', '.join(effects_list)} requested - will skip encoding until after processing")
         
         keying_result = process_video_with_opencv(
             video_path=greenscreen_video_path, 
@@ -1497,6 +1507,69 @@ def handle_keying(job):
                 log_memory(job_id, "after posterize time")
                 clear_memory()  # Force cleanup before encoding
             
+            # STEP 3: Export GIF if requested
+            gif_url = None
+            if settings.get('export_gif', False):
+                print(f"   JOB #{job_id}: 🎞️  Exporting GIF from PNG sequence...")
+                gif_filename = f"keyed_{job_id}_{uuid.uuid4().hex[:8]}.gif"
+                gif_path = os.path.join(TRANSPARENT_VIDEOS_FOLDER, gif_filename)
+                
+                try:
+                    # Use ffmpeg to create GIF with good quality and transparency support
+                    # Create palette first for better quality
+                    palette_path = os.path.join(keyed_frames_dir, 'palette.png')
+                    palette_cmd = [
+                        'ffmpeg', '-y',
+                        '-framerate', str(output_fps),
+                        '-i', os.path.join(keyed_frames_dir, 'frame_%05d.png'),
+                        '-vf', 'palettegen=stats_mode=diff',
+                        palette_path
+                    ]
+                    subprocess.run(palette_cmd, capture_output=True, check=True)
+                    
+                    # Generate GIF using the palette
+                    gif_cmd = [
+                        'ffmpeg', '-y',
+                        '-framerate', str(output_fps),
+                        '-i', os.path.join(keyed_frames_dir, 'frame_%05d.png'),
+                        '-i', palette_path,
+                        '-lavfi', 'paletteuse=dither=bayer:bayer_scale=5',
+                        gif_path
+                    ]
+                    result = subprocess.run(gif_cmd, capture_output=True, text=True)
+                    
+                    if result.returncode == 0:
+                        # Upload to S3 if enabled
+                        s3_key = f"library/transparent_videos/{gif_filename}"
+                        gif_url = upload_file(gif_path, s3_key)
+                        print(f"   JOB #{job_id}: ✅ GIF exported: {gif_url}")
+                    else:
+                        print(f"   JOB #{job_id}: ⚠️ GIF export failed: {result.stderr}")
+                except Exception as e:
+                    print(f"   JOB #{job_id}: ⚠️ GIF export error: {e}")
+            
+            # STEP 4: Export PNG sequence as ZIP if requested
+            zip_url = None
+            if settings.get('export_png_zip', False):
+                print(f"   JOB #{job_id}: 📦 Exporting PNG sequence as ZIP...")
+                zip_filename = f"keyed_{job_id}_{uuid.uuid4().hex[:8]}.zip"
+                zip_path = os.path.join(TRANSPARENT_VIDEOS_FOLDER, zip_filename)
+                
+                try:
+                    import zipfile
+                    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as zipf:
+                        frame_files = sorted([f for f in os.listdir(keyed_frames_dir) if f.startswith('frame_') and f.endswith('.png')])
+                        for frame_file in frame_files:
+                            frame_path = os.path.join(keyed_frames_dir, frame_file)
+                            zipf.write(frame_path, arcname=frame_file)
+                    
+                    # Upload to S3 if enabled
+                    s3_key = f"library/transparent_videos/{zip_filename}"
+                    zip_url = upload_file(zip_path, s3_key)
+                    print(f"   JOB #{job_id}: ✅ PNG ZIP exported ({len(frame_files)} frames): {zip_url}")
+                except Exception as e:
+                    print(f"   JOB #{job_id}: ⚠️ PNG ZIP export error: {e}")
+            
             print(f"   JOB #{job_id}: 🎬 Now encoding to final transparent WebM...")
             log_memory(job_id, "before encoding")
             
@@ -1507,16 +1580,15 @@ def handle_keying(job):
                 'ffmpeg', '-y',
                 '-framerate', str(output_fps),
                 '-f', 'image2',
+                '-start_number', '0',  # Start from frame 0 (frames are numbered 00000, 00001, etc)
                 '-i', os.path.join(keyed_frames_dir, 'frame_%05d.png'),
-                '-vf', 'format=yuva420p',  # CRITICAL: Force alpha-aware format filter
+                '-vf', 'format=yuva420p',  # Force conversion to yuva420p with alpha
                 '-c:v', 'libvpx-vp9',
-                '-pix_fmt', 'yuva420p',
-                '-auto-alt-ref', '0',  # Required for transparent WebM
+                '-pix_fmt', 'yuva420p',  # Pixel format with alpha channel
+                '-auto-alt-ref', '0',  # CRITICAL: Required for transparent WebM
                 '-metadata:s:v:0', 'alpha_mode=1',  # Explicitly mark alpha channel
-                '-b:v', '8M',
-                '-crf', '15',
-                '-quality', 'good',
-                '-cpu-used', '2',
+                '-b:v', '0',  # Use constant quality mode
+                '-crf', '15',  # Quality level (lower = better)
                 final_output_path
             ]
             
@@ -1580,8 +1652,17 @@ def handle_keying(job):
             except Exception as e:
                 print(f"   JOB #{job_id}: ⚠️ Warning: could not delete temp INPUT file: {e}")
         
-        print(f"   JOB #{job_id}: 🎉 Returning keyed video URL: {public_url}")
-        return public_url, None
+        # Build result data with all export URLs
+        result_data = {
+            'webm': public_url,
+            'gif': gif_url,
+            'png_zip': zip_url
+        }
+        
+        # Return as JSON string for backward compatibility with existing code
+        result_json = json.dumps(result_data)
+        print(f"   JOB #{job_id}: 🎉 Returning keyed video result: {result_json}")
+        return result_json, None
     except Exception as e:
         print(f"   JOB #{job.get('id', '???')}: ❌ Keying failed with error: {e}")
         traceback.print_exc()

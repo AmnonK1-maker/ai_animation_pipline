@@ -24,6 +24,16 @@ A comprehensive Flask-based application for AI-powered image generation, animati
 ### 🎞️ **Professional Video Processing**
 - **Auto-Key Feature**: One-click automatic chroma keying for all videos (animations, stitched, uploaded)
 - **Manual Keyer Tool**: Advanced HSV controls with real-time preview and click-to-sample color picker
+- **Export Options**: Export keyed videos as GIF or PNG sequence ZIP files
+  - **GIF Export**: High-quality animated GIFs with palette optimization and transparency
+  - **PNG ZIP Export**: Complete frame sequences for external compositing workflows
+  - **Multi-Format Download**: Choose WebM, GIF, or PNG ZIP when downloading
+- **Video Trimming Tool**: Edit animations with precision
+  - **In/Out Point Selection**: Choose exact start and end times
+  - **Frame-by-Frame Navigation**: Prev/next frame buttons for precise control
+  - **Pingpong Loop Creation**: Forward-then-backward seamless loops with high-quality encoding
+  - **Duration Display**: Real-time duration calculation
+  - **Jump to Points**: Instantly jump to in/out points for review
 - **Advanced Sticker Effects**: Complete post-processing pipeline for keyed videos
   - **Displacement Mapping**: Animated texture warping with intensity control
   - **Blend Mode Textures**: Multiply (darken) and Add (brighten) with opacity control
@@ -40,7 +50,8 @@ A comprehensive Flask-based application for AI-powered image generation, animati
 - **Re-Key Functionality**: Process original videos with new settings anytime
 - **Priority Processing**: Keying jobs automatically jump to top of queue
 - **Transparent Display**: Checkerboard background for keyed videos in thumbnails and modal viewer
-- **Download Options**: Separate buttons for original and keyed versions
+- **Direct Download**: Files download directly without opening in new tabs
+- **Alpha Transparency Fix**: WebM videos properly preserve transparency when downloaded/uploaded externally
 - **Background Removal**: 851-labs AI-powered transparent image generation
 
 ### 🎯 **Modern UI & Workflow**
@@ -374,6 +385,18 @@ kling_app/
 - ✅ **Path Handling**: Fixed image path construction and URL normalization for better reliability
 - ✅ **API Response Handling**: Enhanced JavaScript to handle both array and object response formats from /api/jobs
 - ✅ **Worker Process Management**: Improved worker restart and code update handling
+
+### Export Features & Video Trimming (October 30, 2025)
+- ✅ **GIF Export**: Export keyed animations as high-quality animated GIFs with palette optimization
+- ✅ **PNG Sequence Export**: Export frame sequences as ZIP files for external compositing
+- ✅ **Video Trimming Tool**: Edit animations with in/out point selection and frame-by-frame navigation
+- ✅ **Pingpong Loop Creation**: Forward-then-backward seamless loops with high-quality encoding (CRF 10)
+- ✅ **Multi-Format Downloads**: Choose between WebM, GIF, or PNG ZIP when downloading keyed videos
+- ✅ **Direct Download**: Files download directly instead of opening in new browser tabs
+- ✅ **Alpha Channel Fix**: WebM videos now properly preserve transparency when downloaded/uploaded externally
+- ✅ **FFmpeg Encoding Updates**: Explicit `-vf 'format=yuva420p'` and `-start_number 0` for robust alpha preservation
+- ✅ **Database Cleanup**: Job limit (30 most recent) prevents browser freezing with large queues
+- ✅ **Trim Features**: Video preview, duration display, jump to in/out points, frame navigation
 
 ### Advanced Sticker Effects & Video Processing (October 20-27, 2025)
 - ✅ **Complete Sticker Effect Pipeline**: Displacement mapping, blend mode textures, surface bevel, alpha bevel, drop shadow
