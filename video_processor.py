@@ -108,6 +108,8 @@ def process_video_with_opencv(video_path, output_path, lower_green, upper_green,
             '-i', os.path.join(temp_frame_dir, 'frame_%05d.png'),
             '-c:v', 'libvpx-vp9',
             '-pix_fmt', 'yuva420p',
+            '-auto-alt-ref', '0',
+            '-metadata:s:v:0', 'alpha_mode=1',  # lowercase - Wix requires this!
             '-crf', '10',
             '-b:v', '0',
             output_path

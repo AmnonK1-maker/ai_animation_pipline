@@ -535,6 +535,8 @@ def apply_sticker_effect_to_video(input_video_path, output_video_path,
             '-i', os.path.join(temp_frames_dir, 'frame_%06d.png'),
             '-c:v', 'libvpx-vp9',
             '-pix_fmt', 'yuva420p',
+            '-auto-alt-ref', '0',
+            '-metadata:s:v:0', 'alpha_mode=1',  # lowercase - Wix requires this!
             '-crf', '15',
             '-b:v', '0',
             output_video_path
@@ -1576,6 +1578,8 @@ def handle_keying(job):
                 '-i', os.path.join(keyed_frames_dir, 'frame_%05d.png'),
                 '-c:v', 'libvpx-vp9',
                 '-pix_fmt', 'yuva420p',
+                '-auto-alt-ref', '0',
+                '-metadata:s:v:0', 'alpha_mode=1',  # lowercase - Wix requires this!
                 '-crf', '15',
                 '-b:v', '0',
                 final_output_path
