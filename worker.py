@@ -540,6 +540,9 @@ def apply_sticker_effect_to_video(input_video_path, output_video_path,
             '-pix_fmt', 'yuva420p',  # Pixel format with alpha channel
             '-auto-alt-ref', '0',  # CRITICAL: Required for transparent WebM
             '-metadata:s:v:0', 'alpha_mode=1',  # Signal that alpha channel exists
+            '-colorspace', 'bt709',  # Explicit colorspace for better platform compatibility
+            '-color_primaries', 'bt709',  # Color primaries
+            '-color_trc', 'iec61966-2-1',  # Transfer characteristics (sRGB)
             '-b:v', '0',  # Use constant quality mode
             '-crf', '15',  # Constant Rate Factor (0-63, lower = better quality)
             output_video_path
@@ -1587,6 +1590,9 @@ def handle_keying(job):
                 '-pix_fmt', 'yuva420p',  # Pixel format with alpha channel
                 '-auto-alt-ref', '0',  # CRITICAL: Required for transparent WebM
                 '-metadata:s:v:0', 'alpha_mode=1',  # Explicitly mark alpha channel
+                '-colorspace', 'bt709',  # Explicit colorspace for better platform compatibility
+                '-color_primaries', 'bt709',  # Color primaries
+                '-color_trc', 'iec61966-2-1',  # Transfer characteristics (sRGB)
                 '-b:v', '0',  # Use constant quality mode
                 '-crf', '15',  # Quality level (lower = better)
                 final_output_path
