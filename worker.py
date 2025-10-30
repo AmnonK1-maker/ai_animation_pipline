@@ -535,16 +535,15 @@ def apply_sticker_effect_to_video(input_video_path, output_video_path,
             '-f', 'image2',  # Explicitly specify image sequence format
             '-start_number', '0',  # Start from frame 0 (frames are numbered 000000, 000001, etc)
             '-i', os.path.join(temp_frames_dir, 'frame_%06d.png'),
-            '-vf', 'format=yuva420p',  # Force conversion to yuva420p with alpha
+            '-vf', 'format=yuva420p',  # CRITICAL: Force alpha-aware format filter
             '-c:v', 'libvpx-vp9',  # VP9 codec for WebM with transparency
             '-pix_fmt', 'yuva420p',  # Pixel format with alpha channel
             '-auto-alt-ref', '0',  # CRITICAL: Required for transparent WebM
             '-metadata:s:v:0', 'alpha_mode=1',  # Signal that alpha channel exists
-            '-colorspace', 'bt709',  # Explicit colorspace for better platform compatibility
-            '-color_primaries', 'bt709',  # Color primaries
-            '-color_trc', 'iec61966-2-1',  # Transfer characteristics (sRGB)
-            '-b:v', '0',  # Use constant quality mode
+            '-b:v', '8M',  # High bitrate for quality
             '-crf', '15',  # Constant Rate Factor (0-63, lower = better quality)
+            '-quality', 'good',  # Quality/speed tradeoff
+            '-cpu-used', '2',  # Speed (0-5, lower = better quality but slower)
             output_video_path
         ]
         
@@ -1585,16 +1584,15 @@ def handle_keying(job):
                 '-f', 'image2',
                 '-start_number', '0',  # Start from frame 0 (frames are numbered 00000, 00001, etc)
                 '-i', os.path.join(keyed_frames_dir, 'frame_%05d.png'),
-                '-vf', 'format=yuva420p',  # Force conversion to yuva420p with alpha
+                '-vf', 'format=yuva420p',  # CRITICAL: Force alpha-aware format filter
                 '-c:v', 'libvpx-vp9',
                 '-pix_fmt', 'yuva420p',  # Pixel format with alpha channel
                 '-auto-alt-ref', '0',  # CRITICAL: Required for transparent WebM
                 '-metadata:s:v:0', 'alpha_mode=1',  # Explicitly mark alpha channel
-                '-colorspace', 'bt709',  # Explicit colorspace for better platform compatibility
-                '-color_primaries', 'bt709',  # Color primaries
-                '-color_trc', 'iec61966-2-1',  # Transfer characteristics (sRGB)
-                '-b:v', '0',  # Use constant quality mode
+                '-b:v', '8M',  # High bitrate for quality
                 '-crf', '15',  # Quality level (lower = better)
+                '-quality', 'good',  # Quality/speed tradeoff
+                '-cpu-used', '2',  # Speed preset
                 final_output_path
             ]
             
