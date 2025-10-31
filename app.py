@@ -229,13 +229,53 @@ def clear_stuck_command():
     except Exception as e:
         print(f"Error clearing stuck jobs: {e}")
 
-def preprocess_animation_image(source_image_path, background_color_str, white_outline=False, outline_thickness=3):
+def get_aspect_ratio_from_image(image_path):
+    """Calculate aspect ratio from image and map to closest Seedance-supported ratio"""
+    try:
+        # Handle both S3 URLs and local file paths
+        if image_path.startswith('http'):
+            import requests
+            img_response = requests.get(image_path)
+            img_response.raise_for_status()
+            from io import BytesIO
+            img = Image.open(BytesIO(img_response.content))
+        else:
+            if image_path.startswith('/'):
+                full_path = os.path.join(BASE_DIR, image_path.lstrip('/'))
+            else:
+                full_path = os.path.join(BASE_DIR, image_path)
+            img = Image.open(full_path)
+        
+        width, height = img.size
+        ratio = width / height
+        
+        # Map to closest Seedance-supported aspect ratio
+        # Supported: 16:9, 4:3, 1:1, 3:4, 9:16, 21:9, 9:21
+        ratios = {
+            21/9: "21:9",   # 2.33
+            16/9: "16:9",   # 1.78
+            4/3: "4:3",     # 1.33
+            1/1: "1:1",     # 1.00
+            3/4: "3:4",     # 0.75
+            9/16: "9:16",   # 0.56
+            9/21: "9:21"    # 0.43
+        }
+        
+        # Find closest ratio
+        closest = min(ratios.keys(), key=lambda x: abs(x - ratio))
+        return ratios[closest]
+    except Exception as e:
+        print(f"Error calculating aspect ratio: {e}")
+        return "1:1"  # Default fallback
+
+def preprocess_animation_image(source_image_path, background_color_str, white_outline=False, outline_thickness=3, scale=100):
     """
     Preprocess image for animation:
-    1. Add white outline (if requested)
-    2. Place on colored background (if requested)
+    1. Scale image (if requested) to add space around object
+    2. Add white outline (if requested)
+    3. Place on colored background (if requested)
     
-    Order is critical: outline must be applied BEFORE background.
+    Order is critical: scale -> outline -> background.
     """
     try:
         # Handle both S3 URLs and local file paths
@@ -263,6 +303,22 @@ def preprocess_animation_image(source_image_path, background_color_str, white_ou
 
         print(f"-> Pre-processing animation input: {source_image_path}")
         fg_image = Image.open(source_full_path).convert("RGBA")
+        
+        # STEP 0: Scale image if requested (adds space around object)
+        if scale < 100:
+            print(f"   ...scaling image to {scale}% (adding space around object)")
+            original_size = fg_image.size
+            scale_factor = scale / 100.0
+            new_size = (int(fg_image.width * scale_factor), int(fg_image.height * scale_factor))
+            fg_image_scaled = fg_image.resize(new_size, Image.Resampling.LANCZOS)
+            
+            # Create new canvas with original size and center the scaled image
+            canvas = Image.new("RGBA", original_size, (0, 0, 0, 0))
+            paste_x = (original_size[0] - new_size[0]) // 2
+            paste_y = (original_size[1] - new_size[1]) // 2
+            canvas.paste(fg_image_scaled, (paste_x, paste_y), fg_image_scaled)
+            fg_image = canvas
+            print(f"   ...image scaled and centered")
         
         # STEP 1: Add white outline if requested (BEFORE background)
         if white_outline and outline_thickness > 0:
@@ -959,6 +1015,15 @@ def generate_animation():
         s3_key = f"uploads/{filename}"
         end_image_url = save_uploaded_file(end_frame_file, s3_key)
     
+    # Handle last frame (for both Kling and Seedance)
+    last_frame_file = request.files.get("last_frame")
+    last_frame_url = request.form.get("last_frame_url")  # From "Use as Last Frame" button
+    
+    if last_frame_file:
+        filename = f"{uuid.uuid4()}-last-{os.path.basename(last_frame_file.filename)}"
+        s3_key = f"uploads/{filename}"
+        last_frame_url = save_uploaded_file(last_frame_file, s3_key)
+    
     if request.form.get("boomerang_automation") == "true" and end_image_url:
         # Create A-B-A loop automation job
         background_option = request.form.get("background", "as-is")
@@ -1003,7 +1068,32 @@ def generate_animation():
     background_option = request.form.get("background", "as-is")
     white_outline = request.form.get("white_outline") == "true"
     outline_thickness = int(request.form.get("outline_thickness", 3))
-    processed_image_url = preprocess_animation_image(image_url, background_option, white_outline, outline_thickness)
+    image_scale = int(request.form.get("image_scale", 100))
+    skip_preprocessing = request.form.get("skip_preprocessing") == "true"
+    
+    # Get model-specific durations
+    kling_duration = int(request.form.get("kling_duration", 5))
+    seedance_duration = int(request.form.get("seedance_duration", 5))
+    
+    # Calculate aspect ratio from image for Seedance
+    aspect_ratio = get_aspect_ratio_from_image(image_url)
+    print(f"   ...detected aspect ratio: {aspect_ratio}")
+    
+    # Preprocess start frame with scale (unless already preprocessed from Edit)
+    if skip_preprocessing:
+        print(f"   ...skipping preprocessing (using already preprocessed image)")
+        processed_image_url = image_url
+    else:
+        processed_image_url = preprocess_animation_image(image_url, background_option, white_outline, outline_thickness, image_scale)
+    
+    # Preprocess last frame with same settings if provided (unless already preprocessed)
+    processed_last_frame_url = None
+    if last_frame_url:
+        if skip_preprocessing:
+            processed_last_frame_url = last_frame_url
+        else:
+            processed_last_frame_url = preprocess_animation_image(last_frame_url, background_option, white_outline, outline_thickness, image_scale)
+            print(f"   ...preprocessed last frame: {processed_last_frame_url}")
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -1011,16 +1101,15 @@ def generate_animation():
             input_data = {
                 "image_url": processed_image_url, 
                 "end_image_url": end_image_url if end_image_url else None,
+                "last_frame_url": processed_last_frame_url if processed_last_frame_url else None,
                 "prompt": prompt, 
                 "negative_prompt": request.form.get("negative_prompt", ""),
-                "seamless_loop": request.form.get("seamless_loop") == "true", 
-                "white_outline": request.form.get("white_outline") == "true",
                 "video_model": model,
-                "kling_duration": int(request.form.get("kling_duration", 5)), 
+                "kling_duration": kling_duration, 
                 "kling_mode": request.form.get("kling_mode", "pro"),
-                "seedance_duration": int(request.form.get("seedance_duration", 5)), 
+                "seedance_duration": seedance_duration, 
                 "seedance_resolution": request.form.get("seedance_resolution", "1080p"),
-                "seedance_aspect_ratio": request.form.get("seedance_aspect_ratio", "1:1"),
+                "seedance_aspect_ratio": aspect_ratio,  # Auto-detected from image
                 "background": background_option
             }
             cursor.execute(

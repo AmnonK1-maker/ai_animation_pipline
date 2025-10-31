@@ -856,11 +856,27 @@
             <h2 class="tool-title">Animation Generator</h2>
             
             <div class="form-group">
-                <div class="upload-area" id="anim-start-frame-upload" style="cursor: pointer;">
-                    <img id="anim-frame-preview" style="display: none; max-width: 100%; height: auto; object-fit: contain;" />
-                    <p id="anim-frame-placeholder">Upload Start Frame</p>
-                    <input type="file" id="anim-start-frame" accept="image/*" style="display: none;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div>
+                        <label class="form-label" style="margin-bottom: 8px;">First Frame:</label>
+                        <div class="upload-area" id="anim-start-frame-upload" style="cursor: pointer;">
+                            <img id="anim-frame-preview" style="display: none; max-width: 100%; height: auto; object-fit: contain;" />
+                            <p id="anim-frame-placeholder">Upload First Frame</p>
+                            <input type="file" id="anim-start-frame" accept="image/*" style="display: none;">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="form-label" style="margin-bottom: 8px;">Last Frame (Optional):</label>
+                        <div class="upload-area" id="anim-last-frame-upload" style="cursor: pointer;">
+                            <img id="anim-last-frame-preview" style="display: none; max-width: 100%; height: auto; object-fit: contain;" />
+                            <p id="anim-last-frame-placeholder">Upload Last Frame</p>
+                            <input type="file" id="anim-last-frame" accept="image/*" style="display: none;">
+                        </div>
+                    </div>
                 </div>
+                <small style="color: #666; font-size: 11px; display: block; margin-top: 5px;">
+                    Test seamless loops: Upload both frames to see if model creates smooth transitions
+                </small>
             </div>
             
             <div class="form-group">
@@ -908,24 +924,59 @@
             </div>
             
             <div class="form-group">
+                <label class="form-label">Image Scale (more space around object):</label>
+                <div class="slider-group">
+                    <div class="slider-label">
+                        <span><span id="image-scale-value">100</span>%</span>
+                    </div>
+                    <input type="range" class="slider" id="image-scale-slider" min="50" max="100" value="100" oninput="updateImageScale()">
+                </div>
+                <small style="color: #666; font-size: 11px;">Lower values = more space around object (prevents cropping during animation)</small>
+            </div>
+            
+            <div class="form-group">
                 <label class="form-label">Select Animation Models:</label>
                 <div class="checkbox-group">
                     <label class="checkbox-item">
-                        <input type="checkbox" name="anim-model" value="kwaivgi/kling-v2.1">
+                        <input type="checkbox" name="anim-model" value="kwaivgi/kling-v2.1" onchange="toggleAnimationSettings()">
                         <span>Kling v2.1</span>
                     </label>
                     <label class="checkbox-item">
-                        <input type="checkbox" name="anim-model" value="bytedance/seedance-1-pro">
+                        <input type="checkbox" name="anim-model" value="bytedance/seedance-1-pro" onchange="toggleAnimationSettings()">
                         <span>Seedance-1 Pro</span>
                     </label>
                 </div>
             </div>
             
-            <div class="form-group">
-                <label class="checkbox-item" style="border: none; padding: 0;">
-                    <input type="checkbox" id="anim-seamless-loop">
-                    <span>Seamless Loop</span>
-                </label>
+            <!-- Kling duration settings -->
+            <div id="kling-duration-settings" style="display: none;">
+                <div class="form-group">
+                    <label class="form-label">Duration:</label>
+                    <div class="checkbox-group" style="grid-template-columns: 1fr 1fr;">
+                        <label class="checkbox-item">
+                            <input type="radio" name="kling-duration" value="5" checked>
+                            <span>5 seconds</span>
+                        </label>
+                        <label class="checkbox-item">
+                            <input type="radio" name="kling-duration" value="10">
+                            <span>10 seconds</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Seedance duration settings -->
+            <div id="seedance-duration-settings" style="display: none;">
+                <div class="form-group">
+                    <label class="form-label">Duration (seconds):</label>
+                    <div class="slider-group">
+                        <div class="slider-label">
+                            <span><span id="seedance-duration-value">5</span>s</span>
+                        </div>
+                        <input type="range" class="slider" id="seedance-duration-slider" min="2" max="12" value="5" oninput="updateSeedanceDuration()">
+                    </div>
+                    <small style="color: #666; font-size: 11px;">2-12 seconds supported</small>
+                </div>
             </div>
             
             <button class="btn-primary" onclick="generateAnimation()">Generate Animation</button>
@@ -1773,6 +1824,29 @@ function toggleLoopOutlineThickness() {
     control.style.display = checkbox.checked ? 'block' : 'none';
 }
 
+function toggleAnimationSettings() {
+    const klingChecked = document.querySelector('input[name="anim-model"][value="kwaivgi/kling-v2.1"]').checked;
+    const seedanceChecked = document.querySelector('input[name="anim-model"][value="bytedance/seedance-1-pro"]').checked;
+    
+    const klingSettings = document.getElementById('kling-duration-settings');
+    const seedanceSettings = document.getElementById('seedance-duration-settings');
+    
+    klingSettings.style.display = klingChecked ? 'block' : 'none';
+    seedanceSettings.style.display = seedanceChecked ? 'block' : 'none';
+}
+
+function updateSeedanceDuration() {
+    const slider = document.getElementById('seedance-duration-slider');
+    const valueSpan = document.getElementById('seedance-duration-value');
+    valueSpan.textContent = slider.value;
+}
+
+function updateImageScale() {
+    const slider = document.getElementById('image-scale-slider');
+    const valueSpan = document.getElementById('image-scale-value');
+    valueSpan.textContent = slider.value;
+}
+
 function updateLoopOutlineThickness() {
     const slider = document.getElementById('loop-outline-thickness-slider');
     const valueSpan = document.getElementById('loop-outline-thickness-value');
@@ -2010,6 +2084,7 @@ function getJobActions(job) {
             actions.push(`<button class="job-action-btn" onclick="regenerateJob(${job.id})">Regenerate</button>`);
             actions.push(`<button class="job-action-btn" onclick="editJob(${job.id})">Edit</button>`);
             actions.push(`<button class="job-action-btn" onclick="animateImage(${job.id})">Animate</button>`);
+            actions.push(`<button class="job-action-btn" onclick="useAsLastFrame(${job.id})">→ Last Frame</button>`);
             actions.push(`<button class="job-action-btn" onclick="removeBgFromJob(${job.id})">Remove Bg</button>`);
         }
         
@@ -2048,6 +2123,7 @@ function getJobActions(job) {
         if (job.job_type === 'background_removal') {
             actions.push(`<button class="job-action-btn" onclick="downloadJob(${job.id})">Download</button>`);
             actions.push(`<button class="job-action-btn" onclick="animateImage(${job.id})">Animate</button>`);
+            actions.push(`<button class="job-action-btn" onclick="useAsLastFrame(${job.id})">→ Last Frame</button>`);
         }
         
         if (job.job_type === 'video_stitching') {
@@ -2243,6 +2319,12 @@ function generateAnimation() {
         formData.append('start_frame', startFrame);
     } else if (hiddenImageUrl) {
         formData.append('image_url', hiddenImageUrl.value);
+        
+        // Check if this is from Edit (skip preprocessing)
+        const skipPreprocessing = document.querySelector('input[name="skip_preprocessing"]');
+        if (skipPreprocessing && skipPreprocessing.value === 'true') {
+            formData.append('skip_preprocessing', 'true');
+        }
     }
     
     // Get background selection
@@ -2265,7 +2347,7 @@ function generateAnimation() {
     formData.append('background', background);
     formData.append('white_outline', document.getElementById('anim-white-outline').checked);
     formData.append('outline_thickness', document.getElementById('outline-thickness-slider').value);
-    formData.append('seamless_loop', document.getElementById('anim-seamless-loop').checked);
+    formData.append('image_scale', document.getElementById('image-scale-slider').value);
     
     const models = Array.from(document.querySelectorAll('input[name="anim-model"]:checked')).map(el => el.value);
     models.forEach(model => formData.append('video_model', model));
@@ -2273,6 +2355,31 @@ function generateAnimation() {
     if (models.length === 0) {
         alert('Please select at least one animation model');
         return;
+    }
+    
+    // Model-specific duration settings
+    const klingSelected = models.some(m => m.includes('kling'));
+    const seedanceSelected = models.some(m => m.includes('seedance'));
+    
+    if (klingSelected) {
+        const klingDuration = document.querySelector('input[name="kling-duration"]:checked').value;
+        formData.append('kling_duration', klingDuration);
+    }
+    
+    if (seedanceSelected) {
+        const seedanceDuration = document.getElementById('seedance-duration-slider').value;
+        formData.append('seedance_duration', seedanceDuration);
+    }
+    
+    // Last frame (for both models) - either file upload or from job
+    const lastFrame = document.getElementById('anim-last-frame').files[0];
+    const hiddenLastFrameUrl = document.querySelector('input[name="last_frame_url_from_job"]') || 
+                                 document.querySelector('input[name="last_frame_url"]');
+    
+    if (lastFrame) {
+        formData.append('last_frame', lastFrame);
+    } else if (hiddenLastFrameUrl) {
+        formData.append('last_frame_url', hiddenLastFrameUrl.value);
     }
     
     // Set flag and disable button
@@ -2294,7 +2401,26 @@ function generateAnimation() {
                 document.getElementById('anim-frame-preview').style.display = 'none';
                 document.getElementById('anim-frame-placeholder').style.display = 'block';
                 document.getElementById('anim-frame-placeholder').textContent = 'Upload Start Frame';
+                
+                // Clear last frame if present
+                const lastFrameInput = document.getElementById('anim-last-frame');
+                if (lastFrameInput) {
+                    lastFrameInput.value = '';
+                    document.getElementById('anim-last-frame-preview').style.display = 'none';
+                    document.getElementById('anim-last-frame-placeholder').style.display = 'block';
+                }
+                
                 if (hiddenImageUrl) hiddenImageUrl.remove();
+                
+                // Clean up skip_preprocessing flag
+                const skipPreprocessing = document.querySelector('input[name="skip_preprocessing"]');
+                if (skipPreprocessing) skipPreprocessing.remove();
+                
+                // Clean up last_frame_url from job
+                const lastFrameFromJob = document.querySelector('input[name="last_frame_url_from_job"]');
+                if (lastFrameFromJob) lastFrameFromJob.remove();
+                const lastFrameUrl = document.querySelector('input[name="last_frame_url"]');
+                if (lastFrameUrl) lastFrameUrl.remove();
             } else {
                 alert('Error: ' + (data.error || 'Unknown error'));
             }
@@ -3432,6 +3558,16 @@ function editJob(jobId) {
                         }
                         hiddenInput.value = imageUrl;
                         
+                        // Mark as already preprocessed (skip preprocessing on generate)
+                        let skipPreprocessInput = form.querySelector('input[name="skip_preprocessing"]');
+                        if (!skipPreprocessInput) {
+                            skipPreprocessInput = document.createElement('input');
+                            skipPreprocessInput.type = 'hidden';
+                            skipPreprocessInput.name = 'skip_preprocessing';
+                            form.appendChild(skipPreprocessInput);
+                        }
+                        skipPreprocessInput.value = 'true';
+                        
                         // Show image preview
                         const previewImg = document.getElementById('anim-frame-preview');
                         const placeholder = document.getElementById('anim-frame-placeholder');
@@ -3441,6 +3577,32 @@ function editJob(jobId) {
                             previewImg.style.display = 'block';
                             placeholder.style.display = 'none';
                             console.log('Loaded animation start frame:', imageUrl);
+                        }
+                    }
+                    
+                    // Load last frame image if available
+                    if (inputData.last_frame_url) {
+                        const lastFrameUrl = inputData.last_frame_url;
+                        
+                        // Create/update hidden input for last frame URL
+                        const form = document.querySelector('#tool-animation');
+                        let lastFrameInput = form.querySelector('input[name="last_frame_url"]');
+                        if (!lastFrameInput) {
+                            lastFrameInput = document.createElement('input');
+                            lastFrameInput.type = 'hidden';
+                            lastFrameInput.name = 'last_frame_url';
+                            form.appendChild(lastFrameInput);
+                        }
+                        lastFrameInput.value = lastFrameUrl;
+                        
+                        // Show last frame preview
+                        const lastPreviewImg = document.getElementById('anim-last-frame-preview');
+                        const lastPlaceholder = document.getElementById('anim-last-frame-placeholder');
+                        if (lastPreviewImg && lastPlaceholder) {
+                            lastPreviewImg.src = getImageUrl(lastFrameUrl);
+                            lastPreviewImg.style.display = 'block';
+                            lastPlaceholder.style.display = 'none';
+                            console.log('Loaded animation last frame:', lastFrameUrl);
                         }
                     }
                 }
@@ -3478,6 +3640,41 @@ function animateImage(jobId) {
     previewImg.src = job.result_data.startsWith('http') ? job.result_data : '/' + job.result_data.replace(/^\//, '');
     previewImg.style.display = 'block';
     placeholder.style.display = 'none';
+}
+
+function useAsLastFrame(jobId) {
+    const job = allJobs.find(j => j.id === jobId);
+    if (!job || !job.result_data) {
+        alert('Cannot use as last frame: job has no result image');
+        return;
+    }
+    
+    // Switch to animation tool if not already there
+    if (!document.getElementById('tool-animation').classList.contains('active')) {
+        switchTool('animation');
+    }
+    
+    // Create a hidden input to pass the last frame URL
+    const form = document.querySelector('#tool-animation');
+    let hiddenInput = form.querySelector('input[name="last_frame_url_from_job"]');
+    if (!hiddenInput) {
+        hiddenInput = document.createElement('input');
+        hiddenInput.type = 'hidden';
+        hiddenInput.name = 'last_frame_url_from_job';
+        form.appendChild(hiddenInput);
+    }
+    hiddenInput.value = job.result_data;
+    
+    // Show last frame preview
+    const previewImg = document.getElementById('anim-last-frame-preview');
+    const placeholder = document.getElementById('anim-last-frame-placeholder');
+    // Handle both absolute URLs (S3) and relative paths (local)
+    previewImg.src = job.result_data.startsWith('http') ? job.result_data : '/' + job.result_data.replace(/^\//, '');
+    previewImg.style.display = 'block';
+    placeholder.style.display = 'none';
+    placeholder.textContent = 'Last Frame Set';
+    
+    console.log('✓ Last frame set from job', jobId);
 }
 
 function removeBgFromJob(jobId) {
@@ -4061,6 +4258,29 @@ document.addEventListener('DOMContentLoaded', () => {
     loadJobs(); // Initial load
     startPolling(); // Start smart polling
     updateColorPreview(); // Initialize color preview
+    
+    // Animation last frame upload handlers
+    const lastFrameUploadArea = document.getElementById('anim-last-frame-upload');
+    const lastFrameInput = document.getElementById('anim-last-frame');
+    const lastFramePreview = document.getElementById('anim-last-frame-preview');
+    const lastFramePlaceholder = document.getElementById('anim-last-frame-placeholder');
+    
+    if (lastFrameUploadArea && lastFrameInput) {
+        lastFrameUploadArea.addEventListener('click', () => lastFrameInput.click());
+        
+        lastFrameInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    lastFramePreview.src = e.target.result;
+                    lastFramePreview.style.display = 'block';
+                    lastFramePlaceholder.style.display = 'none';
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+    }
 });
 </script>
 

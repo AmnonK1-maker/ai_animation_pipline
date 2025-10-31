@@ -747,18 +747,29 @@ def handle_animation(job):
                 raise FileNotFoundError(f"Start image not found at {start_image_path}")
         
         user_negative_prompt = input_data.get("negative_prompt", "").strip()
-        additional_instructions = "contact shadow, drop shadow, change background color"
-        final_negative_prompt = f"{user_negative_prompt}, {additional_instructions}" if user_negative_prompt else additional_instructions
-        api_input = {"prompt": input_data.get('prompt'), "negative_prompt": final_negative_prompt}
+        base_negative_additions = "contact shadow, drop shadow, change background color, no additions"
+        final_negative_prompt = f"{user_negative_prompt}, {base_negative_additions}" if user_negative_prompt else base_negative_additions
+        
+        # Add model-specific prompt instructions
+        user_prompt = input_data.get('prompt')
         if 'kling' in video_model:
-            api_input["duration"] = input_data.get('kling_duration', 5)
+            kling_instructions = "No zoom, no scale changes."
+            final_prompt = f"{user_prompt}. {kling_instructions}"
+            api_input = {"prompt": final_prompt, "negative_prompt": final_negative_prompt}
+            api_input["duration"] = input_data.get('kling_duration', input_data.get('duration', 5))
             if 'v2.1' in video_model: api_input["mode"] = input_data.get("kling_mode", "pro")
         elif 'seedance' in video_model:
-            api_input["duration"] = input_data.get('seedance_duration', 5)
+            api_input = {"prompt": user_prompt, "negative_prompt": final_negative_prompt}
+            api_input["duration"] = input_data.get('seedance_duration', input_data.get('duration', 5))
             api_input["resolution"] = input_data.get('seedance_resolution', '1080p')
+            # Get aspect ratio from image or default to 1:1
             api_input["aspect_ratio"] = input_data.get('seedance_aspect_ratio', '1:1')
+        else:
+            api_input = {"prompt": user_prompt, "negative_prompt": final_negative_prompt}
         end_file_obj = None
+        last_frame_file_obj = None
         temp_end_file = None
+        temp_last_frame_file = None
         try:
             with open(start_image_path, "rb") as start_file:
                 if 'seedance' in video_model: api_input["image"] = start_file
@@ -785,16 +796,41 @@ def handle_animation(job):
                             print(f"   ...using end frame from {end_image_path}")
                             end_file_obj = open(end_image_path, "rb")
                             api_input["end_image"] = end_file_obj
-                if input_data.get("seamless_loop", False):
-                    print("   ...using start frame as end frame for seamless loop.")
-                    start_file.seek(0)
-                    api_input["end_image"] = io.BytesIO(start_file.read())
+                # Handle last_frame_url for both Kling and Seedance
+                last_frame_url = input_data.get("last_frame_url")
+                if last_frame_url:
+                    if last_frame_url.startswith('http'):
+                        # Download from S3
+                        print(f"   ...downloading last frame from S3: {last_frame_url}")
+                        img_response = requests.get(last_frame_url)
+                        img_response.raise_for_status()
+                        temp_last_frame_file = f"temp_last_{uuid.uuid4()}.png"
+                        last_frame_path = os.path.join(LIBRARY_FOLDER, temp_last_frame_file)
+                        with open(last_frame_path, "wb") as f:
+                            f.write(img_response.content)
+                        last_frame_file_obj = open(last_frame_path, "rb")
+                    else:
+                        # Local path
+                        last_frame_path = os.path.join(BASE_DIR, last_frame_url.lstrip('/'))
+                        if os.path.exists(last_frame_path):
+                            print(f"   ...using last frame from {last_frame_path}")
+                            last_frame_file_obj = open(last_frame_path, "rb")
+                    
+                    # Assign to correct parameter based on model
+                    if last_frame_file_obj:
+                        if 'seedance' in video_model:
+                            api_input["last_frame_image"] = last_frame_file_obj
+                            print(f"   ...set last_frame_image for Seedance")
+                        else:
+                            api_input["end_image"] = last_frame_file_obj
+                            print(f"   ...set end_image for Kling")
                 if "end_image" in api_input and 'kling-v2.1' in video_model:
                     api_input["mode"] = "pro"
                     print("   ...forcing 'pro' mode for Kling because end_image is present.")
                 loggable_input = {k: v for k, v in api_input.items() if not isinstance(v, io.IOBase)}
                 if "start_image" in api_input or "image" in api_input: loggable_input['start_image_provided'] = True
                 if "end_image" in api_input: loggable_input['end_image_provided'] = True
+                if "last_frame_image" in api_input: loggable_input['last_frame_image_provided'] = True
                 print(f"   ...calling Replicate with parameters: {loggable_input}")
                 video_output_url = replicate.run(video_model, input=api_input)
         finally:
@@ -803,6 +839,11 @@ def handle_animation(job):
                     end_file_obj.close()
                 except Exception as e:
                     print(f"   ...warning: could not close end_file_obj: {e}")
+            if last_frame_file_obj and not isinstance(last_frame_file_obj, io.BytesIO):
+                try:
+                    last_frame_file_obj.close()
+                except Exception as e:
+                    print(f"   ...warning: could not close last_frame_file_obj: {e}")
         video_response = requests.get(video_output_url)
         video_response.raise_for_status()
         video_filename = f"{uuid.uuid4()}.mp4"
@@ -822,6 +863,12 @@ def handle_animation(job):
                 print(f"   ...cleaned up temp end file")
             except Exception as e:
                 print(f"   ...warning: could not delete temp end file: {e}")
+        if temp_last_frame_file:
+            try:
+                os.remove(os.path.join(LIBRARY_FOLDER, temp_last_frame_file))
+                print(f"   ...cleaned up temp last frame file")
+            except Exception as e:
+                print(f"   ...warning: could not delete temp last frame file: {e}")
         
         # Upload to S3 if enabled
         s3_key = f"animations/generated/{video_filename}"
