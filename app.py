@@ -352,12 +352,6 @@ def gallery():
     """Gallery page showing all completed jobs with their outputs"""
     print(f"📸 Gallery: Using database at: {DATABASE_PATH}")
     with get_db_connection() as conn:
-        # Delete old jobs (ID <= 76) on first load
-        deleted = conn.execute("DELETE FROM jobs WHERE id <= 76").rowcount
-        if deleted > 0:
-            conn.commit()
-            print(f"🗑️ Cleaned up {deleted} old jobs (ID <= 76)")
-        
         # Get ALL jobs first to see what's in the database
         all_jobs = conn.execute("SELECT COUNT(*) as total FROM jobs").fetchone()
         print(f"📸 Gallery: Total jobs in database: {all_jobs['total']}")
