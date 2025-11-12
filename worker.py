@@ -1219,9 +1219,15 @@ def handle_trim(job):
                 f.write(response.content)
             cleanup_input = True
         else:
-            input_path = os.path.join(BASE_DIR, source_video_url.lstrip('/'))
+            # Use DATA_DIR for persistent disk compatibility
+            if source_video_url.startswith('/'):
+                input_path = os.path.join(DATA_DIR, source_video_url.lstrip('/'))
+            else:
+                input_path = os.path.join(STATIC_FOLDER, source_video_url)
+            
             if not os.path.exists(input_path):
-                return None, "Source video file not found"
+                print(f"   ❌ Video not found at: {input_path}")
+                return None, f"Source video file not found: {input_path}"
             cleanup_input = False
         
         # Create output filename
@@ -1310,8 +1316,14 @@ def handle_video_stitching(job):
             with open(video_a_path, "wb") as f:
                 f.write(vid_response.content)
         else:
-            video_a_path = os.path.join(BASE_DIR, video_a_url.lstrip('/'))
+            # Use DATA_DIR for persistent disk compatibility
+            if video_a_url.startswith('/'):
+                video_a_path = os.path.join(DATA_DIR, video_a_url.lstrip('/'))
+            else:
+                video_a_path = os.path.join(STATIC_FOLDER, video_a_url)
+            
             if not os.path.exists(video_a_path):
+                print(f"   ❌ Video A not found at: {video_a_path}")
                 return None, f"Source video A not found: {video_a_path}"
         
         # Handle both S3 URLs and local file paths for video B
@@ -1326,8 +1338,14 @@ def handle_video_stitching(job):
             with open(video_b_path, "wb") as f:
                 f.write(vid_response.content)
         else:
-            video_b_path = os.path.join(BASE_DIR, video_b_url.lstrip('/'))
+            # Use DATA_DIR for persistent disk compatibility
+            if video_b_url.startswith('/'):
+                video_b_path = os.path.join(DATA_DIR, video_b_url.lstrip('/'))
+            else:
+                video_b_path = os.path.join(STATIC_FOLDER, video_b_url)
+            
             if not os.path.exists(video_b_path):
+                print(f"   ❌ Video B not found at: {video_b_path}")
                 return None, f"Source video B not found: {video_b_path}"
             
         # Check file sizes (basic validation)
