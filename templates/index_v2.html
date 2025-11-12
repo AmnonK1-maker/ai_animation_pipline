@@ -1247,6 +1247,102 @@
                 </div>
             </div>
             
+            <!-- 3D PEEL EFFECT SECTION -->
+            <!-- 3D PEEL EFFECT - TEMPORARILY HIDDEN -->
+            <div style="display: none; margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 2px solid #dee2e6;">
+                <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 16px;">📄 3D Peel Effect</h3>
+                <div style="margin-bottom: 15px;">
+                    <label class="checkbox-item" style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="keyer-peel-effect" onchange="toggleKeyerPeelControls()">
+                        <span style="font-weight: 600;">Enable 3D Sticker Peel</span>
+                    </label>
+                    <p style="margin: 5px 0 0 28px; font-size: 13px; color: #666;">Renders at 8 FPS for stop-motion style. Shows live 3D preview.</p>
+                </div>
+                
+                <div id="keyer-peel-controls" style="display: none; padding-left: 15px;">
+                    <!-- 3D Preview Canvas -->
+                    <div style="margin-bottom: 15px; border: 2px solid #dee2e6; border-radius: 8px; overflow: hidden;">
+                    <div id="peel-preview-container" style="width: 100%; height: 300px; background: #1a202c; position: relative;">
+                        <canvas id="peel-canvas" style="width: 100%; height: 100%;"></canvas>
+                        <div id="peel-loading" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 14px; text-align: center; padding: 20px;">
+                            Click "Preview" button above to load keyed frame
+                        </div>
+                    </div>
+                    </div>
+                    
+                    <div class="slider-group">
+                        <div class="slider-label">
+                            <span>Peel Position: <span id="keyer-peel-position-value">0.68</span></span>
+                        </div>
+                        <input type="range" class="slider" id="keyer-peel-position" min="0" max="2" value="0.68" step="0.01" oninput="updateSliderValue('keyer-peel-position'); updatePeelPreview()">
+                        <small style="display: block; margin-top: 5px; color: #666;">Distance from center (0 = center, 2 = edge)</small>
+                    </div>
+                    
+                    <div class="slider-group">
+                        <div class="slider-label">
+                            <span>Peel Radius: <span id="keyer-peel-radius-value">0.37</span></span>
+                        </div>
+                        <input type="range" class="slider" id="keyer-peel-radius" min="0.1" max="1" value="0.37" step="0.01" oninput="updateSliderValue('keyer-peel-radius'); updatePeelPreview()">
+                        <small style="display: block; margin-top: 5px; color: #666;">Width of the fold (0.1 = tight, 1 = wide)</small>
+                    </div>
+                    
+                    <div class="slider-group">
+                        <div class="slider-label">
+                            <span>Peel Direction: <span id="keyer-peel-direction-value">-48</span>°</span>
+                        </div>
+                        <input type="range" class="slider" id="keyer-peel-direction" min="-180" max="180" value="-48" step="1" oninput="updateSliderValue('keyer-peel-direction'); updatePeelPreview()">
+                        <small style="display: block; margin-top: 5px; color: #666;">Rotation angle of peel (-180° to 180°)</small>
+                    </div>
+                    
+                    <hr style="margin: 15px 0; border: none; border-top: 1px solid #dee2e6;">
+                    
+                    <div class="slider-group">
+                        <label class="checkbox-item" style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                            <input type="checkbox" id="keyer-peel-wind" onchange="toggleKeyerPeelWind()">
+                            <span style="font-weight: 600;">Enable Wind Animation</span>
+                        </label>
+                        <div id="keyer-peel-wind-controls" style="display: none; margin-left: 20px;">
+                            <div class="slider-group">
+                                <div class="slider-label"><span>Wind Amplitude: <span id="keyer-peel-wind-amplitude-value">0.1</span></span></div>
+                                <input type="range" class="slider" id="keyer-peel-wind-amplitude" min="0" max="0.5" value="0.1" step="0.01" oninput="updateSliderValue('keyer-peel-wind-amplitude'); updatePeelPreview()">
+                                <small style="display: block; margin-top: 5px; color: #666;">How much the peel moves (0 = none, 0.5 = extreme)</small>
+                            </div>
+                            <div class="slider-group">
+                                <div class="slider-label"><span>Wind Speed: <span id="keyer-peel-wind-speed-value">1.0</span></span></div>
+                                <input type="range" class="slider" id="keyer-peel-wind-speed" min="0.1" max="3" value="1.0" step="0.1" oninput="updateSliderValue('keyer-peel-wind-speed'); updatePeelPreview()">
+                                <small style="display: block; margin-top: 5px; color: #666;">Animation speed (0.1 = slow, 3 = fast)</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <hr style="margin: 15px 0; border: none; border-top: 1px solid #dee2e6;">
+                    
+                    <div class="slider-group">
+                        <div class="slider-label">
+                            <span>Back Color</span>
+                        </div>
+                        <input type="color" id="keyer-peel-back-color" value="#ffffff" style="width: 60px; height: 35px; border: 1px solid #dee2e6; border-radius: 4px;" onchange="updatePeelPreview()">
+                        <small style="display: block; margin-top: 5px; color: #666;">Color of the back side when peeled</small>
+                    </div>
+                    
+                    <div class="slider-group">
+                        <div class="slider-label">
+                            <span>Shadow Darkness: <span id="keyer-peel-shadow-value">0.57</span></span>
+                        </div>
+                        <input type="range" class="slider" id="keyer-peel-shadow" min="0" max="1" value="0.57" step="0.01" oninput="updateSliderValue('keyer-peel-shadow'); updatePeelPreview()">
+                        <small style="display: block; margin-top: 5px; color: #666;">Shadow intensity (0 = none, 1 = darkest)</small>
+                    </div>
+                    
+                    <div class="slider-group">
+                        <div class="slider-label">
+                            <span>Highlight Intensity: <span id="keyer-peel-highlight-value">0.78</span></span>
+                        </div>
+                        <input type="range" class="slider" id="keyer-peel-highlight" min="0" max="1" value="0.78" step="0.01" oninput="updateSliderValue('keyer-peel-highlight'); updatePeelPreview()">
+                        <small style="display: block; margin-top: 5px; color: #666;">Shine on the fold (0 = matte, 1 = glossy)</small>
+                    </div>
+                </div>
+            </div>
+            
             <!-- POSTERIZE TIME SECTION -->
             <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 2px solid #dee2e6;">
                 <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 16px;">⏱️ Posterize Time (Stop-Motion Effect)</h3>
@@ -1644,18 +1740,35 @@ document.getElementById('keyer-video-file').addEventListener('change', (e) => {
                 // Set the job ID for keying
                 currentKeyingJobId = data.job_id;
                 
+                // Reset preview state first
+                resetPreview();
+                
                 // Load the video into preview
                 const url = URL.createObjectURL(file);
                 const video = document.getElementById('keyer-video-preview');
+                const container = document.getElementById('keyer-video-preview-container');
+                
+                // Reset video state
+                video.pause();
+                video.currentTime = 0;
+                
+                // Load new video
                 video.src = url;
-                document.getElementById('keyer-video-preview-container').classList.add('active');
+                video.load(); // Important: force reload of video element
+                container.classList.add('active');
+                
+                // Play the video when loaded
+                video.addEventListener('loadeddata', function playOnce() {
+                    video.play().catch(err => console.error('Video play error:', err));
+                    video.removeEventListener('loadeddata', playOnce);
+                });
                 
                 uploadArea.textContent = '✓ Video uploaded successfully';
                 setTimeout(() => {
                     uploadArea.textContent = originalText;
                 }, 2000);
                 
-                console.log('Video uploaded, job ID:', data.job_id);
+                console.log('Video uploaded and loaded into keyer, job ID:', data.job_id);
             } else {
                 alert('Error uploading video: ' + (data.error || 'Unknown error'));
                 uploadArea.textContent = originalText;
@@ -1674,10 +1787,9 @@ function updateSliderValue(sliderId) {
     // Handle both keyer-prefixed and direct slider IDs
     let slider, valueSpan;
     if (sliderId.startsWith('keyer-')) {
-        // Already has prefix (for sticker effect sliders)
+        // Already has prefix (for peel effect sliders)
         slider = document.getElementById(sliderId);
-        const valueId = sliderId.replace('keyer-', '') + '-value';
-        valueSpan = document.getElementById(valueId);
+        valueSpan = document.getElementById(`${sliderId}-value`);
     } else {
         // Needs prefix (for regular keying sliders)
         slider = document.getElementById(`keyer-${sliderId}`);
@@ -1710,6 +1822,80 @@ function toggleKeyerShadow() {
     const checkbox = document.getElementById('keyer-enable-shadow');
     const controls = document.getElementById('keyer-shadow-controls');
     controls.style.display = checkbox.checked ? 'block' : 'none';
+}
+
+function toggleKeyerPeelControls() {
+    const checkbox = document.getElementById('keyer-peel-effect');
+    const controls = document.getElementById('keyer-peel-controls');
+    controls.style.display = checkbox.checked ? 'block' : 'none';
+    if (checkbox.checked) {
+        // Check if Three.js is loaded
+        if (typeof THREE === 'undefined') {
+            console.error('❌ Three.js not loaded yet. Please wait a moment and try again.');
+            alert('3D library is still loading. Please wait a moment and try again.');
+            checkbox.checked = false;
+            controls.style.display = 'none';
+            return;
+        }
+        
+        // Check if peel functions are loaded
+        if (typeof initPeelPreview !== 'function') {
+            console.error('❌ Peel effect script not loaded yet.');
+            alert('3D peel effect script is still loading. Please wait a moment and try again.');
+            checkbox.checked = false;
+            controls.style.display = 'none';
+            return;
+        }
+        
+        console.log('✅ Initializing 3D peel preview...');
+        // Wait for next frame so container has dimensions
+        requestAnimationFrame(() => {
+            initPeelPreview();
+            // Resize renderer after container is visible
+            if (typeof resizePeelRenderer === 'function') {
+                resizePeelRenderer();
+            }
+        });
+    }
+}
+
+function toggleKeyerPeelWind() {
+    const checkbox = document.getElementById('keyer-peel-wind');
+    const controls = document.getElementById('keyer-peel-wind-controls');
+    controls.style.display = checkbox.checked ? 'block' : 'none';
+    updatePeelPreview();
+}
+
+function extractFrameForPeelPreview(videoElement) {
+    try {
+        // Create a canvas to extract the frame
+        const canvas = document.createElement('canvas');
+        canvas.width = videoElement.videoWidth;
+        canvas.height = videoElement.videoHeight;
+        const ctx = canvas.getContext('2d');
+        
+        // Draw current video frame
+        ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+        
+        // Convert to data URL
+        const frameDataUrl = canvas.toDataURL('image/png');
+        
+        // Load into peel preview if it exists
+        if (typeof loadPeelTexture === 'function') {
+            loadPeelTexture(frameDataUrl);
+            console.log('✅ Loaded first frame into peel preview');
+            
+            // Hide loading message
+            const loadingDiv = document.getElementById('peel-loading');
+            if (loadingDiv) {
+                loadingDiv.style.display = 'none';
+            }
+        } else {
+            console.warn('⚠️ loadPeelTexture function not available yet');
+        }
+    } catch (error) {
+        console.error('Failed to extract frame for peel preview:', error);
+    }
 }
 
 function toggleKeyerPosterize() {
@@ -2343,6 +2529,12 @@ function captureVideoFrame(video) {
     });
 }
 
+// Helper function for user-friendly messages
+function showUserFriendlyError(message, isError = false) {
+    console.log(isError ? '❌' : '✅', message);
+    // Could show a toast notification here if desired
+}
+
 async function extractFrameA() {
     const video = document.getElementById('loop-video-preview');
     if (!video.src) {
@@ -2366,9 +2558,11 @@ async function extractFrameA() {
         container.style.display = 'block';
         
         showUserFriendlyError(`✅ Frame A extracted at ${video.currentTime.toFixed(2)}s`, false);
+        alert(`✅ Frame A extracted at ${video.currentTime.toFixed(2)}s`);
         console.log('Frame A extracted:', extractedFrameA);
     } catch (err) {
         console.error('Failed to extract frame A:', err);
+        alert('❌ Failed to extract frame A: ' + err.message);
         showUserFriendlyError('Failed to extract frame A', true);
     }
 }
@@ -2396,9 +2590,11 @@ async function extractFrameB() {
         container.style.display = 'block';
         
         showUserFriendlyError(`✅ Frame B extracted at ${video.currentTime.toFixed(2)}s`, false);
+        alert(`✅ Frame B extracted at ${video.currentTime.toFixed(2)}s`);
         console.log('Frame B extracted:', extractedFrameB);
     } catch (err) {
         console.error('Failed to extract frame B:', err);
+        alert('❌ Failed to extract frame B: ' + err.message);
         showUserFriendlyError('Failed to extract frame B', true);
     }
 }
@@ -2989,6 +3185,24 @@ function previewKeying() {
         canvas.style.display = 'block';
         
         console.log('✅ Preview applied successfully - canvas visible, video hidden');
+        
+        // Load keyed frame into 3D peel preview
+        try {
+            const keyedFrameDataUrl = canvas.toDataURL('image/png');
+            if (typeof loadPeelTexture === 'function') {
+                loadPeelTexture(keyedFrameDataUrl);
+                console.log('✅ Loaded keyed frame into 3D peel preview');
+                
+                // Hide loading message
+                const loadingDiv = document.getElementById('peel-loading');
+                if (loadingDiv) {
+                    loadingDiv.style.display = 'none';
+                }
+            }
+        } catch (peelError) {
+            console.warn('Could not load frame into peel preview:', peelError);
+            // Don't alert - this is optional functionality
+        }
     } catch (error) {
         console.error('❌ Preview error:', error);
         alert('Preview failed: ' + error.message);
@@ -3130,33 +3344,114 @@ function processKeying() {
         posterize_fps: document.querySelector('input[name="keyer-posterize-fps"]:checked')?.value || '12',
         // Export options
         export_gif: document.getElementById('keyer-export-gif').checked,
-        export_png_zip: document.getElementById('keyer-export-png-zip').checked
+        export_png_zip: document.getElementById('keyer-export-png-zip').checked,
+        // Peel effect parameters
+        peel_effect: document.getElementById('keyer-peel-effect').checked,
+        peel_position: parseFloat(document.getElementById('keyer-peel-position').value),
+        peel_radius: parseFloat(document.getElementById('keyer-peel-radius').value),
+        peel_direction: parseFloat(document.getElementById('keyer-peel-direction').value),
+        peel_wind_enabled: document.getElementById('keyer-peel-wind').checked,
+        peel_wind_amplitude: parseFloat(document.getElementById('keyer-peel-wind-amplitude').value),
+        peel_wind_speed: parseFloat(document.getElementById('keyer-peel-wind-speed').value),
+        peel_back_color: document.getElementById('keyer-peel-back-color').value,
+        peel_shadow: parseFloat(document.getElementById('keyer-peel-shadow').value),
+        peel_highlight: parseFloat(document.getElementById('keyer-peel-highlight').value)
     };
     
     console.log('Processing keying with settings:', settings, 'for job:', currentKeyingJobId);
     
-    // Submit keying job
-    const formData = new FormData();
-    formData.append('keying_settings', JSON.stringify(settings));
-    
-    fetch(`/manual-key/${currentKeyingJobId}`, {
-        method: 'POST',
-        body: formData
-    })
+    // If peel effect is enabled, render frames first
+    if (settings.peel_effect && typeof renderAllPeelFrames === 'function' && peelInitialized && peelMesh) {
+        // Show progress
+        const progressMsg = 'Rendering 3D peel effect at 8 FPS...';
+        console.log(progressMsg);
+        
+        // Disable submit button
+        const submitBtn = document.querySelector('button[onclick="processKeying()"]');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Rendering 3D frames...';
+        }
+        
+        // Get total frames from video (assume 24fps, 5-10 seconds typical)
+        // We'll estimate from the video element if available
+        const videoEl = document.querySelector('#keyer-video-preview');
+        const totalFrames = videoEl ? Math.ceil(videoEl.duration * 24) : 240; // Default 10s
+        
+        renderAllPeelFrames(totalFrames, (progress) => {
+            console.log(`Rendering progress: ${progress}%`);
+            if (submitBtn) {
+                submitBtn.textContent = `Rendering 3D frames... ${progress}%`;
+            }
+        })
+        .then(async (frames) => {
+            console.log(`✓ Rendered ${frames.length} peel frames at 8 FPS`);
+            
+            // Upload frames
+            if (submitBtn) submitBtn.textContent = 'Uploading frames...';
+            
+            const formData = new FormData();
+            formData.append('keying_settings', JSON.stringify(settings));
+            
+            // Attach rendered peel frames
+            frames.forEach((blob, i) => {
+                formData.append('peel_frames', blob, `peel_${i.toString().padStart(4, '0')}.png`);
+            });
+            
+            // Submit with peel frames
+            return fetch(`/manual-key/${currentKeyingJobId}`, {
+                method: 'POST',
+                body: formData
+            });
+        })
         .then(res => res.json())
         .then(data => {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Process Video';
+            }
+            
             if (data.success) {
-                console.log('✓ Keying job queued');
+                console.log('✓ Keying job with peel effect queued');
                 loadJobs();
-                currentKeyingJobId = null; // Reset
+                currentKeyingJobId = null;
             } else {
                 alert('Error: ' + (data.error || 'Unknown error'));
             }
         })
         .catch(err => {
-            console.error('Keying processing error:', err);
-            alert('Failed to submit keying job');
+            console.error('Peel rendering/upload error:', err);
+            alert('Failed to render 3D peel effect: ' + err.message);
+            
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Process Video';
+            }
         });
+    } else {
+        // No peel effect - submit normally
+        const formData = new FormData();
+        formData.append('keying_settings', JSON.stringify(settings));
+        
+        fetch(`/manual-key/${currentKeyingJobId}`, {
+            method: 'POST',
+            body: formData
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    console.log('✓ Keying job queued');
+                    loadJobs();
+                    currentKeyingJobId = null;
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(err => {
+                console.error('Keying processing error:', err);
+                alert('Failed to submit keying job');
+            });
+    }
 }
 
 // ===== REMOVE BACKGROUND =====
@@ -4062,6 +4357,31 @@ document.addEventListener('DOMContentLoaded', () => {
     startPolling(); // Start smart polling
     updateColorPreview(); // Initialize color preview
 });
+
+// Load Three.js library from CDN
+const threeScript = document.createElement('script');
+threeScript.src = 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js';
+threeScript.onload = function() {
+    console.log('✅ Three.js loaded successfully', 'Version:', THREE.REVISION);
+    
+    // Load peel effect script
+    const peelScript = document.createElement('script');
+    peelScript.src = '/static/peel-effect.js';
+    peelScript.onload = function() {
+        console.log('✅ Peel effect script loaded - initPeelPreview available:', typeof initPeelPreview === 'function');
+    };
+    peelScript.onerror = function() {
+        console.error('❌ Failed to load peel-effect.js');
+    };
+    document.head.appendChild(peelScript);
+};
+threeScript.onerror = function() {
+    console.error('❌ Failed to load Three.js from CDN');
+};
+document.head.appendChild(threeScript);
+
+console.log('🔄 Started loading Three.js and peel effect scripts...');
+
 </script>
 
 {% endblock %}
