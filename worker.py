@@ -88,9 +88,24 @@ except Exception as e:
     openai_client = None
     print(f"Worker: OpenAI client could not be initialized: {e}")
 
-DATABASE_PATH = 'jobs.db'
+# --- DETERMINE DATA DIRECTORY ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-STATIC_FOLDER = os.path.join(BASE_DIR, 'static')
+RENDER_PERSISTENT_DISK = '/opt/render/project/src/data'
+
+if os.path.exists(RENDER_PERSISTENT_DISK):
+    # Running on Render.com with persistent disk
+    DATA_DIR = RENDER_PERSISTENT_DISK
+    STATIC_FOLDER = os.path.join(DATA_DIR, 'static')
+    DATABASE_PATH = os.path.join(DATA_DIR, 'jobs.db')
+    print(f"☁️ Worker: Using Render persistent disk")
+    print(f"📁 Worker: Data directory: {DATA_DIR}")
+else:
+    # Running in development mode or standalone
+    DATA_DIR = BASE_DIR
+    STATIC_FOLDER = os.path.join(BASE_DIR, 'static')
+    DATABASE_PATH = 'jobs.db'
+    print(f"📁 Worker: Data directory: {BASE_DIR}")
+
 LIBRARY_FOLDER = os.path.join(STATIC_FOLDER, 'library')
 ANIMATIONS_FOLDER_GENERATED = os.path.join(STATIC_FOLDER, 'animations', 'generated')
 UPLOADS_FOLDER = os.path.join(STATIC_FOLDER, 'uploads')
@@ -338,6 +353,240 @@ def apply_alpha_bevel(image, size=15, blur=2, angle=70, highlight_intensity=0.6,
         print(f"   ⚠️ Alpha bevel failed: {e}, returning original")
         return image
 
+def apply_page_fold(image, fold_position=0.3, fold_angle=45, shadow_intensity=0.5, back_color=(180, 180, 180), return_steps=False):
+    """
+    Apply page fold effect - step-by-step process matching After Effects.
+    
+    Args:
+        image: PIL Image with RGBA
+        fold_position: Where diagonal fold line starts (0.0-1.0 from bottom-right corner)
+        fold_angle: Angle of the fold line in degrees (0=horizontal, 45=diagonal, 90=vertical)
+        shadow_intensity: Shadow darkness at fold (0.0-1.0)
+        back_color: RGB color for back of page (default: gray)
+        return_steps: If True, returns dict with all intermediate steps
+    
+    Returns:
+        PIL Image with page fold effect applied (or dict if return_steps=True)
+    """
+    try:
+        img_array = np.array(image)
+        h, w = img_array.shape[:2]
+        
+        print(f"   📄 STEP-BY-STEP PAGE FOLD")
+        print(f"   🔧 Image size: {w}x{h}, fold_position={fold_position}, fold_angle={fold_angle}°")
+        
+        fold_distance = int(min(w, h) * fold_position)
+        
+        # Convert angle to radians and calculate fold line direction
+        angle_rad = np.deg2rad(fold_angle)
+        
+        # Store intermediate steps if requested
+        steps = {} if return_steps else None
+        
+        # STEP 01: Cut the image along angled line from corner
+        print(f"   ✂️ STEP 01: Cutting image at {fold_angle}° angle (fold_distance={fold_distance})")
+        
+        # Create mask for fold region (angled line from bottom-right corner)
+        # For angle θ: the fold line equation is dx*sin(θ) + dy*cos(θ) < fold_distance
+        # where dx, dy are distances from bottom-right corner
+        fold_mask = np.zeros((h, w), dtype=bool)
+        for y in range(h):
+            for x in range(w):
+                corner_dist_x = w - x
+                corner_dist_y = h - y
+                
+                # Calculate perpendicular distance to angled fold line
+                # At 0°: horizontal cut (only dy matters)
+                # At 45°: diagonal cut (dx + dy matters)
+                # At 90°: vertical cut (only dx matters)
+                dist_to_fold = corner_dist_x * np.sin(angle_rad) + corner_dist_y * np.cos(angle_rad)
+                fold_mask[y, x] = dist_to_fold < fold_distance
+        
+        # Layer 1: Front (everything except fold area)
+        front_layer = img_array.copy()
+        front_layer[fold_mask] = [0, 0, 0, 0]
+        
+        # Layer 2: Cut piece (the fold area) - moved to the side for visualization
+        cut_piece = np.zeros_like(img_array)
+        cut_piece[fold_mask] = img_array[fold_mask]
+        
+        if return_steps:
+            # Show front and cut piece side by side for step 01
+            step01_visual = front_layer.copy()
+            steps['step_01_cut'] = Image.fromarray(step01_visual, 'RGBA')
+            steps['step_01_cut_piece'] = Image.fromarray(cut_piece, 'RGBA')
+        
+        # STEP 02: Create smooth gradient curl (pure gradient approach like AE)
+        print(f"   🔄 STEP 02: Creating gradient-based curved corner curl")
+        
+        # Create result with smooth gradient over entire curl region
+        flipped_piece = np.zeros_like(img_array)
+        
+        corner_x = float(w)
+        corner_y = float(h)
+        curl_radius = fold_distance
+        
+        # For each pixel in the curl region, apply gradient shading
+        for y in range(h):
+            for x in range(w):
+                corner_dist_x = corner_x - x
+                corner_dist_y = corner_y - y
+                
+                # Perpendicular distance to the fold line (angled)
+                dist_to_fold = corner_dist_x * np.sin(angle_rad) + corner_dist_y * np.cos(angle_rad)
+                
+                if dist_to_fold > 0 and dist_to_fold < curl_radius:
+                    # Calculate gradient progress (0 = at corner/darkest, 1 = at fold/lightest)
+                    progress = dist_to_fold / curl_radius
+                    
+                    # Create smooth gradient using ease-in-out curve
+                    # This simulates 3D lighting on a curved surface
+                    gradient_value = 0.5 + 0.5 * np.sin((progress - 0.5) * np.pi)
+                    
+                    # Blend between back color (dark) and lighter shade
+                    # Dark at corner (shadow), light at fold line (highlight)
+                    min_brightness = 0.4  # Darkest point
+                    max_brightness = 0.9  # Lightest point
+                    brightness = min_brightness + (max_brightness - min_brightness) * gradient_value
+                    
+                    # Apply to back color
+                    back_r = int(back_color[0] * brightness)
+                    back_g = int(back_color[1] * brightness)
+                    back_b = int(back_color[2] * brightness)
+                    
+                    flipped_piece[y, x] = [back_r, back_g, back_b, 255]
+        
+        pixel_count = np.sum(flipped_piece[:, :, 3] > 0)
+        print(f"   🔧 Created gradient curl with {pixel_count} pixels (radius={curl_radius})")
+        
+        if return_steps:
+            steps['step_02_flipped'] = Image.fromarray(flipped_piece, 'RGBA')
+        
+        # STEP 03: Color the flipped piece (apply back color)
+        print(f"   🎨 STEP 03: Applying back color to flipped piece")
+        
+        colored_piece = flipped_piece.copy()
+        for y in range(h):
+            for x in range(w):
+                if colored_piece[y, x, 3] > 0:
+                    # Mix original color with back color
+                    tint = 0.5  # 50% back color
+                    colored_piece[y, x, :3] = (
+                        colored_piece[y, x, :3] * (1 - tint) + 
+                        np.array(back_color) * tint
+                    ).astype(np.uint8)
+        
+        if return_steps:
+            steps['step_03_colored'] = Image.fromarray(colored_piece, 'RGBA')
+        
+        # STEP 04: Keep flipped piece in same location (no repositioning needed)
+        print(f"   📍 STEP 04: Flipped piece positioned in place")
+        positioned_piece = colored_piece.copy()
+        
+        if return_steps:
+            # Composite with front for step 04
+            step04_composite = front_layer.copy()
+            mask = positioned_piece[:, :, 3] > 0
+            step04_composite[mask] = positioned_piece[mask]
+            steps['step_04_positioned'] = Image.fromarray(step04_composite, 'RGBA')
+        
+        # STEP 05: Add highlight (lighter on the outer edge)
+        print(f"   ✨ STEP 05: Adding highlight to folded edge")
+        
+        # Calculate angle for proper distance
+        angle_rad = np.deg2rad(fold_angle)
+        
+        for y in range(h):
+            for x in range(w):
+                if positioned_piece[y, x, 3] > 0:
+                    corner_dist_x = w - x
+                    corner_dist_y = h - y
+                    
+                    # Distance from fold line (perpendicular)
+                    dist_to_fold = corner_dist_x * np.sin(angle_rad) + corner_dist_y * np.cos(angle_rad)
+                    
+                    if dist_to_fold < fold_distance:
+                        # Normalize distance (0 at fold line, 1 at edge)
+                        progress = dist_to_fold / fold_distance
+                        
+                        # Add white highlight on outer edge (progress close to 1)
+                        if progress > 0.6:
+                            highlight_factor = (progress - 0.6) / 0.4  # 0 to 1
+                            highlight_amount = highlight_factor * 50
+                            positioned_piece[y, x, :3] = np.clip(
+                                positioned_piece[y, x, :3] + highlight_amount,
+                                0, 255
+                            ).astype(np.uint8)
+        
+        if return_steps:
+            # Composite with front for step 05
+            step05_composite = front_layer.copy()
+            mask = positioned_piece[:, :, 3] > 0
+            step05_composite[mask] = positioned_piece[mask]
+            steps['step_05_highlight'] = Image.fromarray(step05_composite, 'RGBA')
+        
+        # STEP 06: Add shadow (darker near the fold line)
+        print(f"   🌑 STEP 06: Adding shadow gradient")
+        
+        for y in range(h):
+            for x in range(w):
+                if positioned_piece[y, x, 3] > 0:
+                    corner_dist_x = w - x
+                    corner_dist_y = h - y
+                    
+                    # Distance from fold line
+                    dist_to_fold = corner_dist_x * np.sin(angle_rad) + corner_dist_y * np.cos(angle_rad)
+                    
+                    if dist_to_fold < fold_distance:
+                        # Normalize distance (0 at fold line, 1 at edge)
+                        progress = dist_to_fold / fold_distance
+                        
+                        # Add shadow near fold line (progress close to 0)
+                        if progress < 0.4:
+                            shadow_factor = 1 - (progress / 0.4)  # 1 at fold line, 0 at 0.4
+                            shadow_amount = shadow_factor * shadow_intensity * 0.6
+                            positioned_piece[y, x, :3] = (
+                                positioned_piece[y, x, :3] * (1 - shadow_amount)
+                            ).astype(np.uint8)
+        
+        # Add shadow on the front layer near fold line
+        front_with_shadow = front_layer.copy()
+        for y in range(h):
+            for x in range(w):
+                if front_with_shadow[y, x, 3] > 0:
+                    corner_dist_x = w - x
+                    corner_dist_y = h - y
+                    dist_to_fold = abs((corner_dist_x * np.sin(angle_rad) + corner_dist_y * np.cos(angle_rad)) - fold_distance)
+                    shadow_width = fold_distance * 0.1
+                    
+                    if dist_to_fold < shadow_width:
+                        shadow_amount = (1 - dist_to_fold / shadow_width) * shadow_intensity * 0.3
+                        front_with_shadow[y, x, :3] = (
+                            front_with_shadow[y, x, :3] * (1 - shadow_amount)
+                        ).astype(np.uint8)
+        
+        # FINAL: Composite the layers
+        print(f"   🎬 FINAL: Compositing layers")
+        result = front_with_shadow.copy()
+        mask = positioned_piece[:, :, 3] > 0
+        result[mask] = positioned_piece[mask]
+        
+        if return_steps:
+            steps['step_06_final'] = Image.fromarray(result, 'RGBA')
+        
+        print(f"   ✅ Page fold complete!")
+        
+        if return_steps:
+            return steps
+        else:
+            return Image.fromarray(result, 'RGBA')
+        
+    except Exception as e:
+        print(f"   ⚠️ Page fold failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return image
+
 def apply_drop_shadow(image, blur=10, offset_x=5, offset_y=5, opacity=0.5):
     """Apply drop shadow to image."""
     try:
@@ -365,12 +614,42 @@ def apply_drop_shadow(image, blur=10, offset_x=5, offset_y=5, opacity=0.5):
         print(f"   ⚠️ Drop shadow failed: {e}, returning original")
         return image
 
+def apply_peel_effect(frame_pil, peel_frame_pil):
+    """
+    Composite the 3D peel frame onto the current frame.
+    The peel frame is pre-rendered at 8 FPS with transparency.
+    """
+    try:
+        if not peel_frame_pil:
+            return frame_pil
+        
+        # Ensure peel frame matches the size of the video frame
+        if peel_frame_pil.size != frame_pil.size:
+            peel_frame_pil = peel_frame_pil.resize(frame_pil.size, Image.LANCZOS)
+        
+        # Ensure both images have alpha
+        if frame_pil.mode != 'RGBA':
+            frame_pil = frame_pil.convert('RGBA')
+        if peel_frame_pil.mode != 'RGBA':
+            peel_frame_pil = peel_frame_pil.convert('RGBA')
+        
+        # Composite peel frame over the base frame using alpha
+        result = Image.alpha_composite(frame_pil, peel_frame_pil)
+        
+        return result
+    except Exception as e:
+        print(f"   ⚠️ Peel effect compositing failed: {e}")
+        traceback.print_exc()
+        return frame_pil
+
 def apply_sticker_effect_to_frame(frame_pil, disp_texture, screen_texture, 
                                    displacement_intensity=50, darker_opacity=1.0, screen_opacity=0.7,
                                    enable_bevel=False, bevel_depth=3, bevel_highlight=0.5, bevel_shadow=0.5,
                                    enable_alpha_bevel=False, alpha_bevel_size=15, alpha_bevel_blur=2, 
                                    alpha_bevel_angle=70, alpha_bevel_highlight=0.6, alpha_bevel_shadow=0.6,
-                                   enable_shadow=False, shadow_blur=0, shadow_x=1, shadow_y=1, shadow_opacity=1.0):
+                                   enable_page_fold=False, fold_position=0.8, fold_angle=30, fold_shadow_intensity=0.5,
+                                   enable_shadow=False, shadow_blur=0, shadow_x=1, shadow_y=1, shadow_opacity=1.0,
+                                   peel_frame=None):
     """Apply sticker effect to a single frame with all advanced effects."""
     try:
         # Resize textures to match frame size
@@ -400,7 +679,15 @@ def apply_sticker_effect_to_frame(frame_pil, disp_texture, screen_texture,
             frame_pil = apply_alpha_bevel(frame_pil, alpha_bevel_size, alpha_bevel_blur, 
                                          alpha_bevel_angle, alpha_bevel_highlight, alpha_bevel_shadow)
         
-        # Step 6: Apply drop shadow if enabled
+        # Step 6: Apply 3D peel effect if provided (8 FPS pre-rendered frames)
+        if peel_frame:
+            frame_pil = apply_peel_effect(frame_pil, peel_frame)
+        
+        # Step 7: Apply page fold effect if enabled (deprecated - use peel effect instead)
+        if enable_page_fold:
+            frame_pil = apply_page_fold(frame_pil, fold_position, fold_angle, fold_shadow_intensity)
+        
+        # Step 8: Apply drop shadow if enabled
         if enable_shadow:
             frame_pil = apply_drop_shadow(frame_pil, shadow_blur, shadow_x, shadow_y, shadow_opacity)
         
@@ -415,12 +702,26 @@ def apply_sticker_effect_to_video(input_video_path, output_video_path,
                                    enable_bevel=False, bevel_depth=3, bevel_highlight=0.5, bevel_shadow=0.5,
                                    enable_alpha_bevel=False, alpha_bevel_size=15, alpha_bevel_blur=2, 
                                    alpha_bevel_angle=70, alpha_bevel_highlight=0.6, alpha_bevel_shadow=0.6,
-                                   enable_shadow=False, shadow_blur=0, shadow_x=1, shadow_y=1, shadow_opacity=1.0):
+                                   enable_page_fold=False, fold_position=0.8, fold_angle=30, fold_shadow_intensity=0.5,
+                                   enable_shadow=False, shadow_blur=0, shadow_x=1, shadow_y=1, shadow_opacity=1.0,
+                                   peel_frame_paths=None):
     """Apply sticker effect to entire video frame-by-frame with animated textures and all advanced effects."""
     try:
         print(f"   🎨 Applying sticker effect to video...")
         print(f"      Displacement: {displacement_intensity}, Multiply opacity: {darker_opacity}, Add opacity: {screen_opacity}")
-        print(f"      Surface bevel: {enable_bevel}, Alpha bevel: {enable_alpha_bevel}, Drop shadow: {enable_shadow}")
+        print(f"      Surface bevel: {enable_bevel}, Alpha bevel: {enable_alpha_bevel}, Page fold: {enable_page_fold}, Drop shadow: {enable_shadow}")
+        
+        # Load peel frames if provided (pre-rendered at 8 FPS)
+        peel_frames = []
+        if peel_frame_paths:
+            print(f"      Loading {len(peel_frame_paths)} peel frames at 8 FPS...")
+            for peel_path in peel_frame_paths:
+                full_path = os.path.join(BASE_DIR, peel_path)
+                if os.path.exists(full_path):
+                    peel_frames.append(Image.open(full_path).convert('RGBA'))
+                else:
+                    print(f"      ⚠️ Peel frame not found: {full_path}")
+            print(f"      ✅ Loaded {len(peel_frames)} peel frames")
         
         # Load texture sequences
         disp_textures = load_texture_sequence(TEXTURE_DISPLACEMENT_FOLDER)
@@ -490,6 +791,13 @@ def apply_sticker_effect_to_video(input_video_path, output_video_path,
             disp_texture = disp_textures[frame_idx % len(disp_textures)] if disp_textures else None
             screen_texture = screen_textures[frame_idx % len(screen_textures)] if screen_textures else None
             
+            # Get peel frame for this video frame (8 FPS: each peel frame used for 3 video frames at 24 FPS)
+            peel_frame = None
+            if peel_frames:
+                peel_frame_index = frame_idx // 3  # Integer division: 0,1,2->0, 3,4,5->1, etc.
+                if peel_frame_index < len(peel_frames):
+                    peel_frame = peel_frames[peel_frame_index]
+            
             # Apply sticker effect with all parameters
             processed_frame = apply_sticker_effect_to_frame(
                 frame_pil, disp_texture, screen_texture,
@@ -497,7 +805,9 @@ def apply_sticker_effect_to_video(input_video_path, output_video_path,
                 enable_bevel, bevel_depth, bevel_highlight, bevel_shadow,
                 enable_alpha_bevel, alpha_bevel_size, alpha_bevel_blur, 
                 alpha_bevel_angle, alpha_bevel_highlight, alpha_bevel_shadow,
-                enable_shadow, shadow_blur, shadow_x, shadow_y, shadow_opacity
+                enable_page_fold, fold_position, fold_angle, fold_shadow_intensity,
+                enable_shadow, shadow_blur, shadow_x, shadow_y, shadow_opacity,
+                peel_frame
             )
             
             # CRITICAL: Ensure original alpha is preserved exactly (no modifications to transparent areas)
@@ -1511,6 +1821,19 @@ def handle_keying(job):
                 screen_textures = load_texture_sequence(TEXTURE_SCREEN_FOLDER)
                 print(f"   JOB #{job_id}: 📦 Loaded {len(disp_textures)} displacement textures, {len(screen_textures)} screen textures")
                 
+                # Load peel frames if provided (pre-rendered at 8 FPS)
+                peel_frames = []
+                peel_frame_paths = settings.get('peel_frame_paths', [])
+                if peel_frame_paths:
+                    print(f"   JOB #{job_id}: 📄 Loading {len(peel_frame_paths)} peel frames at 8 FPS...")
+                    for peel_path in peel_frame_paths:
+                        full_path = os.path.join(BASE_DIR, peel_path)
+                        if os.path.exists(full_path):
+                            peel_frames.append(Image.open(full_path).convert('RGBA'))
+                        else:
+                            print(f"      ⚠️ Peel frame not found: {full_path}")
+                    print(f"   JOB #{job_id}: ✅ Loaded {len(peel_frames)} peel frames")
+                
                 # Process each keyed frame with sticker effects
                 for frame_idx in range(frame_count):
                     frame_filename = f"frame_{frame_idx:05d}.png"
@@ -1527,6 +1850,13 @@ def handle_keying(job):
                     disp_texture = disp_textures[frame_idx % len(disp_textures)] if disp_textures else None
                     screen_texture = screen_textures[frame_idx % len(screen_textures)] if screen_textures else None
                     
+                    # Get peel frame for this video frame (8 FPS: each peel frame used for 3 video frames at 24 FPS)
+                    peel_frame = None
+                    if peel_frames:
+                        peel_frame_index = frame_idx // 3  # Integer division: 0,1,2->0, 3,4,5->1, etc.
+                        if peel_frame_index < len(peel_frames):
+                            peel_frame = peel_frames[peel_frame_index]
+                    
                     # Resize textures to match frame size
                     if disp_texture:
                         disp_texture = disp_texture.resize(frame_pil.size, Image.LANCZOS)
@@ -1540,7 +1870,8 @@ def handle_keying(job):
                         enable_bevel, bevel_depth, bevel_highlight, bevel_shadow,
                         enable_alpha_bevel, alpha_bevel_size, alpha_bevel_blur, 
                         alpha_bevel_angle, alpha_bevel_highlight, alpha_bevel_shadow,
-                        enable_shadow, shadow_blur, shadow_x, shadow_y, shadow_opacity
+                        enable_shadow, shadow_blur, shadow_x, shadow_y, shadow_opacity,
+                        peel_frame
                     )
                     
                     # Save processed frame (overwrite the keyed frame)

@@ -44,22 +44,34 @@ load_dotenv()
 # --- CONFIGURATION & FOLDER PATHS ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# For standalone app, use user's Documents folder instead of app bundle
-# This makes files accessible and prevents DMG from including user data
-if getattr(sys, 'frozen', False):
+# Determine the data directory based on environment
+RENDER_PERSISTENT_DISK = '/opt/render/project/src/data'
+
+if os.path.exists(RENDER_PERSISTENT_DISK):
+    # Running on Render.com with persistent disk
+    DATA_DIR = RENDER_PERSISTENT_DISK
+    STATIC_FOLDER = os.path.join(DATA_DIR, 'static')
+    DATABASE_PATH = os.path.join(DATA_DIR, 'jobs.db')
+    print(f"☁️ Running on Render.com with persistent disk")
+    print(f"📁 Data directory: {DATA_DIR}")
+    app = Flask(__name__)
+    # Serve static files from persistent disk
+    app.config['STATIC_FOLDER'] = STATIC_FOLDER
+elif getattr(sys, 'frozen', False):
     # Running as standalone app (PyInstaller bundle)
     USER_HOME = os.path.expanduser('~')
-    AIAP_DATA_DIR = os.path.join(USER_HOME, 'Documents', 'AIAP')
-    STATIC_FOLDER = os.path.join(AIAP_DATA_DIR, 'static')
-    DATABASE_PATH = os.path.join(AIAP_DATA_DIR, 'jobs.db')
+    DATA_DIR = os.path.join(USER_HOME, 'Documents', 'AIAP')
+    STATIC_FOLDER = os.path.join(DATA_DIR, 'static')
+    DATABASE_PATH = os.path.join(DATA_DIR, 'jobs.db')
     print(f"📁 Running as standalone app")
-    print(f"📁 Data directory: {AIAP_DATA_DIR}")
+    print(f"📁 Data directory: {DATA_DIR}")
     # Templates are bundled in _MEIPASS
     template_folder = os.path.join(sys._MEIPASS, 'templates')
     static_assets = os.path.join(sys._MEIPASS, 'static')
     app = Flask(__name__, template_folder=template_folder, static_folder=static_assets)
 else:
     # Running in development mode
+    DATA_DIR = BASE_DIR
     STATIC_FOLDER = os.path.join(BASE_DIR, 'static')
     DATABASE_PATH = 'jobs.db'
     print(f"📁 Running in development mode")
@@ -608,7 +620,7 @@ def manual_key_video(job_id):
             print(f"   📄 Received {len(peel_frames)} peel frames")
             
             # Create directory for peel frames
-            peel_frames_dir = os.path.join(BASE_DIR, 'static', 'peel_frames', f'job_{job_id}')
+            peel_frames_dir = os.path.join(STATIC_FOLDER, 'peel_frames', f'job_{job_id}')
             os.makedirs(peel_frames_dir, exist_ok=True)
             
             for i, frame_file in enumerate(peel_frames):
@@ -617,7 +629,7 @@ def manual_key_video(job_id):
                 frame_file.save(frame_path)
                 
                 # Store relative path for worker
-                relative_path = f"static/peel_frames/job_{job_id}/{frame_filename}"
+                relative_path = os.path.join('static', 'peel_frames', f'job_{job_id}', frame_filename)
                 peel_frame_paths.append(relative_path)
             
             print(f"   ✅ Saved {len(peel_frame_paths)} peel frames")
