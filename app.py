@@ -392,6 +392,37 @@ def home():
         data_dir = os.path.join(USER_HOME, 'Documents', 'AIAP')
     return render_template("index_v2.html", data_dir=data_dir)
 
+@app.route("/gallery")
+def gallery():
+    """Gallery page showing all completed jobs with their outputs"""
+    with get_db_connection() as conn:
+        # Get all completed jobs with results, ordered by most recent first
+        jobs = conn.execute("""
+            SELECT id, job_type, status, result_data, keyed_result_data, 
+                   created_at, prompt, keying_settings
+            FROM jobs 
+            WHERE status = 'completed' 
+            AND (result_data IS NOT NULL OR keyed_result_data IS NOT NULL)
+            ORDER BY created_at DESC
+        """).fetchall()
+        
+        # Convert to list of dicts for easier template access
+        jobs_list = []
+        for job in jobs:
+            job_dict = dict(job)
+            
+            # Parse keyed_result_data if it's JSON
+            if job_dict['keyed_result_data']:
+                try:
+                    keyed_data = json.loads(job_dict['keyed_result_data'])
+                    job_dict['keyed_result_parsed'] = keyed_data
+                except:
+                    job_dict['keyed_result_parsed'] = None
+            
+            jobs_list.append(job_dict)
+    
+    return render_template("gallery.html", jobs=jobs_list)
+
 @app.route("/open-data-folder")
 def open_data_folder():
     """Open the data folder in Finder (macOS) or Explorer (Windows)"""
@@ -625,6 +656,30 @@ def manual_key_video(job_id):
         except json.JSONDecodeError:
             print(f"   ❌ Invalid JSON in settings")
             return jsonify({"success": False, "error": "Invalid keying settings format"}), 400
+        
+        # Handle peel effect frames if provided
+        peel_frame_paths = []
+        if settings.get('peel_effect') and 'peel_frames' in request.files:
+            peel_frames = request.files.getlist('peel_frames')
+            print(f"   📄 Received {len(peel_frames)} peel frames")
+            
+            # Create directory for peel frames
+            peel_frames_dir = os.path.join(BASE_DIR, 'static', 'peel_frames', f'job_{job_id}')
+            os.makedirs(peel_frames_dir, exist_ok=True)
+            
+            for i, frame_file in enumerate(peel_frames):
+                frame_filename = f"peel_{i:04d}.png"
+                frame_path = os.path.join(peel_frames_dir, frame_filename)
+                frame_file.save(frame_path)
+                
+                # Store relative path for worker
+                relative_path = f"static/peel_frames/job_{job_id}/{frame_filename}"
+                peel_frame_paths.append(relative_path)
+            
+            print(f"   ✅ Saved {len(peel_frame_paths)} peel frames")
+            
+            # Add peel frame paths to settings
+            settings['peel_frame_paths'] = peel_frame_paths
         
         with get_db_connection() as conn:
             cursor = conn.cursor()
@@ -2157,6 +2212,11 @@ def sticker_debug_page():
     """Debug page for sticker effect step-by-step analysis"""
     return render_template("sticker_debug.html")
 
+@app.route("/page-fold-preview")
+def page_fold_preview():
+    """Interactive page fold preview tool with real-time visual feedback"""
+    return render_template("page_fold_preview.html")
+
 @app.route("/debug-sticker-effect", methods=["POST"])
 def debug_sticker_effect():
     """Process a single frame through each sticker effect step and return intermediate results"""
@@ -2173,7 +2233,7 @@ def debug_sticker_effect():
         # Import worker functions
         from worker import (
             load_texture_sequence, apply_displacement, blend_multiply, blend_add,
-            apply_surface_bevel, apply_alpha_bevel, apply_drop_shadow,
+            apply_surface_bevel, apply_alpha_bevel, apply_page_fold, apply_drop_shadow,
             TEXTURE_DISPLACEMENT_FOLDER, TEXTURE_SCREEN_FOLDER
         )
         
@@ -2215,56 +2275,24 @@ def debug_sticker_effect():
         frame_pil.save(os.path.join(BASE_DIR, original_path.lstrip('/')), 'PNG')
         steps['original'] = original_path
         
-        # Step 2: After Displacement
-        frame_pil = apply_displacement(frame_pil, disp_texture, intensity=50)
-        displaced_path = f"/static/library/debug_steps/{session_id}_2_displacement.png"
-        frame_pil.save(os.path.join(BASE_DIR, displaced_path.lstrip('/')), 'PNG')
-        steps['after_displacement'] = displaced_path
+        # Get parameters from request (or use defaults)
+        fold_position = float(request.form.get('fold_position', 0.5))
+        fold_angle = float(request.form.get('fold_angle', 45))
+        shadow_intensity = float(request.form.get('shadow_intensity', 0.7))
         
-        # Step 3: After Multiply Blend
-        frame_pil = blend_multiply(frame_pil, disp_texture, opacity=1.0)
-        multiply_path = f"/static/library/debug_steps/{session_id}_3_multiply.png"
-        frame_pil.save(os.path.join(BASE_DIR, multiply_path.lstrip('/')), 'PNG')
-        steps['after_multiply'] = multiply_path
+        # Get all page fold steps
+        print(f"   DEBUG: Getting page fold steps breakdown (position={fold_position}, angle={fold_angle}°)")
+        page_fold_steps = apply_page_fold(frame_pil, fold_position=fold_position, fold_angle=fold_angle, 
+                                          shadow_intensity=shadow_intensity, return_steps=True)
         
-        # Step 4: After Add Blend
-        frame_pil = blend_add(frame_pil, screen_texture, opacity=0.7)
-        add_path = f"/static/library/debug_steps/{session_id}_4_add.png"
-        frame_pil.save(os.path.join(BASE_DIR, add_path.lstrip('/')), 'PNG')
-        steps['after_add'] = add_path
+        # Save each page fold step
+        for step_key, step_image in page_fold_steps.items():
+            step_path = f"/static/library/debug_steps/{session_id}_{step_key}.png"
+            step_image.save(os.path.join(BASE_DIR, step_path.lstrip('/')), 'PNG')
+            steps[step_key] = step_path
+            print(f"   DEBUG: Saved {step_key}")
         
-        # Step 5: After Surface Bevel
-        frame_pil = apply_surface_bevel(frame_pil, depth=3, highlight=0.5, shadow=0.5)
-        bevel_path = f"/static/library/debug_steps/{session_id}_5_surface_bevel.png"
-        frame_pil.save(os.path.join(BASE_DIR, bevel_path.lstrip('/')), 'PNG')
-        steps['after_surface_bevel'] = bevel_path
-        
-        # Step 6: After Alpha Bevel
-        frame_pil = apply_alpha_bevel(frame_pil, size=15, blur=2, angle=70, 
-                                      highlight_intensity=0.6, shadow_intensity=0.6)
-        alpha_bevel_path = f"/static/library/debug_steps/{session_id}_6_alpha_bevel.png"
-        frame_pil.save(os.path.join(BASE_DIR, alpha_bevel_path.lstrip('/')), 'PNG')
-        steps['after_alpha_bevel'] = alpha_bevel_path
-        
-        # Step 7: After Drop Shadow
-        frame_pil = apply_drop_shadow(frame_pil, blur=0, offset_x=1, offset_y=1, opacity=1.0)
-        shadow_path = f"/static/library/debug_steps/{session_id}_7_drop_shadow.png"
-        frame_pil.save(os.path.join(BASE_DIR, shadow_path.lstrip('/')), 'PNG')
-        steps['after_drop_shadow'] = shadow_path
-        
-        # Step 8: Final - Restore original alpha and zero out transparent RGB
-        frame_pil.putalpha(original_alpha)
-        frame_array = np.array(frame_pil)
-        alpha_array = np.array(original_alpha)
-        mask = (alpha_array == 0)
-        frame_array[:, :, 0] = np.where(mask, 0, frame_array[:, :, 0])
-        frame_array[:, :, 1] = np.where(mask, 0, frame_array[:, :, 1])
-        frame_array[:, :, 2] = np.where(mask, 0, frame_array[:, :, 2])
-        frame_pil = Image.fromarray(frame_array, 'RGBA')
-        
-        final_path = f"/static/library/debug_steps/{session_id}_8_final.png"
-        frame_pil.save(os.path.join(BASE_DIR, final_path.lstrip('/')), 'PNG')
-        steps['final'] = final_path
+        # Skip all other sticker effects - we only want to see page fold steps
         
         # Cleanup temp image
         if os.path.exists(temp_image_path):
@@ -2274,7 +2302,7 @@ def debug_sticker_effect():
             "success": True, 
             "steps": steps,
             "alpha_stats": alpha_stats,
-            "message": f"Analyzed frame - {alpha_stats['transparent_pixels']}/{alpha_stats['total_pixels']} pixels are transparent ({100*alpha_stats['transparent_pixels']/alpha_stats['total_pixels']:.1f}%)"
+            "message": f"Page Fold Step-by-Step Breakdown - {alpha_stats['transparent_pixels']}/{alpha_stats['total_pixels']} pixels are transparent ({100*alpha_stats['transparent_pixels']/alpha_stats['total_pixels']:.1f}%)"
         })
         
     except Exception as e:
