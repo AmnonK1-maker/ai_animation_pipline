@@ -2131,10 +2131,10 @@ function renderJobs() {
         return;
     }
     
-    container.innerHTML = allJobs.map(job => renderJobCard(job)).join('');
+    container.innerHTML = allJobs.map((job, index) => renderJobCard(job, index)).join('');
 }
 
-function renderJobCard(job) {
+function renderJobCard(job, index = 0) {
     const isProcessing = ['processing', 'keying_processing'].includes(job.status);
     const statusClass = `status-${job.status.split('_')[0]}`;
     
@@ -2178,16 +2178,19 @@ function renderJobCard(job) {
     // Generate thumbnail HTML based on media type
     let thumbnailContent = '';
     if (hasViewableMedia && isVideoJob) {
-        // Video thumbnail - autoplay and loop continuously
+        // Video thumbnail - only first 3 autoplay, rest play on hover
         // Add checkerboard background for keyed videos
         // Add cache-busting timestamp to ensure video updates after keying
         const cacheBuster = `?t=${Date.now()}`;
         const thumbnailUrl = getImageUrl(thumbnail) + cacheBuster;
         const bgStyle = isKeyedVideo ? `background-image: linear-gradient(45deg, #ddd 25%, transparent 25%), linear-gradient(-45deg, #ddd 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ddd 75%), linear-gradient(-45deg, transparent 75%, #ddd 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0px; background-color: #fff;` : '';
+        const shouldAutoplay = index < 3;
+        const autoplayAttr = shouldAutoplay ? 'autoplay' : '';
+        const hoverHandlers = shouldAutoplay ? '' : `onmouseover="this.play()" onmouseout="this.pause();this.currentTime=0;"`;
         thumbnailContent = `<video src="${thumbnailUrl}" class="job-thumbnail clickable-thumbnail" 
                                onclick="openMediaViewer(${job.id})" 
                                style="${bgStyle}"
-                               muted loop autoplay playsinline></video>`;
+                               muted loop ${autoplayAttr} playsinline ${hoverHandlers}></video>`;
     } else if (thumbnail) {
         // Image thumbnail
         const clickable = hasViewableMedia ? 'clickable-thumbnail' : '';
