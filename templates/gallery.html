@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gallery - AI Animation Pipeline</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 28px;
+        }
+
+        .back-btn {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+
+        .back-btn:hover {
+            background: #5568d3;
+        }
+
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .gallery-item {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .gallery-item:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 12px rgba(0,0,0,0.15);
+        }
+
+        .media-container {
+            width: 100%;
+            height: 250px;
+            background: #f5f5f5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .media-container img,
+        .media-container video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .media-type-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .item-info {
+            padding: 15px;
+        }
+
+        .item-type {
+            color: #667eea;
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 5px;
+            text-transform: capitalize;
+        }
+
+        .item-prompt {
+            color: #333;
+            font-size: 14px;
+            margin-bottom: 10px;
+            line-height: 1.4;
+            max-height: 60px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .item-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            color: #666;
+        }
+
+        .item-date {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .download-btn {
+            padding: 8px 15px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            transition: background 0.3s;
+            display: inline-block;
+        }
+
+        .download-btn:hover {
+            background: #5568d3;
+        }
+
+        .no-jobs {
+            background: white;
+            padding: 60px 30px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .no-jobs h2 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .no-jobs p {
+            color: #666;
+            margin-bottom: 20px;
+        }
+
+        .filter-bar {
+            background: white;
+            padding: 15px 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            padding: 8px 16px;
+            border: 2px solid #667eea;
+            background: white;
+            color: #667eea;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .filter-btn:hover,
+        .filter-btn.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .job-count {
+            color: #666;
+            font-size: 14px;
+            margin-left: auto;
+            align-self: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎨 Gallery</h1>
+            <a href="/" class="back-btn">← Back to Studio</a>
+        </div>
+
+        {% if jobs %}
+        <div class="filter-bar">
+            <button class="filter-btn active" onclick="filterJobs('all')">All</button>
+            <button class="filter-btn" onclick="filterJobs('animation')">Animations</button>
+            <button class="filter-btn" onclick="filterJobs('image_generation')">Images</button>
+            <button class="filter-btn" onclick="filterJobs('background_removal')">Transparent</button>
+            <button class="filter-btn" onclick="filterJobs('keyed')">Keyed Videos</button>
+            <span class="job-count">Total: {{ jobs|length }} items</span>
+        </div>
+
+        <div class="gallery-grid" id="gallery-grid">
+            {% for job in jobs %}
+            <div class="gallery-item" data-type="{{ job.job_type }}" data-has-keyed="{{ 'true' if job.keyed_result_data else 'false' }}">
+                <div class="media-container">
+                    {% if job.job_type in ['animation', 'video_stitching', 'trim'] %}
+                        <video src="{{ job.result_data }}" loop muted playsinline onmouseover="this.play()" onmouseout="this.pause();this.currentTime=0;"></video>
+                        <div class="media-type-badge">VIDEO</div>
+                    {% elif job.job_type == 'image_generation' or job.job_type == 'background_removal' %}
+                        <img src="{{ job.result_data }}" alt="Generated content">
+                        <div class="media-type-badge">IMAGE</div>
+                    {% endif %}
+                    
+                    {% if job.keyed_result_parsed and job.keyed_result_parsed.webm %}
+                        <div class="media-type-badge" style="top: 45px;">KEYED</div>
+                    {% endif %}
+                </div>
+                
+                <div class="item-info">
+                    <div class="item-type">
+                        {% if job.job_type == 'animation' %}Animation
+                        {% elif job.job_type == 'image_generation' %}Generated Image
+                        {% elif job.job_type == 'background_removal' %}Transparent Image
+                        {% elif job.job_type == 'video_stitching' %}Stitched Video
+                        {% elif job.job_type == 'trim' %}Trimmed Video
+                        {% else %}{{ job.job_type }}
+                        {% endif %}
+                    </div>
+                    
+                    {% if job.prompt %}
+                    <div class="item-prompt">{{ job.prompt[:100] }}{% if job.prompt|length > 100 %}...{% endif %}</div>
+                    {% endif %}
+                    
+                    <div class="item-meta">
+                        <div class="item-date">{{ job.created_at[:16] }}</div>
+                        <a href="{{ job.result_data }}" download class="download-btn">⬇ Download</a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="no-jobs">
+            <h2>No Content Yet</h2>
+            <p>Your generated content will appear here once you create some!</p>
+            <a href="/" class="back-btn">Get Started →</a>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        function filterJobs(type) {
+            const items = document.querySelectorAll('.gallery-item');
+            const buttons = document.querySelectorAll('.filter-btn');
+            
+            // Update active button
+            buttons.forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // Filter items
+            items.forEach(item => {
+                if (type === 'all') {
+                    item.style.display = 'block';
+                } else if (type === 'keyed') {
+                    item.style.display = item.dataset.hasKeyed === 'true' ? 'block' : 'none';
+                } else {
+                    item.style.display = item.dataset.type === type ? 'block' : 'none';
+                }
+            });
+        }
+    </script>
+</body>
+</html>
+
