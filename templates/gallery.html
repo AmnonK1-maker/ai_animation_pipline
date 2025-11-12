@@ -226,16 +226,16 @@
 
         <div class="gallery-grid" id="gallery-grid">
             {% for job in jobs %}
+            {% set is_video_job = job.job_type in ['animation', 'video_stitching', 'trim', 'boomerang_automation'] %}
+            {% set has_keyed = job.keyed_result_parsed and job.keyed_result_parsed.webm %}
+            {% set media_url = job.keyed_result_parsed.webm if has_keyed else job.result_data %}
+            {% set should_autoplay = loop.index0 < 3 %}
+            
             <div class="gallery-item" data-type="{{ job.job_type }}" data-has-keyed="{{ 'true' if job.keyed_result_data else 'false' }}">
                 <div class="media-container">
-                    {% if job.job_type in ['animation', 'video_stitching', 'trim'] %}
-                        {% if job.keyed_result_parsed and job.keyed_result_parsed.webm %}
-                            <video src="{{ job.keyed_result_parsed.webm }}" loop muted playsinline onmouseover="this.play()" onmouseout="this.pause();this.currentTime=0;"></video>
-                            <div class="media-type-badge">KEYED VIDEO</div>
-                        {% else %}
-                            <video src="{{ job.result_data }}" loop muted playsinline onmouseover="this.play()" onmouseout="this.pause();this.currentTime=0;"></video>
-                            <div class="media-type-badge">VIDEO</div>
-                        {% endif %}
+                    {% if is_video_job %}
+                        <video src="{{ media_url }}" loop muted playsinline {% if should_autoplay %}autoplay{% endif %} onmouseover="this.play()" onmouseout="{% if not should_autoplay %}this.pause();this.currentTime=0;{% endif %}"></video>
+                        <div class="media-type-badge">{{ 'KEYED VIDEO' if has_keyed else 'VIDEO' }}</div>
                     {% elif job.job_type == 'image_generation' or job.job_type == 'background_removal' %}
                         <img src="{{ job.result_data }}" alt="Generated content">
                         <div class="media-type-badge">IMAGE</div>
@@ -248,6 +248,7 @@
                         {% elif job.job_type == 'background_removal' %}Transparent Image
                         {% elif job.job_type == 'video_stitching' %}Stitched Video
                         {% elif job.job_type == 'trim' %}Trimmed Video
+                        {% elif job.job_type == 'boomerang_automation' %}Loop Animation
                         {% else %}{{ job.job_type }}
                         {% endif %}
                     </div>
@@ -258,7 +259,7 @@
                     
                     <div class="item-meta">
                         <div class="item-date">{{ job.created_at[:16] }}</div>
-                        <a href="{{ job.result_data }}" target="_blank" class="download-btn">👁️ View</a>
+                        <a href="{{ media_url }}" target="_blank" class="download-btn">👁️ View</a>
                     </div>
                 </div>
             </div>
@@ -282,14 +283,33 @@
             buttons.forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
             
-            // Filter items
+            // Filter items and manage autoplay
+            let visibleCount = 0;
             items.forEach(item => {
+                let shouldShow = false;
+                
                 if (type === 'all') {
-                    item.style.display = 'block';
+                    shouldShow = true;
                 } else if (type === 'keyed') {
-                    item.style.display = item.dataset.hasKeyed === 'true' ? 'block' : 'none';
+                    shouldShow = item.dataset.hasKeyed === 'true';
                 } else {
-                    item.style.display = item.dataset.type === type ? 'block' : 'none';
+                    shouldShow = item.dataset.type === type;
+                }
+                
+                item.style.display = shouldShow ? 'block' : 'none';
+                
+                // Manage video autoplay - only first 3 visible videos
+                const video = item.querySelector('video');
+                if (video && shouldShow) {
+                    if (visibleCount < 3) {
+                        video.autoplay = true;
+                        video.play();
+                    } else {
+                        video.autoplay = false;
+                        video.pause();
+                        video.currentTime = 0;
+                    }
+                    visibleCount++;
                 }
             });
         }
