@@ -83,6 +83,17 @@
             position: relative;
         }
 
+        .media-container.checkerboard {
+            background-image: 
+                linear-gradient(45deg, #ddd 25%, transparent 25%), 
+                linear-gradient(-45deg, #ddd 25%, transparent 25%), 
+                linear-gradient(45deg, transparent 75%, #ddd 75%), 
+                linear-gradient(-45deg, transparent 75%, #ddd 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+            background-color: #fff;
+        }
+
         .media-container img,
         .media-container video {
             width: 100%;
@@ -228,11 +239,12 @@
             {% for job in jobs %}
             {% set is_video_job = job.job_type in ['animation', 'video_stitching', 'trim', 'boomerang_automation'] %}
             {% set has_keyed = job.keyed_result_parsed and job.keyed_result_parsed.webm %}
+            {% set is_transparent = job.job_type == 'background_removal' %}
             {% set media_url = job.keyed_result_parsed.webm if has_keyed else job.result_data %}
             {% set should_autoplay = loop.index0 < 3 %}
             
             <div class="gallery-item" data-type="{{ job.job_type }}" data-has-keyed="{{ 'true' if job.keyed_result_data else 'false' }}">
-                <div class="media-container">
+                <div class="media-container {{ 'checkerboard' if (has_keyed or is_transparent) else '' }}">
                     {% if is_video_job %}
                         <video src="{{ media_url }}" loop muted playsinline {% if should_autoplay %}autoplay{% endif %} onmouseover="this.play()" onmouseout="{% if not should_autoplay %}this.pause();this.currentTime=0;{% endif %}"></video>
                         <div class="media-type-badge">{{ 'KEYED VIDEO' if has_keyed else 'VIDEO' }}</div>
