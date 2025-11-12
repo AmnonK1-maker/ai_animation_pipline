@@ -1098,14 +1098,21 @@ def handle_animation(job):
                         with open(end_image_path, "wb") as f:
                             f.write(img_response.content)
                         end_file_obj = open(end_image_path, "rb")
-                        api_input["end_image"] = end_file_obj
                     else:
                         # It's a local path
-                        end_image_path = os.path.join(BASE_DIR, end_image_url.lstrip('/'))
+                        end_image_path = os.path.join(DATA_DIR, end_image_url.lstrip('/'))
                         if os.path.exists(end_image_path):
                             print(f"   ...using end frame from {end_image_path}")
                             end_file_obj = open(end_image_path, "rb")
+                    
+                    # Assign to correct parameter based on model
+                    if end_file_obj:
+                        if 'seedance' in video_model:
+                            api_input["last_frame_image"] = end_file_obj
+                            print(f"   ...set end_image_url as last_frame_image for Seedance")
+                        else:
                             api_input["end_image"] = end_file_obj
+                            print(f"   ...set end_image_url as end_image for Kling")
                 # Handle last_frame_url for both Kling and Seedance
                 last_frame_url = input_data.get("last_frame_url")
                 if last_frame_url:

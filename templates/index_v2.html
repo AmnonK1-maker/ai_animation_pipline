@@ -2685,7 +2685,6 @@ async function extractFrameA() {
         container.style.display = 'block';
         
         showUserFriendlyError(`✅ Frame A extracted at ${video.currentTime.toFixed(2)}s`, false);
-        alert(`✅ Frame A extracted at ${video.currentTime.toFixed(2)}s`);
         console.log('Frame A extracted:', extractedFrameA);
     } catch (err) {
         console.error('Failed to extract frame A:', err);
@@ -2717,7 +2716,6 @@ async function extractFrameB() {
         container.style.display = 'block';
         
         showUserFriendlyError(`✅ Frame B extracted at ${video.currentTime.toFixed(2)}s`, false);
-        alert(`✅ Frame B extracted at ${video.currentTime.toFixed(2)}s`);
         console.log('Frame B extracted:', extractedFrameB);
     } catch (err) {
         console.error('Failed to extract frame B:', err);
