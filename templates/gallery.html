@@ -13,7 +13,7 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #ffffff;
             min-height: 100vh;
             padding: 20px;
         }
@@ -229,18 +229,18 @@
             <div class="gallery-item" data-type="{{ job.job_type }}" data-has-keyed="{{ 'true' if job.keyed_result_data else 'false' }}">
                 <div class="media-container">
                     {% if job.job_type in ['animation', 'video_stitching', 'trim'] %}
-                        <video src="{{ job.result_data }}" loop muted playsinline onmouseover="this.play()" onmouseout="this.pause();this.currentTime=0;"></video>
-                        <div class="media-type-badge">VIDEO</div>
+                        {% if job.keyed_result_parsed and job.keyed_result_parsed.webm %}
+                            <video src="{{ job.keyed_result_parsed.webm }}" loop muted playsinline onmouseover="this.play()" onmouseout="this.pause();this.currentTime=0;"></video>
+                            <div class="media-type-badge">KEYED VIDEO</div>
+                        {% else %}
+                            <video src="{{ job.result_data }}" loop muted playsinline onmouseover="this.play()" onmouseout="this.pause();this.currentTime=0;"></video>
+                            <div class="media-type-badge">VIDEO</div>
+                        {% endif %}
                     {% elif job.job_type == 'image_generation' or job.job_type == 'background_removal' %}
                         <img src="{{ job.result_data }}" alt="Generated content">
                         <div class="media-type-badge">IMAGE</div>
                     {% endif %}
-                    
-                    {% if job.keyed_result_parsed and job.keyed_result_parsed.webm %}
-                        <div class="media-type-badge" style="top: 45px;">KEYED</div>
-                    {% endif %}
-                </div>
-                
+                </div>                
                 <div class="item-info">
                     <div class="item-type">
                         {% if job.job_type == 'animation' %}Animation
