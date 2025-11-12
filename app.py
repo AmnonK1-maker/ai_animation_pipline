@@ -54,9 +54,8 @@ if os.path.exists(RENDER_PERSISTENT_DISK):
     DATABASE_PATH = os.path.join(DATA_DIR, 'jobs.db')
     print(f"☁️ Running on Render.com with persistent disk")
     print(f"📁 Data directory: {DATA_DIR}")
-    app = Flask(__name__)
-    # Serve static files from persistent disk
-    app.config['STATIC_FOLDER'] = STATIC_FOLDER
+    # Initialize Flask with static folder pointing to persistent disk
+    app = Flask(__name__, static_folder=STATIC_FOLDER, static_url_path='/static')
 elif getattr(sys, 'frozen', False):
     # Running as standalone app (PyInstaller bundle)
     USER_HOME = os.path.expanduser('~')
@@ -351,12 +350,17 @@ def home():
 @app.route("/gallery")
 def gallery():
     """Gallery page showing all completed jobs with their outputs"""
+    print(f"📸 Gallery: Using database at: {DATABASE_PATH}")
     with get_db_connection() as conn:
         # Delete old jobs (ID <= 76) on first load
         deleted = conn.execute("DELETE FROM jobs WHERE id <= 76").rowcount
         if deleted > 0:
             conn.commit()
             print(f"🗑️ Cleaned up {deleted} old jobs (ID <= 76)")
+        
+        # Get ALL jobs first to see what's in the database
+        all_jobs = conn.execute("SELECT COUNT(*) as total FROM jobs").fetchone()
+        print(f"📸 Gallery: Total jobs in database: {all_jobs['total']}")
         
         # Get all completed jobs with results, ordered by most recent first
         jobs = conn.execute("""
@@ -367,6 +371,8 @@ def gallery():
             AND (result_data IS NOT NULL OR keyed_result_data IS NOT NULL)
             ORDER BY created_at DESC
         """).fetchall()
+        
+        print(f"📸 Gallery: Found {len(jobs)} completed jobs with results")
         
         # Convert to list of dicts for easier template access
         jobs_list = []
