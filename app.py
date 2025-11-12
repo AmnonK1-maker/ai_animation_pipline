@@ -352,6 +352,12 @@ def home():
 def gallery():
     """Gallery page showing all completed jobs with their outputs"""
     with get_db_connection() as conn:
+        # Delete old jobs (ID <= 76) on first load
+        deleted = conn.execute("DELETE FROM jobs WHERE id <= 76").rowcount
+        if deleted > 0:
+            conn.commit()
+            print(f"🗑️ Cleaned up {deleted} old jobs (ID <= 76)")
+        
         # Get all completed jobs with results, ordered by most recent first
         jobs = conn.execute("""
             SELECT id, job_type, status, result_data, keyed_result_data, 
@@ -2232,53 +2238,6 @@ def debug_sticker_effect():
         print(f"Debug sticker effect error: {e}")
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
-
-@app.route('/gallery')
-def gallery():
-    """Gallery page showing all completed jobs"""
-    try:
-        with get_db_connection() as conn:
-            # Delete old jobs (ID <= 76) if they exist
-            conn.execute("DELETE FROM jobs WHERE id <= 76")
-            conn.commit()
-            print("🗑️ Cleaned up old jobs (ID <= 76)")
-            
-            # Fetch all completed jobs, newest first
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT id, job_type, status, result_url, result_data, created_at, 
-                       keyed_result_url, keyed_result_data
-                FROM jobs 
-                WHERE status = 'completed'
-                ORDER BY id DESC
-            """)
-            jobs = cursor.fetchall()
-            
-            # Convert to list of dicts and parse JSON fields
-            gallery_items = []
-            for job in jobs:
-                job_dict = dict(job)
-                
-                # Parse result_data if it's JSON
-                if job_dict.get('result_data'):
-                    try:
-                        job_dict['result_data'] = json.loads(job_dict['result_data'])
-                    except:
-                        pass
-                
-                # Parse keyed_result_data if it's JSON
-                if job_dict.get('keyed_result_data'):
-                    try:
-                        job_dict['keyed_result_data'] = json.loads(job_dict['keyed_result_data'])
-                    except:
-                        pass
-                
-                gallery_items.append(job_dict)
-            
-            return render_template('gallery.html', jobs=gallery_items)
-    except Exception as e:
-        print(f"❌ Error loading gallery: {e}")
-        return render_template('gallery.html', jobs=[], error=str(e))
 
 if __name__ == '__main__':
     # Initialize database on startup (for direct execution)
