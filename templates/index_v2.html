@@ -1072,14 +1072,26 @@
                 <label class="form-label">Select Animation Model:</label>
                 <div class="checkbox-group">
                     <label class="checkbox-item">
-                        <input type="radio" name="loop-model" value="kwaivgi/kling-v2.1" checked>
+                        <input type="radio" name="loop-model" value="kwaivgi/kling-v2.1" checked onchange="toggleLoopDurationControl()">
                         <span>Kling v2.1</span>
                     </label>
                     <label class="checkbox-item">
-                        <input type="radio" name="loop-model" value="bytedance/seedance-1-pro">
+                        <input type="radio" name="loop-model" value="bytedance/seedance-1-pro" onchange="toggleLoopDurationControl()">
                         <span>Seedance-1 Pro</span>
                     </label>
                 </div>
+            </div>
+            
+            <!-- Seedance Duration Control -->
+            <div class="form-group" id="loop-seedance-duration-control" style="display: none;">
+                <label class="form-label">Animation Duration (seconds):</label>
+                <div class="slider-group">
+                    <div class="slider-label">
+                        <span><span id="loop-seedance-duration-value">5</span>s</span>
+                    </div>
+                    <input type="range" class="slider" id="loop-seedance-duration-slider" min="2" max="12" value="5" oninput="updateLoopSeedanceDuration()">
+                </div>
+                <small style="color: #666; font-size: 11px;">Each segment (A→B and B→A) will be this duration</small>
             </div>
             
             <button class="btn-primary" onclick="createLoop()">Generate Animation</button>
@@ -2040,6 +2052,18 @@ function updateLoopOutlineThickness() {
     valueSpan.textContent = slider.value;
 }
 
+function toggleLoopDurationControl() {
+    const seedanceSelected = document.querySelector('input[name="loop-model"][value="bytedance/seedance-1-pro"]').checked;
+    const durationControl = document.getElementById('loop-seedance-duration-control');
+    durationControl.style.display = seedanceSelected ? 'block' : 'none';
+}
+
+function updateLoopSeedanceDuration() {
+    const slider = document.getElementById('loop-seedance-duration-slider');
+    const valueSpan = document.getElementById('loop-seedance-duration-value');
+    valueSpan.textContent = slider.value;
+}
+
 // ===== SMART POLLING SYSTEM =====
 function hashJobs(jobs) {
     // Create a simple hash of job data to detect changes
@@ -2773,7 +2797,8 @@ function createLoop() {
         formData.append('kling_duration', '5');
         formData.append('kling_mode', 'pro');
     } else if (videoModel.includes('seedance')) {
-        formData.append('seedance_duration', '5');
+        const seedanceDuration = document.getElementById('loop-seedance-duration-slider').value;
+        formData.append('seedance_duration', seedanceDuration);
         formData.append('seedance_resolution', '1080p');
         formData.append('seedance_aspect_ratio', '1:1');
     }
