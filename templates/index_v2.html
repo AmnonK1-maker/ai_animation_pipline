@@ -860,7 +860,8 @@
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                     <div>
                         <label class="form-label" style="margin-bottom: 8px;">First Frame:</label>
-                        <div class="upload-area" id="anim-start-frame-upload" style="cursor: pointer;">
+                        <div class="upload-area" id="anim-start-frame-upload" style="cursor: pointer; position: relative;">
+                            <button type="button" id="anim-start-frame-remove" onclick="removeAnimStartFrame(event)" style="display: none; position: absolute; top: 8px; right: 8px; background: rgba(220, 53, 69, 0.9); color: white; border: none; border-radius: 50%; width: 28px; height: 28px; cursor: pointer; font-size: 16px; line-height: 1; z-index: 10; padding: 0;">×</button>
                             <img id="anim-frame-preview" style="display: none; max-width: 100%; height: auto; object-fit: contain;" />
                             <p id="anim-frame-placeholder">Upload First Frame</p>
                             <input type="file" id="anim-start-frame" accept="image/*" style="display: none;">
@@ -868,7 +869,8 @@
                     </div>
                     <div>
                         <label class="form-label" style="margin-bottom: 8px;">Last Frame (Optional):</label>
-                        <div class="upload-area" id="anim-last-frame-upload" style="cursor: pointer;">
+                        <div class="upload-area" id="anim-last-frame-upload" style="cursor: pointer; position: relative;">
+                            <button type="button" id="anim-last-frame-remove" onclick="removeAnimLastFrame(event)" style="display: none; position: absolute; top: 8px; right: 8px; background: rgba(220, 53, 69, 0.9); color: white; border: none; border-radius: 50%; width: 28px; height: 28px; cursor: pointer; font-size: 16px; line-height: 1; z-index: 10; padding: 0;">×</button>
                             <img id="anim-last-frame-preview" style="display: none; max-width: 100%; height: auto; object-fit: contain;" />
                             <p id="anim-last-frame-placeholder">Upload Last Frame</p>
                             <input type="file" id="anim-last-frame" accept="image/*" style="display: none;">
@@ -1690,7 +1692,11 @@ function setupImageReferenceUpload(fileInputId, uploadAreaId, previewImgId, plac
     const uploadArea = document.getElementById(uploadAreaId);
     const previewImg = document.getElementById(previewImgId);
     const placeholder = document.getElementById(placeholderId);
-    const removeBtn = document.getElementById(fileInputId.replace('-file', '-remove'));
+    // Support both '-file' and '-frame' suffixes for remove button
+    const removeBtnId = fileInputId.includes('-file') 
+        ? fileInputId.replace('-file', '-remove')
+        : fileInputId + '-remove';
+    const removeBtn = document.getElementById(removeBtnId);
     
     // Handle click to open file dialog
     uploadArea.addEventListener('click', (e) => {
@@ -2064,6 +2070,47 @@ function updateLoopSeedanceDuration() {
     valueSpan.textContent = slider.value;
 }
 
+// ===== REMOVE ANIMATION FRAME FUNCTIONS =====
+function removeAnimStartFrame(event) {
+    event.stopPropagation(); // Prevent triggering file dialog
+    
+    // Clear the file input
+    const fileInput = document.getElementById('anim-start-frame');
+    fileInput.value = '';
+    
+    // Hide preview and show placeholder
+    const preview = document.getElementById('anim-frame-preview');
+    const placeholder = document.getElementById('anim-frame-placeholder');
+    const removeBtn = document.getElementById('anim-start-frame-remove');
+    
+    preview.style.display = 'none';
+    placeholder.style.display = 'block';
+    placeholder.textContent = 'Upload First Frame';
+    removeBtn.style.display = 'none';
+    
+    console.log('✅ Start frame removed');
+}
+
+function removeAnimLastFrame(event) {
+    event.stopPropagation(); // Prevent triggering file dialog
+    
+    // Clear the file input
+    const fileInput = document.getElementById('anim-last-frame');
+    fileInput.value = '';
+    
+    // Hide preview and show placeholder
+    const preview = document.getElementById('anim-last-frame-preview');
+    const placeholder = document.getElementById('anim-last-frame-placeholder');
+    const removeBtn = document.getElementById('anim-last-frame-remove');
+    
+    preview.style.display = 'none';
+    placeholder.style.display = 'block';
+    placeholder.textContent = 'Upload Last Frame';
+    removeBtn.style.display = 'none';
+    
+    console.log('✅ Last frame removed');
+}
+
 // ===== SMART POLLING SYSTEM =====
 function hashJobs(jobs) {
     // Create a simple hash of job data to detect changes
@@ -2155,7 +2202,10 @@ function renderJobs() {
         return;
     }
     
-    container.innerHTML = allJobs.map((job, index) => renderJobCard(job, index)).join('');
+    // Sort jobs by ID descending (newest first)
+    const sortedJobs = [...allJobs].sort((a, b) => b.id - a.id);
+    
+    container.innerHTML = sortedJobs.map((job, index) => renderJobCard(job, index)).join('');
 }
 
 function renderJobCard(job, index = 0) {
@@ -4586,9 +4636,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const lastFrameInput = document.getElementById('anim-last-frame');
     const lastFramePreview = document.getElementById('anim-last-frame-preview');
     const lastFramePlaceholder = document.getElementById('anim-last-frame-placeholder');
+    const lastFrameRemoveBtn = document.getElementById('anim-last-frame-remove');
     
     if (lastFrameUploadArea && lastFrameInput) {
-        lastFrameUploadArea.addEventListener('click', () => lastFrameInput.click());
+        lastFrameUploadArea.addEventListener('click', (e) => {
+            // Don't trigger file dialog if clicking the remove button
+            if (e.target.tagName === 'BUTTON') return;
+            lastFrameInput.click();
+        });
         
         lastFrameInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
@@ -4598,6 +4653,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     lastFramePreview.src = e.target.result;
                     lastFramePreview.style.display = 'block';
                     lastFramePlaceholder.style.display = 'none';
+                    if (lastFrameRemoveBtn) lastFrameRemoveBtn.style.display = 'block';
                 };
                 reader.readAsDataURL(file);
             }
