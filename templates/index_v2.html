@@ -2078,6 +2078,10 @@ function removeAnimStartFrame(event) {
     const fileInput = document.getElementById('anim-start-frame');
     fileInput.value = '';
     
+    // Clear hidden input from job queue if exists
+    const hiddenInput = document.querySelector('input[name="image_url_from_job"]');
+    if (hiddenInput) hiddenInput.remove();
+    
     // Hide preview and show placeholder
     const preview = document.getElementById('anim-frame-preview');
     const placeholder = document.getElementById('anim-frame-placeholder');
@@ -2097,6 +2101,10 @@ function removeAnimLastFrame(event) {
     // Clear the file input
     const fileInput = document.getElementById('anim-last-frame');
     fileInput.value = '';
+    
+    // Clear hidden input from job queue if exists
+    const hiddenInput = document.querySelector('input[name="last_frame_url_from_job"]');
+    if (hiddenInput) hiddenInput.remove();
     
     // Hide preview and show placeholder
     const preview = document.getElementById('anim-last-frame-preview');
@@ -4008,10 +4016,12 @@ function animateImage(jobId) {
     // Show image preview
     const previewImg = document.getElementById('anim-frame-preview');
     const placeholder = document.getElementById('anim-frame-placeholder');
+    const removeBtn = document.getElementById('anim-start-frame-remove');
     // Handle both absolute URLs (S3) and relative paths (local)
     previewImg.src = job.result_data.startsWith('http') ? job.result_data : '/' + job.result_data.replace(/^\//, '');
     previewImg.style.display = 'block';
     placeholder.style.display = 'none';
+    if (removeBtn) removeBtn.style.display = 'block';
 }
 
 function useAsLastFrame(jobId) {
@@ -4040,10 +4050,12 @@ function useAsLastFrame(jobId) {
     // Show last frame preview
     const previewImg = document.getElementById('anim-last-frame-preview');
     const placeholder = document.getElementById('anim-last-frame-placeholder');
+    const removeBtn = document.getElementById('anim-last-frame-remove');
     // Handle both absolute URLs (S3) and relative paths (local)
     previewImg.src = job.result_data.startsWith('http') ? job.result_data : '/' + job.result_data.replace(/^\//, '');
     previewImg.style.display = 'block';
     placeholder.style.display = 'none';
+    if (removeBtn) removeBtn.style.display = 'block';
     placeholder.textContent = 'Last Frame Set';
     
     console.log('✓ Last frame set from job', jobId);
