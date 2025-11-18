@@ -1246,7 +1246,7 @@ def handle_trim(job):
         
         if pingpong:
             # For pingpong loop: create forward then backward (reverse) sequence
-            print(f"   Creating pingpong loop...")
+            print(f"   Creating pingpong loop with H.264 (fast encoding)...")
             
             ffmpeg_cmd = [
                 'ffmpeg', '-y',
@@ -1256,27 +1256,25 @@ def handle_trim(job):
                 f'[0:v]trim=duration={duration},setpts=PTS-STARTPTS,split[main][copy]; '
                 f'[copy]reverse[rev]; [main][rev]concat=n=2:v=1:a=0[out]',
                 '-map', '[out]',
-                '-c:v', 'libvpx-vp9',
-                '-pix_fmt', 'yuva420p',
-                '-b:v', '0',
-                '-crf', '10',
-                '-quality', 'best',
-                '-cpu-used', '0',
+                '-c:v', 'libx264',
+                '-preset', 'fast',
+                '-crf', '18',
+                '-pix_fmt', 'yuv420p',
                 output_path
             ]
         else:
-            # Normal trim without pingpong
-            print(f"   Trimming video...")
+            # Normal trim without pingpong - use fast H.264
+            print(f"   Trimming video with H.264 (fast encoding)...")
             
             ffmpeg_cmd = [
                 'ffmpeg', '-y',
                 '-ss', str(in_point),
                 '-i', input_path,
                 '-t', str(duration),
-                '-c:v', 'libvpx-vp9',
-                '-pix_fmt', 'yuva420p',
-                '-b:v', '0',
-                '-crf', '10',
+                '-c:v', 'libx264',
+                '-preset', 'fast',
+                '-crf', '18',
+                '-pix_fmt', 'yuv420p',
                 output_path
             ]
         
