@@ -1237,8 +1237,8 @@ def handle_trim(job):
                 return None, f"Source video file not found: {input_path}"
             cleanup_input = False
         
-        # Create output filename
-        output_filename = f"trimmed_{job_id}_{uuid.uuid4().hex[:8]}.webm"
+        # Create output filename - use MP4 for H.264 encoding
+        output_filename = f"trimmed_{job_id}_{uuid.uuid4().hex[:8]}.mp4"
         output_path = os.path.join(TRANSPARENT_VIDEOS_FOLDER, output_filename)
         
         # Trim video using ffmpeg
