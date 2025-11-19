@@ -1447,11 +1447,64 @@ def handle_replicate_openai_generation(job):
     except Exception as e:
         return None, f"Replicate OpenAI generation error: {e}"
 
+def shorten_prompt_with_gpt(prompt, max_length=150, model_name="unknown"):
+    """
+    Intelligently shorten a prompt using ChatGPT while preserving key details.
+    Returns the original prompt if it's already short enough or if shortening fails.
+    """
+    if len(prompt) <= max_length:
+        return prompt
+    
+    if not OPENAI_API_KEY:
+        print(f"   ⚠️ No OpenAI key - truncating prompt to {max_length} chars")
+        return prompt[:max_length]
+    
+    try:
+        print(f"   📝 Shortening {model_name} prompt from {len(prompt)} to ~{max_length} chars using GPT...")
+        
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"You are a prompt optimization expert. Condense the following image generation prompt to approximately {max_length} characters while preserving ALL key visual details, style elements, colors, and artistic characteristics. Keep the most important descriptive words. Remove filler words and redundancy. Return ONLY the condensed prompt, no explanations."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            max_tokens=100,
+            temperature=0.3
+        )
+        
+        shortened = response.choices[0].message.content.strip()
+        
+        # Safety check: if GPT made it too long, hard truncate
+        if len(shortened) > max_length + 20:
+            shortened = shortened[:max_length]
+        
+        print(f"   ✅ Shortened to {len(shortened)} chars: {shortened[:80]}...")
+        return shortened
+        
+    except Exception as e:
+        print(f"   ⚠️ GPT shortening failed: {e} - using truncation")
+        return prompt[:max_length]
+
 def handle_bytedance_generation(job):
     try:
         print(f"-> Starting Bytedance Seedream-4 generation for job {job['id']}...")
         input_data = json.loads(job['input_data'])
-        engineered_prompt = (f"professional product shot of a {input_data['object_prompt']}, " f"in the style of {input_data['style_prompt']}, centered, " f"on a solid bright green flat neutral background, no shadows")
+        
+        # Shorten style prompt if too long (Bytedance has strict limits)
+        style_prompt = shorten_prompt_with_gpt(
+            input_data['style_prompt'], 
+            max_length=150, 
+            model_name="Bytedance"
+        )
+        
+        engineered_prompt = (f"professional product shot of a {input_data['object_prompt']}, " f"in the style of {style_prompt}, centered, " f"on a solid bright green flat neutral background, no shadows")
         print(f"   ...calling bytedance/seedream-4")
         greenscreen_output = replicate.run("bytedance/seedream-4", input={"prompt": engineered_prompt, "size": "1K", "aspect_ratio": "1:1"})
         greenscreen_url = greenscreen_output[0] if greenscreen_output else None
@@ -1625,7 +1678,15 @@ def handle_leonardo_generation(job):
         input_data = json.loads(job['input_data'])
         model_id = input_data.get("modelId", "b24e16ff-06e3-43eb-8d33-4416c2d75876")
         preset_style = input_data.get("presetStyle", "NONE")
-        full_prompt = f"{input_data['object_prompt']}, in the style of {input_data['style_prompt']}, centered, professional product shot"
+        
+        # Shorten style prompt if too long (Leonardo has moderate limits)
+        style_prompt = shorten_prompt_with_gpt(
+            input_data['style_prompt'], 
+            max_length=200, 
+            model_name="Leonardo"
+        )
+        
+        full_prompt = f"{input_data['object_prompt']}, in the style of {style_prompt}, centered, professional product shot"
         url = "https://cloud.leonardo.ai/api/rest/v1/generations"
         payload = {"height": 1024, "width": 1024, "modelId": model_id, "prompt": full_prompt, "num_images": 1, "presetStyle": preset_style, "transparency": "foreground_only", "negative_prompt": "text, watermark, blurry, deformed, distorted, ugly, signature"}
         headers = {"accept": "application/json", "content-type": "application/json", "authorization": f"Bearer {LEONARDO_API_KEY}"}
