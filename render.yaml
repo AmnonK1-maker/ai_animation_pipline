@@ -1,7 +1,7 @@
 services:
-  # Web Service (Flask App)
+  # Web Service (Flask App) - Version 2
   - type: web
-    name: aiap-web
+    name: aiap-web-v2
     env: docker
     plan: free
     dockerfilePath: ./Dockerfile

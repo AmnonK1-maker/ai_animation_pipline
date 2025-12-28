@@ -744,7 +744,7 @@
 <div class="top-toolbar">
     <button class="tool-btn" data-tool="image-generator">Generate Image</button>
     <button class="tool-btn" data-tool="animation">Animate</button>
-    <button class="tool-btn" data-tool="loop-creator">Loop Creator</button>
+    <button class="tool-btn" data-tool="loop-creator" style="display: none;">Loop Creator</button>
     <button class="tool-btn" data-tool="keyer">Key</button>
     <button class="tool-btn" data-tool="remove-bg">Remove Background</button>
 </div>
@@ -983,7 +983,7 @@
         </div>
         
         <!-- LOOP CREATOR TOOL -->
-        <div class="tool-content" id="tool-loop-creator">
+        <div class="tool-content" id="tool-loop-creator" style="display: none !important;">
             <h2 class="tool-title">Loop Creator</h2>
             
             <div class="form-group">
@@ -2093,7 +2093,7 @@ function getJobActions(job) {
             actions.push(`<button class="job-action-btn" onclick="editJob(${job.id})">Edit</button>`);
             actions.push(`<button class="job-action-btn" onclick="editAnimation(${job.id})">✂️ Trim</button>`);
             actions.push(`<button class="job-action-btn" onclick="selectForStitch(${job.id})">Stitch</button>`);
-            actions.push(`<button class="job-action-btn" onclick="createLoopFromJob(${job.id})">Loop Creator</button>`);
+            // actions.push(`<button class="job-action-btn" onclick="createLoopFromJob(${job.id})">Loop Creator</button>`); // Hidden for v2
             
             // Show keying buttons
             if (!job.keyed_result_data) {
