@@ -604,7 +604,7 @@
         cursor: default;
         text-align: center;
     }
-    
+
     .spinner {
         width: 30px;
         height: 30px;
@@ -1096,11 +1096,11 @@
         .job-card-content {
             width: 100%;
         }
-        
+
         .video-editor-content {
             grid-template-columns: 1fr;
         }
-        
+
         .app-header-inner {
             flex-direction: column;
             align-items: flex-start;
@@ -1121,13 +1121,13 @@
 <!-- HEADER -->
 <div class="app-header">
     <div class="app-header-inner">
-        <div class="app-title">AI Workflow Dashboard</div>
-        <div class="header-actions">
-            <button class="btn btn-secondary" onclick="toggleSelectionMode()" id="selectJobsBtn">
-                <span>Select Jobs</span>
-            </button>
-            <button class="btn btn-danger" onclick="deleteSelectedJobs()" id="deleteSelectedBtn" style="display: none;">
-                <span>🗑️ Delete Selected</span>
+    <div class="app-title">AI Workflow Dashboard</div>
+    <div class="header-actions">
+        <button class="btn btn-secondary" onclick="toggleSelectionMode()" id="selectJobsBtn">
+            <span>Select Jobs</span>
+        </button>
+        <button class="btn btn-danger" onclick="deleteSelectedJobs()" id="deleteSelectedBtn" style="display: none;">
+            <span>🗑️ Delete Selected</span>
             </button>
         </div>
     </div>
@@ -1438,9 +1438,9 @@
                         <h3 style="margin: 0 0 8px 0; font-size: 10px; color: #666; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">In Point</h3>
                         <div class="frame-preview-container" style="width: 100%; aspect-ratio: 16/9; border-radius: 4px; overflow: hidden; border: 2px solid #999; margin-bottom: 6px; background: repeating-conic-gradient(#e0e0e0 0% 25%, #f0f0f0 0% 50%) 50% / 10px 10px;">
                             <img id="frameAPreview" style="width: 100%; height: 100%; object-fit: cover;" alt="In Point">
-                        </div>
+                                </div>
                         <div id="frameANumber" style="font-size: 9px; color: #666; font-family: monospace; text-align: center; font-weight: 600;">Frame 0</div>
-                    </div>
+                            </div>
                     
                     <!-- Center: Main video preview -->
                     <div style="display: flex; flex-direction: column; padding: 15px; background: #f5f5f5; align-items: center; justify-content: center;">
@@ -1448,20 +1448,20 @@
                         <div id="editorVideoContainer" style="border-radius: 6px; overflow: hidden; position: relative; max-width: 100%;">
                             <div style="position: relative; width: 100%;">
                                 <canvas id="editorCanvas" style="width: 100%; height: auto; max-height: 210px; display: block; object-fit: contain;"></canvas>
-                                
-                                <div id="editorTimestamp" style="position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); color: white; padding: 3px 6px; border-radius: 3px; font-size: 11px; font-family: monospace;"></div>
+                            
+                            <div id="editorTimestamp" style="position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); color: white; padding: 3px 6px; border-radius: 3px; font-size: 11px; font-family: monospace;"></div>
+                        </div>
+                        <!-- Caching overlay for ping pong preview -->
+                        <div id="cachingOverlay" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; flex-direction: column; z-index: 200;">
+                            <div style="color: white; font-size: 16px; margin-bottom: 12px; font-weight: 500;">🎬 Caching Frames for Real-Time Preview</div>
+                            <div style="width: 250px; height: 6px; background: #333; border-radius: 3px; overflow: hidden; margin-bottom: 8px;">
+                                <div id="cachingProgress" style="width: 0%; height: 100%; background: linear-gradient(90deg, #4CAF50, #8BC34A); transition: width 0.1s;"></div>
                             </div>
-                            <!-- Caching overlay for ping pong preview -->
-                            <div id="cachingOverlay" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; flex-direction: column; z-index: 200;">
-                                <div style="color: white; font-size: 16px; margin-bottom: 12px; font-weight: 500;">🎬 Caching Frames for Real-Time Preview</div>
-                                <div style="width: 250px; height: 6px; background: #333; border-radius: 3px; overflow: hidden; margin-bottom: 8px;">
-                                    <div id="cachingProgress" style="width: 0%; height: 100%; background: linear-gradient(90deg, #4CAF50, #8BC34A); transition: width 0.1s;"></div>
-                                </div>
-                                <div id="cachingText" style="color: #aaa; font-size: 12px;">Preparing frames...</div>
+                            <div id="cachingText" style="color: #aaa; font-size: 12px;">Preparing frames...</div>
                             </div>
                         </div>
                     </div>
-                    
+
                     <!-- Right: Out Frame Preview -->
                     <div style="display: flex; flex-direction: column; padding: 10px; background: white; border-left: 1px solid #ddd; align-items: center;">
                         <h3 style="margin: 0 0 8px 0; font-size: 10px; color: #666; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Out Point</h3>
@@ -1500,7 +1500,7 @@
                             </div>
                             
                             <!-- Frame-by-frame controls above timeline -->
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                                 <span id="frameStartLabel" style="font-size: 11px; color: #666; font-family: monospace;">Frame 0</span>
                                 
                                 <div style="display: flex; align-items: center; gap: 8px;">
@@ -1512,9 +1512,9 @@
                                     <div style="display: flex; gap: 2px;">
                                         <button onclick="moveOutPoint(-1)" title="Move Out Point -1 Frame" style="font-size: 10px; padding: 3px 8px; background: #555; color: #fff; border: none; border-radius: 3px; cursor: pointer; font-weight: bold;">◄</button>
                                         <button onclick="moveOutPoint(1)" title="Move Out Point +1 Frame" style="font-size: 10px; padding: 3px 8px; background: #555; color: #fff; border: none; border-radius: 3px; cursor: pointer; font-weight: bold;">►</button>
-                                    </div>
-                                </div>
-                                
+                            </div>
+                        </div>
+                        
                                 <span id="frameEndLabel" style="font-size: 11px; color: #666; font-family: monospace;">Frame 49</span>
                             </div>
                         
@@ -1532,10 +1532,10 @@
                             <div id="frameStripInner" style="display: flex; height: 100%; position: relative;">
                                 <!-- Frames will be inserted here -->
                                 
-                <!-- Trim overlay (scrolls with frames) -->
+                                <!-- Trim overlay (scrolls with frames) -->
                 <div id="trimOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10;">
-                    <div id="trimLeftMask" style="position: absolute; top: 0; bottom: 0; left: 0; background: rgba(0,0,0,0.6);"></div>
-                    <div id="trimRightMask" style="position: absolute; top: 0; bottom: 0; right: 0; background: rgba(0,0,0,0.6);"></div>
+                                    <div id="trimLeftMask" style="position: absolute; top: 0; bottom: 0; left: 0; background: rgba(0,0,0,0.6);"></div>
+                                    <div id="trimRightMask" style="position: absolute; top: 0; bottom: 0; right: 0; background: rgba(0,0,0,0.6);"></div>
                     
                     <!-- Trim selection with handles (inside trim overlay) -->
                     <div id="trimSelection" style="position: absolute; top: 0; bottom: 0; border: 2px solid #666; pointer-events: auto; z-index: 20;">
@@ -1550,14 +1550,14 @@
                     <div id="scrubberHandle" style="position: absolute; top: -8px; left: -6px; width: 14px; height: 14px; background: #FF5722; transform: rotate(45deg); cursor: ew-resize; pointer-events: all; box-shadow: 0 2px 4px rgba(0,0,0,0.5);"></div>
                     <!-- Vertical line -->
                     <div style="position: absolute; top: 6px; bottom: 0; left: 0; width: 2px; background: #FF5722; box-shadow: 0 0 4px rgba(255,87,34,0.8);"></div>
-                </div>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
                         </div>
 
                             <!-- Time display below timeline -->
                             <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #999; font-family: monospace; margin-top: 4px; margin-bottom: 10px;">
-                                <span id="timeStart">0.0s</span>
+                            <span id="timeStart">0.0s</span>
                                 <span id="timeEnd">0.0s</span>
                             </div>
                             
@@ -1569,19 +1569,19 @@
                                         <div style="display: flex; gap: 8px;">
                                             <button class="btn btn-secondary effect-btn" data-effect="linear" onclick="applyEffect('linear')" style="justify-content: center; font-size: 11px; padding: 8px 16px;">🎬 Linear</button>
                                             <button class="btn btn-secondary effect-btn" data-effect="boomerang" onclick="startBoomerangSelection()" style="display: none; justify-content: center; font-size: 11px; padding: 8px 16px;">🪃 Boomerang</button>
-                                            <button class="btn btn-secondary effect-btn" data-effect="pingpong" onclick="applyEffect('pingpong')" style="display: none; justify-content: center; font-size: 11px; padding: 8px 16px;">🔄 Ping Pong</button>
-                                        </div>
-                                    </div>
-                                    
+                                            <button class="btn btn-secondary effect-btn" data-effect="pingpong" onclick="applyEffect('pingpong')" style="justify-content: center; font-size: 11px; padding: 8px 16px;">🔄 Ping Pong</button>
+                                </div>
+                            </div>
+                            
                                     <!-- Right: Action Buttons -->
                                     <div style="display: flex; gap: 8px; align-items: center;">
                                         <button type="button" class="btn btn-secondary" onclick="closeVideoEditor()" style="padding: 8px 20px; font-size: 12px;">Cancel</button>
                                         <button type="button" class="btn btn-primary" onclick="applyVideoEffects()" style="padding: 8px 20px; font-size: 12px;">Apply & Create New Video</button>
-                                    </div>
+                        </div>
+                                </div>
                                 </div>
                             </div>
-                        </div>
-                        
+                            
                         <!-- SPEED MODE CONTENT -->
                         <div id="speedModeContent" style="display: none; flex-direction: column; height: 100%;">
                             <!-- Preview controls - centered at top -->
@@ -1608,7 +1608,7 @@
                                 <span>0.0s</span>
                                 <span id="speedTimeEnd">0.0s</span>
                             </div>
-                                
+                            
                             <!-- Selected segment controls -->
                             <div id="speedSegmentControls" style="display: none; padding: 12px; background: #f5f5f5; border-radius: 6px; border: 1px solid #ddd; margin-bottom: 10px;">
                                 <div style="font-size: 11px; color: #666; margin-bottom: 8px; font-weight: 600;">
@@ -1625,18 +1625,18 @@
                             
                             <div style="font-size: 10px; color: #999; margin-bottom: 12px; text-align: center;">
                                 Click + Add Segment to create speed zones. Drag handles to adjust range.
-                            </div>
-                                
+                </div>
+
                                 <!-- Action Buttons for Speed Mode -->
                                 <div style="display: flex; justify-content: flex-end; gap: 8px; padding-top: 12px; border-top: 1px solid #ddd; margin-top: auto;">
                                     <button type="button" class="btn btn-secondary" onclick="closeVideoEditor()" style="padding: 8px 20px; font-size: 12px;">Cancel</button>
                                     <button type="button" class="btn btn-primary" onclick="applyVideoEffects()" style="padding: 8px 20px; font-size: 12px;">Apply & Create New Video</button>
-                                </div>
-                            </div>
                         </div>
                     </div>
+                        </div>
+                    </div>
+                    </div>
                 </div>
-            </div>
         </div>
     </div>
 </div>
@@ -2145,10 +2145,10 @@ const framePlayer = {
             
             // Calculate frame index
             const progress = x / stripWidth;
-            const frameIndex = Math.floor(progress * (editorState.frames.length - 1));
+                const frameIndex = Math.floor(progress * (editorState.frames.length - 1));
             
             // Seek to frame
-            this.seekToFrame(frameIndex);
+                this.seekToFrame(frameIndex);
         };
         
         // Handle click on scrubber handle
