@@ -1085,9 +1085,9 @@ def auto_key_video(job_id):
             if bg_color == 'blue':
                 settings = {
                     "hue_center": 100, "hue_tolerance": 25,
-                    "saturation_min": 50, "value_min": 50,
-                    "erode": 0, "dilate": 0,
-                    "blur": 5, "spill": 2
+                    "saturation_min": 140, "value_min": 80,
+                    "erode": 2, "dilate": 2,
+                    "blur": 5, "spill": 5
                 }
                 bg_display = "Blue Screen"
             elif bg_color == 'unknown':
@@ -1096,9 +1096,9 @@ def auto_key_video(job_id):
             else:  # 'green', 'as-is', or any other value - default to green screen
                 settings = {
                     "hue_center": 60, "hue_tolerance": 25,
-                    "saturation_min": 50, "value_min": 50,
-                    "erode": 0, "dilate": 0,
-                    "blur": 5, "spill": 2
+                    "saturation_min": 140, "value_min": 80,
+                    "erode": 2, "dilate": 2,
+                    "blur": 5, "spill": 5
                 }
                 bg_display = "Green Screen"
                 

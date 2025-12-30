@@ -1896,12 +1896,12 @@ def handle_video_stitching(job):
                 cursor = conn.cursor()
                 keying_settings = json.dumps({
                     "hue_center": 60,  # Green hue (HSV 0-180 range)
-                    "hue_tolerance": 30,  # Tolerance for hue variation
-                    "saturation_min": 100,  # HIGH threshold - only catch highly saturated greens
-                    "value_min": 100,  # HIGH threshold - only catch bright greens
-                    "erode": 0,
-                    "dilate": 1,
-                    "blur": 3,
+                    "hue_tolerance": 25,  # Updated tolerance
+                    "saturation_min": 140,  # Reduced from 100/160 to catch more greens
+                    "value_min": 80,  # Increased from 50/100 for better bright green isolation
+                    "erode": 2,  # Choke edges inward
+                    "dilate": 2,  # Soften edges outward
+                    "blur": 5,  # Edge blur
                     "spill_suppression": 5
                 })
                 keying_input_data = json.dumps({
@@ -3094,15 +3094,15 @@ def handle_video_generation(job, conn):
         keying_input = {
             "video_url": video_path,  # handle_keying expects 'video_url', not 'video_path'
             "source_job_id": animation_job_id,
-            # Green screen keying settings - user's proven v2 defaults
+            # Green screen keying settings - updated parameters
             "hue_center": 60,  # Green hue (or 240 for blue screen)
             "hue_tolerance": 25,
-            "saturation_min": 160,  # User specified
-            "value_min": 50,  # v2 default
-            "erode": 0,  # No erode operation (user's original setting)
-            "dilate": -3,  # NEGATIVE dilate = shrink alpha = choke edges MORE (increased from -2)
+            "saturation_min": 140,  # Reduced from 160 to catch more greens
+            "value_min": 80,  # Increased from 50 for better bright green isolation
+            "erode": 2,  # Choke edges inward
+            "dilate": 2,  # Soften edges outward
             "blur": 5,  # Edge blur
-            "spill_amount": 0.5,
+            "spill_amount": 0.25,  # 5/20 from slider
             "export_png_zip": True  # Always export PNG sequence
         }
         
@@ -4104,15 +4104,15 @@ def process_single_job_worker(job):
                                     keying_job_input = json.dumps({
                                         'video_url': result_data,
                                         'parent_animation_job_id': job_id,
-                                        # Use optimal keying settings from testing
+                                        # Updated keying settings
                                         'hue_center': 60,  # Green (or 240 for blue screen)
                                         'hue_tolerance': 25,
-                                        'saturation_min': 160,  # User specified
-                                        'value_min': 50,
-                                        'erode': 0,  # User specified (no erode)
-                                        'dilate': -3,  # User specified (negative = choke inward)
-                                        'blur': 5,  # User specified
-                                        'spill': 15  # Stronger spill suppression (0.75 after normalization)
+                                        'saturation_min': 140,  # Reduced from 160 to catch more greens
+                                        'value_min': 80,  # Increased from 50 for better bright green isolation
+                                        'erode': 2,  # Choke edges inward
+                                        'dilate': 2,  # Soften edges outward
+                                        'blur': 5,  # Edge blur
+                                        'spill': 5  # Spill suppression (0.25 after normalization)
                                     })
                                     
                                     cursor.execute("""
