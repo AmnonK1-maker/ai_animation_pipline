@@ -390,7 +390,7 @@ def home():
     if getattr(sys, 'frozen', False):
         USER_HOME = os.path.expanduser('~')
         data_dir = os.path.join(USER_HOME, 'Documents', 'AIAP')
-    return render_template("index_v2.html", data_dir=data_dir)
+    return render_template("index_v3.html", data_dir=data_dir)
 
 @app.route("/open-data-folder")
 def open_data_folder():
