@@ -8,13 +8,14 @@ import sqlite3
 import base64
 import subprocess
 import traceback
+import tempfile
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, jsonify, send_file, Response
 import cv2
 import numpy as np
 from dotenv import load_dotenv
 from PIL import Image
-from video_processor import process_single_frame
+from video_processor import process_single_frame, process_single_frame_with_effects
 from s3_storage import storage, upload_file, save_uploaded_file, get_public_url, is_s3_enabled
 
 # ============================================================================
@@ -44,22 +45,33 @@ load_dotenv()
 # --- CONFIGURATION & FOLDER PATHS ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# For standalone app, use user's Documents folder instead of app bundle
-# This makes files accessible and prevents DMG from including user data
-if getattr(sys, 'frozen', False):
+# Determine the data directory based on environment
+RENDER_PERSISTENT_DISK = '/opt/render/project/src/data'
+
+if os.path.exists(RENDER_PERSISTENT_DISK):
+    # Running on Render.com with persistent disk
+    DATA_DIR = RENDER_PERSISTENT_DISK
+    STATIC_FOLDER = os.path.join(DATA_DIR, 'static')
+    DATABASE_PATH = os.path.join(DATA_DIR, 'jobs.db')
+    print(f"☁️ Running on Render.com with persistent disk")
+    print(f"📁 Data directory: {DATA_DIR}")
+    # Initialize Flask with static folder pointing to persistent disk
+    app = Flask(__name__, static_folder=STATIC_FOLDER, static_url_path='/static')
+elif getattr(sys, 'frozen', False):
     # Running as standalone app (PyInstaller bundle)
     USER_HOME = os.path.expanduser('~')
-    AIAP_DATA_DIR = os.path.join(USER_HOME, 'Documents', 'AIAP')
-    STATIC_FOLDER = os.path.join(AIAP_DATA_DIR, 'static')
-    DATABASE_PATH = os.path.join(AIAP_DATA_DIR, 'jobs.db')
+    DATA_DIR = os.path.join(USER_HOME, 'Documents', 'AIAP')
+    STATIC_FOLDER = os.path.join(DATA_DIR, 'static')
+    DATABASE_PATH = os.path.join(DATA_DIR, 'jobs.db')
     print(f"📁 Running as standalone app")
-    print(f"📁 Data directory: {AIAP_DATA_DIR}")
+    print(f"📁 Data directory: {DATA_DIR}")
     # Templates are bundled in _MEIPASS
     template_folder = os.path.join(sys._MEIPASS, 'templates')
     static_assets = os.path.join(sys._MEIPASS, 'static')
     app = Flask(__name__, template_folder=template_folder, static_folder=static_assets)
 else:
     # Running in development mode
+    DATA_DIR = BASE_DIR
     STATIC_FOLDER = os.path.join(BASE_DIR, 'static')
     DATABASE_PATH = 'jobs.db'
     print(f"📁 Running in development mode")
@@ -160,7 +172,12 @@ def init_db():
         ''')
         
         existing_columns = [col[1] for col in cursor.execute("PRAGMA table_info(jobs)").fetchall()]
-        columns_to_add = { 'keying_settings': 'TEXT', 'keyed_result_data': 'TEXT', 'parent_job_id': 'INTEGER' }
+        columns_to_add = { 
+            'keying_settings': 'TEXT', 
+            'keyed_result_data': 'TEXT', 
+            'parent_job_id': 'INTEGER',
+            'png_sequence_path': 'TEXT'  # Path to preserved PNG frames folder
+        }
         for col, col_type in columns_to_add.items():
             if col not in existing_columns:
                 try: 
@@ -273,9 +290,13 @@ def preprocess_animation_image(source_image_path, background_color_str, white_ou
     Preprocess image for animation:
     1. Scale image (if requested) to add space around object
     2. Add white outline (if requested)
-    3. Place on colored background (if requested)
+    3. Apply saturation reduction (ONLY for uploaded images)
+    4. Place on colored background (ONLY for uploaded images)
     
-    Order is critical: scale -> outline -> background.
+    Order is critical: scale -> outline -> saturation -> background.
+    
+    Generated images already have saturation reduced and green background,
+    so we skip those steps for them.
     """
     try:
         # Handle both S3 URLs and local file paths
@@ -302,6 +323,20 @@ def preprocess_animation_image(source_image_path, background_color_str, white_ou
                 return source_image_path
 
         print(f"-> Pre-processing animation input: {source_image_path}")
+        
+        # Detect if image is generated (already processed) or uploaded (needs processing)
+        # Generated images have these patterns in their path/filename:
+        # - "generated_images" directory
+        # - "greenscreen_" prefix (old format)
+        # - "_GREENSCREEN" suffix (new format from worker.py)
+        basename = os.path.basename(source_image_path)
+        is_generated = ('generated_images' in source_image_path or 
+                       'greenscreen_' in basename or
+                       '_GREENSCREEN' in basename or
+                       'library/' in source_image_path)
+        
+        print(f"   ...image type: {'GENERATED (already processed)' if is_generated else 'UPLOADED (needs processing)'}")
+        
         fg_image = Image.open(source_full_path).convert("RGBA")
         
         # STEP 0: Scale image if requested (adds space around object)
@@ -339,18 +374,81 @@ def preprocess_animation_image(source_image_path, background_color_str, white_ou
             fg_image = Image.alpha_composite(outline_layer, fg_image)
             print(f"   ...white outline applied")
         
-        # STEP 2: Place on colored background if requested (AFTER outline)
+        # STEP 2: Apply saturation reduction for better keying (40% saturation)
+        # ONLY for uploaded images - generated images already have this applied
+        if background_color_str == "green" and not is_generated:
+            print(f"   ...reducing saturation to 40% for better keying")
+            import numpy as np
+            from colorsys import rgb_to_hsv, hsv_to_rgb
+            
+            # Convert to numpy array
+            img_array = np.array(fg_image, dtype=np.float32)
+            rgb = img_array[:,:,:3] / 255.0
+            alpha = img_array[:,:,3] if img_array.shape[2] == 4 else np.ones((img_array.shape[0], img_array.shape[1])) * 255
+            
+            # Vectorized HSV conversion
+            r, g, b = rgb[:,:,0], rgb[:,:,1], rgb[:,:,2]
+            maxc = np.maximum(np.maximum(r, g), b)
+            minc = np.minimum(np.minimum(r, g), b)
+            v = maxc
+            s = np.where(maxc != 0, (maxc - minc) / maxc, 0)
+            
+            # Reduce saturation to 40%
+            s = s * 0.4
+            
+            # Convert back to RGB
+            h = np.zeros_like(s)
+            diff = maxc - minc
+            # Calculate hue
+            mask = diff != 0
+            rc = np.where(mask, (maxc - r) / np.where(diff == 0, 1, diff), 0)
+            gc = np.where(mask, (maxc - g) / np.where(diff == 0, 1, diff), 0)
+            bc = np.where(mask, (maxc - b) / np.where(diff == 0, 1, diff), 0)
+            h = np.where(r == maxc, bc - gc, np.where(g == maxc, 2.0 + rc - bc, 4.0 + gc - rc))
+            h = (h / 6.0) % 1.0
+            
+            # HSV to RGB
+            i = (h * 6.0).astype(int)
+            f = (h * 6.0) - i
+            p = v * (1.0 - s)
+            q = v * (1.0 - s * f)
+            t = v * (1.0 - s * (1.0 - f))
+            i = i % 6
+            
+            rgb_out = np.zeros_like(rgb)
+            rgb_out[i == 0] = np.stack([v, t, p], axis=-1)[i == 0]
+            rgb_out[i == 1] = np.stack([q, v, p], axis=-1)[i == 1]
+            rgb_out[i == 2] = np.stack([p, v, t], axis=-1)[i == 2]
+            rgb_out[i == 3] = np.stack([p, q, v], axis=-1)[i == 3]
+            rgb_out[i == 4] = np.stack([t, p, v], axis=-1)[i == 4]
+            rgb_out[i == 5] = np.stack([v, p, q], axis=-1)[i == 5]
+            
+            # Rebuild image
+            result = np.zeros_like(img_array)
+            result[:,:,:3] = (rgb_out * 255).astype(np.uint8)
+            result[:,:,3] = alpha
+            fg_image = Image.fromarray(result.astype(np.uint8), 'RGBA')
+            print(f"   ...saturation reduced to 40%")
+        elif background_color_str == "green" and is_generated:
+            print(f"   ...skipping saturation reduction (already applied during generation)")
+        
+        # STEP 3: Place on colored background if requested (AFTER outline and saturation)
+        # ONLY for uploaded images - generated images already have green background
         color_map = {"green": (0, 255, 0), "blue": (0, 0, 255)}
         background_color = color_map.get(background_color_str)
         
-        if background_color:
-            print(f"   ...placing image on {background_color_str} background")
+        if background_color and not is_generated:
+            print(f"   ...placing image on {background_color_str} background and scaling to 85%")
             bg_image = Image.new("RGBA", fg_image.size, background_color)
             new_size = (int(fg_image.width * 0.85), int(fg_image.height * 0.85))
             fg_image_resized = fg_image.resize(new_size, Image.Resampling.LANCZOS)
             paste_position = ((bg_image.width - fg_image_resized.width) // 2, (bg_image.height - fg_image_resized.height) // 2)
             bg_image.paste(fg_image_resized, paste_position, fg_image_resized)
             fg_image = bg_image.convert("RGB")
+        elif background_color and is_generated:
+            print(f"   ...skipping background placement (already on {background_color_str} from generation)")
+            # Just convert RGBA to RGB (generated images are already PNG with no alpha)
+            fg_image = fg_image.convert("RGB")
         else:
             fg_image = fg_image.convert("RGB")
         
@@ -391,6 +489,461 @@ def home():
         USER_HOME = os.path.expanduser('~')
         data_dir = os.path.join(USER_HOME, 'Documents', 'AIAP')
     return render_template("index_v3.html", data_dir=data_dir)
+
+@app.route("/v2")
+def home_v2():
+    # Keep old UI available for reference
+    data_dir = None
+    if getattr(sys, 'frozen', False):
+        USER_HOME = os.path.expanduser('~')
+        data_dir = os.path.join(USER_HOME, 'Documents', 'AIAP')
+    return render_template("index_v2.html", data_dir=data_dir)
+
+@app.route("/job_status")
+def job_status():
+    """Return all jobs for the job feed polling"""
+    try:
+        with get_db_connection() as conn:
+            rows = conn.execute("""
+                SELECT id, job_type, status, created_at, prompt, input_data, 
+                       result_data, error_message, keying_settings, keyed_result_data, parent_job_id
+                FROM jobs 
+                ORDER BY created_at DESC 
+                LIMIT 100
+            """).fetchall()
+            
+            jobs = []
+            for row in rows:
+                job_dict = dict(row)
+                # Parse JSON fields
+                if job_dict['input_data']:
+                    try:
+                        job_dict['input_data'] = json.loads(job_dict['input_data'])
+                    except:
+                        pass
+                if job_dict['result_data']:
+                    try:
+                        job_dict['result_data'] = json.loads(job_dict['result_data'])
+                    except:
+                        pass
+                if job_dict['keying_settings']:
+                    try:
+                        job_dict['keying_settings'] = json.loads(job_dict['keying_settings'])
+                    except:
+                        pass
+                if job_dict['keyed_result_data']:
+                    try:
+                        job_dict['keyed_result_data'] = json.loads(job_dict['keyed_result_data'])
+                    except:
+                        pass
+                
+                # For video_generation and animation jobs, fetch child keying job results
+                if job_dict['job_type'] in ['video_generation', 'animation']:
+                    cursor = conn.cursor()
+                    keying_job = cursor.execute(
+                        "SELECT id, status, keyed_result_data FROM jobs WHERE parent_job_id = ? AND job_type = 'keying' ORDER BY created_at DESC LIMIT 1",
+                        (job_dict['id'],)
+                    ).fetchone()
+                    
+                    if keying_job:
+                        job_dict['keying_job_id'] = keying_job['id']
+                        job_dict['keying_status'] = keying_job['status']
+                        if keying_job['keyed_result_data']:
+                            try:
+                                job_dict['keyed_result_data'] = json.loads(keying_job['keyed_result_data'])
+                            except:
+                                job_dict['keyed_result_data'] = keying_job['keyed_result_data']
+                
+                jobs.append(job_dict)
+            
+            return jsonify({"jobs": jobs})
+    except Exception as e:
+        print(f"Error in job_status: {e}")
+        return jsonify({"jobs": [], "error": str(e)}), 500
+
+@app.route("/generate_image", methods=["POST"])
+def generate_image():
+    """Simplified image generation endpoint for v3 UI with style/color analysis"""
+    try:
+        prompt = request.form.get("prompt")
+        if not prompt:
+            return jsonify({"error": "Prompt is required"}), 400
+        
+        aspect_ratio = request.form.get("aspect_ratio", "1:1")
+        image_model = request.form.get("image_model", "seedream")
+        
+        # Handle file uploads
+        style_image = request.files.get("style_image")
+        color_palette = request.files.get("color_palette")
+        
+        style_analysis_job_id = None
+        color_analysis_job_id = None
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Create style analysis job if style ref provided
+            if style_image and style_image.filename:
+                filename = f"{uuid.uuid4()}-style-ref-{os.path.basename(style_image.filename)}"
+                s3_key = f"uploads/{filename}"
+                style_image_url = save_uploaded_file(style_image, s3_key)
+                
+                style_system_prompt = """You are the best image describer in the world, known for creating beautiful icon-style images.
+Start immediately with the description, as if giving a direct order.
+
+Core Directives:
+- Do not literally name or describe what the object is.
+- Do not describe any visual data, shape, or outline of the object — only its style and overall feel.
+- Do not describe or mention any text, fonts, colors, shadows, glow, or background.
+
+Composition Rules:
+- Describe only if the image is transparent or has visible grain or gradient effects.
+- If the reference includes elements that break the silhouette (for example, Gothic spikes or rivets), describe them only in stylistic terms that support the aesthetic.
+- If the image looks like a one-liner or scribble, say so.
+- Do not describe collections as collections — only the style or artistic unity they convey.
+
+Style & Technique Description:
+- Focus only on the genre, style, artistic movement, and general visual language.
+- Mention grain style and gradient form/style, but never the colors.
+- If the image appears pixelated, vectorized, sculpted, hand-drawn, or digital, describe that generally.
+- Do not mention any era or year but name the movement/genre (e.g., "Bauhaus modernism," "Gothic revival," "Pop art").
+- If the reference image includes outlines, describe them; otherwise, omit.
+
+Task:
+Create a description focusing entirely on the art style, genre, and aesthetic character — never on the subject itself."""
+                
+                style_input_data = json.dumps({
+                    "image_path": style_image_url,
+                    "system_prompt": style_system_prompt,
+                    "internal": True
+                })
+                
+                cursor.execute(
+                    "INSERT INTO jobs (job_type, status, created_at, prompt, input_data) VALUES (?, ?, ?, ?, ?)",
+                    ('style_analysis', 'queued', datetime.now(), "Internal style analysis", style_input_data)
+                )
+                style_analysis_job_id = cursor.lastrowid
+                print(f"-> Created style analysis job {style_analysis_job_id}")
+            
+            # Create color analysis job if color ref provided
+            if color_palette and color_palette.filename:
+                filename = f"{uuid.uuid4()}-color-ref-{os.path.basename(color_palette.filename)}"
+                s3_key = f"uploads/{filename}"
+                color_palette_url = save_uploaded_file(color_palette, s3_key)
+                
+                color_system_prompt = """Extract the 5 most prominent colors from the SUBJECT/FOREGROUND (ignore backgrounds).
+
+CHROMA KEY RULE: If both green AND blue appear, exclude the less prominent one (it will be the animation background later).
+
+For each color:
+- Hex code (e.g., #2F4F4F)
+- Simple name (e.g., 'dark slate grey')
+
+REQUIRED FORMAT - Return valid JSON only:
+{"palette": [{"hex": "#2F4F4F", "name": "dark slate grey"}, {"hex": "#F08080", "name": "light coral"}, ...]}
+
+No explanation text, just the JSON object."""
+                
+                color_input_data = json.dumps({
+                    "image_path": color_palette_url,
+                    "system_prompt": color_system_prompt,
+                    "internal": True
+                })
+                
+                cursor.execute(
+                    "INSERT INTO jobs (job_type, status, created_at, prompt, input_data) VALUES (?, ?, ?, ?, ?)",
+                    ('palette_analysis', 'queued', datetime.now(), "Internal color analysis", color_input_data)
+                )
+                color_analysis_job_id = cursor.lastrowid
+                print(f"-> Created color analysis job {color_analysis_job_id}")
+            
+            # Create input data for image generation
+            input_data = {
+                "prompt": prompt,
+                "aspect_ratio": aspect_ratio,
+                "model": image_model,
+                "style_analysis_job_id": style_analysis_job_id,
+                "color_analysis_job_id": color_analysis_job_id
+            }
+            
+            # If analysis jobs exist, wait for them; otherwise queue immediately
+            status = 'waiting_for_analysis' if (style_analysis_job_id or color_analysis_job_id) else 'queued'
+            
+            # Create image generation job
+            cursor.execute(
+                "INSERT INTO jobs (job_type, status, created_at, prompt, input_data) VALUES (?, ?, ?, ?, ?)",
+                ('image_generation', status, datetime.now(), prompt, json.dumps(input_data))
+            )
+            conn.commit()
+            job_id = cursor.lastrowid
+        
+        print(f"✅ Created image generation job {job_id} with model {image_model} (status: {status})")
+        return jsonify({"success": True, "job_id": job_id})
+    
+    except Exception as e:
+        print(f"Error creating image job: {e}")
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/get_animation_idea", methods=["POST"])
+def get_animation_idea():
+    """Generate animation idea using GPT-4"""
+    try:
+        import openai
+        openai_client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        
+        system_prompt = """You are a creative animation director. Suggest a simple, fun animation idea that would work well for a 5-10 second looping animation. Focus on:
+        - Single character or object
+        - Clear, simple motion
+        - Suitable for transparent background
+        - Fun and engaging
+        
+        Provide ONLY the prompt text, no explanation. Make it concise (20 words or less)."""
+        
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": "Give me an animation idea"}
+            ],
+            max_tokens=100,
+            temperature=0.9
+        )
+        
+        idea = response.choices[0].message.content.strip()
+        return jsonify({"success": True, "idea": idea})
+    except Exception as e:
+        print(f"Error getting animation idea: {e}")
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/generate_video", methods=["POST"])
+def generate_video():
+    """Simplified video generation endpoint for v3 UI"""
+    try:
+        prompt = request.form.get("prompt")
+        if not prompt:
+            return jsonify({"error": "Prompt is required"}), 400
+        
+        aspect_ratio = request.form.get("aspect_ratio", "1:1")
+        image_model = request.form.get("image_model", "seedream")
+        video_model = request.form.get("video_model", "seedance")
+        duration = int(request.form.get("duration", "5"))
+        loop_animation = request.form.get("loop_animation") == "1"
+        remove_bg = request.form.get("remove_bg") == "1"
+        
+        # Handle optional image upload OR existing image URL (from "Animate" button)
+        image_upload = request.files.get("image_upload")
+        existing_image_url = request.form.get("existing_image_url")  # From generated image
+        uploaded_image_url = None
+        
+        if image_upload and image_upload.filename:
+            # User uploaded a new image
+            filename = f"upload_{uuid.uuid4()}_{image_upload.filename}"
+            s3_key = f"uploads/{filename}"
+            uploaded_image_url = save_uploaded_file(image_upload, s3_key)
+            print(f"📤 Uploaded image for video: {uploaded_image_url}")
+        elif existing_image_url:
+            # User is animating an existing generated image
+            uploaded_image_url = existing_image_url
+            print(f"🎨 Using existing generated image for video: {uploaded_image_url}")
+        
+        # Create input data
+        input_data = {
+            "prompt": prompt,
+            "aspect_ratio": aspect_ratio,
+            "image_model": image_model,
+            "video_model": video_model,
+            "duration": duration,
+            "loop_animation": loop_animation,
+            "remove_bg": remove_bg,
+            "uploaded_image": uploaded_image_url,
+            "auto_process": True  # Flag for worker to run full pipeline
+        }
+        
+        # Create job in database
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO jobs (job_type, status, created_at, prompt, input_data) VALUES (?, ?, ?, ?, ?)",
+                ('video_generation', 'queued', datetime.now(), prompt, json.dumps(input_data))
+            )
+            conn.commit()
+            job_id = cursor.lastrowid
+        
+        print(f"✅ Created video generation job {job_id} with models {image_model}/{video_model}")
+        return jsonify({"success": True, "job_id": job_id})
+    
+    except Exception as e:
+        print(f"Error creating video job: {e}")
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/download_png_sequence/<int:job_id>", methods=["GET"])
+def download_png_sequence(job_id):
+    """Download PNG sequence as ZIP file"""
+    try:
+        with get_db_connection() as conn:
+            job = conn.execute("SELECT result_data FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        
+        if not job:
+            return jsonify({"error": "Job not found"}), 404
+        
+        result_data = json.loads(job['result_data']) if job['result_data'] else {}
+        png_sequence_path = result_data.get('png_sequence_path')
+        
+        if not png_sequence_path or not os.path.exists(png_sequence_path):
+            return jsonify({"error": "PNG sequence not found"}), 404
+        
+        # Create ZIP file
+        import zipfile
+        from io import BytesIO
+        
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for filename in sorted(os.listdir(png_sequence_path)):
+                if filename.endswith('.png'):
+                    file_path = os.path.join(png_sequence_path, filename)
+                    zip_file.write(file_path, filename)
+        
+        zip_buffer.seek(0)
+        return send_file(
+            zip_buffer,
+            mimetype='application/zip',
+            as_attachment=True,
+            download_name=f'job_{job_id}_frames.zip'
+        )
+    
+    except Exception as e:
+        print(f"Error downloading PNG sequence: {e}")
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/delete_job/<int:job_id>", methods=["POST"])
+def delete_job(job_id):
+    """Delete a job and all associated files"""
+    try:
+        with get_db_connection() as conn:
+            # Get job data to delete associated files
+            job = conn.execute("SELECT result_data, input_data FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            
+            if not job:
+                return jsonify({"error": "Job not found"}), 404
+            
+            # Parse result data to find files to delete (with error handling)
+            result_data = {}
+            input_data = {}
+            
+            try:
+                if job['result_data'] and job['result_data'].strip():
+                    result_data = json.loads(job['result_data'])
+            except (json.JSONDecodeError, ValueError) as e:
+                print(f"⚠️ Could not parse result_data for job {job_id}: {e}")
+            
+            try:
+                if job['input_data'] and job['input_data'].strip():
+                    input_data = json.loads(job['input_data'])
+            except (json.JSONDecodeError, ValueError) as e:
+                print(f"⚠️ Could not parse input_data for job {job_id}: {e}")
+            
+            # Delete PNG sequence folder if it exists
+            try:
+                png_sequence_path = result_data.get('png_sequence_path')
+                if png_sequence_path:
+                    full_path = os.path.join(BASE_DIR, png_sequence_path.lstrip('/')) if not png_sequence_path.startswith('/') else png_sequence_path
+                    if os.path.exists(full_path):
+                        shutil.rmtree(full_path)
+                        print(f"🗑️ Deleted PNG sequence: {full_path}")
+            except Exception as e:
+                print(f"⚠️ Could not delete PNG sequence: {e}")
+            
+            # Delete video files
+            try:
+                video_path = result_data.get('video_path')
+                if video_path:
+                    full_path = os.path.join(BASE_DIR, video_path.lstrip('/')) if not video_path.startswith('/') else video_path
+                    if os.path.exists(full_path):
+                        os.remove(full_path)
+                        print(f"🗑️ Deleted video: {full_path}")
+            except Exception as e:
+                print(f"⚠️ Could not delete video: {e}")
+            
+            try:
+                greenscreen_video = result_data.get('greenscreen_video_path')
+                if greenscreen_video:
+                    full_path = os.path.join(BASE_DIR, greenscreen_video.lstrip('/')) if not greenscreen_video.startswith('/') else greenscreen_video
+                    if os.path.exists(full_path):
+                        os.remove(full_path)
+                        print(f"🗑️ Deleted greenscreen video: {full_path}")
+            except Exception as e:
+                print(f"⚠️ Could not delete greenscreen video: {e}")
+            
+            # Delete image files
+            for key in ['image_path', 'original_image', 'transparent_image', 'adjusted_image', 'greenscreen_image', 'original', 'transparent']:
+                try:
+                    file_path = result_data.get(key) or input_data.get(key)
+                    if file_path:
+                        full_path = os.path.join(BASE_DIR, file_path.lstrip('/')) if not file_path.startswith('http') and not file_path.startswith('/') else file_path
+                        if not file_path.startswith('http') and os.path.exists(full_path):
+                            os.remove(full_path)
+                            print(f"🗑️ Deleted {key}: {full_path}")
+                except Exception as e:
+                    print(f"⚠️ Could not delete {key}: {e}")
+            
+            # Delete job from database
+            conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+            conn.commit()
+            
+        print(f"✅ Deleted job {job_id}")
+        return jsonify({"success": True})
+    
+    except Exception as e:
+        print(f"Error deleting job: {e}")
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/gallery")
+def gallery():
+    """Gallery page showing all completed jobs with their outputs"""
+    print(f"📸 Gallery: Using database at: {DATABASE_PATH}")
+    with get_db_connection() as conn:
+        # Get ALL jobs first to see what's in the database
+        all_jobs = conn.execute("SELECT COUNT(*) as total FROM jobs").fetchone()
+        print(f"📸 Gallery: Total jobs in database: {all_jobs['total']}")
+        
+        # Get all completed jobs with results, ordered by most recent first
+        jobs = conn.execute("""
+            SELECT id, job_type, status, result_data, keyed_result_data, 
+                   created_at, prompt, keying_settings
+            FROM jobs 
+            WHERE status = 'completed' 
+            AND (result_data IS NOT NULL OR keyed_result_data IS NOT NULL)
+            ORDER BY created_at DESC
+        """).fetchall()
+        
+        print(f"📸 Gallery: Found {len(jobs)} completed jobs with results")
+        
+        # Convert to list of dicts for easier template access
+        jobs_list = []
+        for job in jobs:
+            job_dict = dict(job)
+            
+            # Parse keyed_result_data if it's JSON
+            if job_dict['keyed_result_data']:
+                try:
+                    keyed_data = json.loads(job_dict['keyed_result_data'])
+                    job_dict['keyed_result_parsed'] = keyed_data
+                except:
+                    job_dict['keyed_result_parsed'] = None
+            
+            jobs_list.append(job_dict)
+    
+    return render_template("gallery.html", jobs=jobs_list)
+
+@app.route("/keying-test")
+def keying_test():
+    """Interactive keying test page to evaluate automatic keying quality"""
+    return render_template("keying_test.html")
 
 @app.route("/open-data-folder")
 def open_data_folder():
@@ -565,6 +1118,71 @@ def auto_key_video(job_id):
         print(f"Error in auto-key: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route("/vectorize-test")
+def vectorize_test():
+    """Test page for image vectorization"""
+    return render_template("vectorize_test.html")
+
+@app.route("/api/vectorize", methods=["POST"])
+def api_vectorize():
+    """Convert uploaded image to SVG"""
+    try:
+        if 'image' not in request.files:
+            return jsonify({"success": False, "error": "No image uploaded"}), 400
+        
+        file = request.files['image']
+        if file.filename == '':
+            return jsonify({"success": False, "error": "No file selected"}), 400
+        
+        # Save uploaded file
+        import vtracer
+        
+        temp_id = uuid.uuid4().hex[:8]
+        input_path = os.path.join(STATIC_FOLDER, 'uploads', f'vec_input_{temp_id}.png')
+        output_path = os.path.join(STATIC_FOLDER, 'uploads', f'vec_output_{temp_id}.svg')
+        
+        file.save(input_path)
+        
+        # Get parameters from form
+        colormode = request.form.get('colormode', 'color')
+        filter_speckle = int(request.form.get('filter_speckle', 4))
+        color_precision = int(request.form.get('color_precision', 6))
+        corner_threshold = int(request.form.get('corner_threshold', 60))
+        
+        print(f"-> Vectorizing image with settings: colormode={colormode}, filter_speckle={filter_speckle}")
+        
+        # Convert to SVG
+        vtracer.convert_image_to_svg_py(
+            image_path=input_path,
+            out_path=output_path,
+            colormode=colormode,
+            hierarchical='stacked',
+            mode='spline',
+            filter_speckle=filter_speckle,
+            color_precision=color_precision,
+            layer_difference=16,
+            corner_threshold=corner_threshold,
+            length_threshold=4.0,
+            splice_threshold=45,
+            path_precision=3
+        )
+        
+        print(f"   ✅ SVG created: {output_path}")
+        
+        # Return URLs
+        return jsonify({
+            "success": True,
+            "input_url": f"/static/uploads/vec_input_{temp_id}.png",
+            "svg_url": f"/static/uploads/vec_output_{temp_id}.svg",
+            "download_url": f"/static/uploads/vec_output_{temp_id}.svg"
+        })
+        
+    except Exception as e:
+        print(f"Vectorize error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route("/upload-video-for-keying", methods=["POST"])
 def upload_video_for_keying():
     """Upload a video file directly for keying (creates a placeholder job)"""
@@ -626,6 +1244,30 @@ def manual_key_video(job_id):
             print(f"   ❌ Invalid JSON in settings")
             return jsonify({"success": False, "error": "Invalid keying settings format"}), 400
         
+        # Handle peel effect frames if provided
+        peel_frame_paths = []
+        if settings.get('peel_effect') and 'peel_frames' in request.files:
+            peel_frames = request.files.getlist('peel_frames')
+            print(f"   📄 Received {len(peel_frames)} peel frames")
+            
+            # Create directory for peel frames
+            peel_frames_dir = os.path.join(STATIC_FOLDER, 'peel_frames', f'job_{job_id}')
+            os.makedirs(peel_frames_dir, exist_ok=True)
+            
+            for i, frame_file in enumerate(peel_frames):
+                frame_filename = f"peel_{i:04d}.png"
+                frame_path = os.path.join(peel_frames_dir, frame_filename)
+                frame_file.save(frame_path)
+                
+                # Store relative path for worker
+                relative_path = os.path.join('static', 'peel_frames', f'job_{job_id}', frame_filename)
+                peel_frame_paths.append(relative_path)
+            
+            print(f"   ✅ Saved {len(peel_frame_paths)} peel frames")
+            
+            # Add peel frame paths to settings
+            settings['peel_frame_paths'] = peel_frame_paths
+        
         with get_db_connection() as conn:
             cursor = conn.cursor()
             
@@ -635,24 +1277,31 @@ def manual_key_video(job_id):
                 print(f"   ❌ Job {job_id} not found in database")
                 return jsonify({"success": False, "error": f"Job {job_id} not found"}), 404
             
-            print(f"   ✅ Job found: type={job['job_type']}, video={job['result_data'][:50]}...")
+            print(f"   ✅ Job found: type={job['job_type']}, video={job['result_data'][:50] if job['result_data'] else 'None'}...")
             
             if not job['result_data']:
                 print(f"   ❌ Job has no result_data (video)")
                 return jsonify({"success": False, "error": "Job has no video to key"}), 400
             
-            # Update job with keying settings and set status to keying_queued
-            # Also update timestamp to jump to top of queue
+            # Create a NEW keying job with the settings (don't modify the animation job)
+            keying_input = {
+                'video_url': job['result_data'],
+                'parent_animation_job_id': job_id,
+                **settings  # Include all keying settings
+            }
+            
             cursor.execute(
-                "UPDATE jobs SET status = ?, keying_settings = ?, created_at = ? WHERE id = ?",
-                ('keying_queued', json.dumps(settings), datetime.now(), job_id)
+                """INSERT INTO jobs (job_type, status, created_at, input_data, parent_job_id)
+                   VALUES ('keying', 'keying_queued', datetime('now'), ?, ?)""",
+                (json.dumps(keying_input), job_id)
             )
+            keying_job_id = cursor.lastrowid
             conn.commit()
             
-            print(f"   ✅ Job #{job_id} marked as 'keying_queued' with timestamp={datetime.now()}")
-            print(f"   🎯 Worker should pick up this job next!")
+            print(f"   ✅ Created keying job #{keying_job_id} for animation #{job_id}")
+            print(f"   🎯 Worker should pick up keying job next!")
         
-        return jsonify({"success": True, "message": "Manual keying job queued for processing"})
+        return jsonify({"success": True, "message": f"Keying job #{keying_job_id} queued for processing", "keying_job_id": keying_job_id})
     except Exception as e:
         print(f"Error in manual-key: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
@@ -994,11 +1643,16 @@ def generate_animation():
     parent_job_id = request.form.get("parent_job_id")
     prompt = request.form.get("prompt")
     
-    # Handle start frame - either file upload or URL
+    # Handle start frame - file path (boomerang), file upload, or URL
+    start_frame_path = request.form.get("start_frame_path")  # NEW: Original PNG path from video editor
     start_frame_file = request.files.get("start_frame")
     image_url = request.form.get("image_url")
     
-    if start_frame_file:
+    if start_frame_path:
+        # Use original PNG file path (NO re-encoding for boomerang!)
+        print(f"   ✅ Using ORIGINAL PNG for start frame: {start_frame_path}")
+        image_url = start_frame_path
+    elif start_frame_file:
         # Upload new file
         filename = f"{uuid.uuid4()}-{os.path.basename(start_frame_file.filename)}"
         s3_key = f"uploads/{filename}"
@@ -1007,10 +1661,15 @@ def generate_animation():
         return jsonify({"error": "Missing start frame image"}), 400
     
     # Check for boomerang automation (A-B-A loop)
+    end_frame_path = request.form.get("end_frame_path")  # NEW: Original PNG path from video editor
     end_frame_file = request.files.get("end_frame")
     end_image_url = request.form.get("end_image_url")
     
-    if end_frame_file:
+    if end_frame_path:
+        # Use original PNG file path (NO re-encoding for boomerang!)
+        print(f"   ✅ Using ORIGINAL PNG for end frame: {end_frame_path}")
+        end_image_url = end_frame_path
+    elif end_frame_file:
         filename = f"{uuid.uuid4()}-end-{os.path.basename(end_frame_file.filename)}"
         s3_key = f"uploads/{filename}"
         end_image_url = save_uploaded_file(end_frame_file, s3_key)
@@ -1030,9 +1689,19 @@ def generate_animation():
         white_outline = request.form.get("white_outline") == "true"
         outline_thickness = int(request.form.get("outline_thickness", 3))
         
-        # Preprocess BOTH start and end images for A-B-A loop
-        processed_image_url = preprocess_animation_image(image_url, background_option, white_outline, outline_thickness)
-        processed_end_image_url = preprocess_animation_image(end_image_url, background_option, white_outline, outline_thickness)
+        # Skip Flask preprocessing if using original PNG paths from video editor
+        # (Worker will composite on green directly, no desaturation)
+        skip_worker_preprocessing = False
+        if start_frame_path and end_frame_path:
+            print("   ✅ Boomerang from video editor - skipping Flask preprocessing")
+            processed_image_url = image_url
+            processed_end_image_url = end_image_url
+            skip_worker_preprocessing = True  # Tell worker to skip desaturation too
+        else:
+            # Preprocess BOTH start and end images for A-B-A loop (uploaded images)
+            print("   🎨 Boomerang from uploaded images - applying preprocessing")
+            processed_image_url = preprocess_animation_image(image_url, background_option, white_outline, outline_thickness)
+            processed_end_image_url = preprocess_animation_image(end_image_url, background_option, white_outline, outline_thickness)
         
         all_input_data = {
             "image_url": processed_image_url,
@@ -1045,7 +1714,8 @@ def generate_animation():
             "video_model": request.form.getlist("video_model")[0] if request.form.getlist("video_model") else "kling-v2.1",
             "seamless_loop": request.form.get("seamless_loop") == "true",
             "kling_duration": int(request.form.get("kling_duration", 5)),
-            "kling_mode": request.form.get("kling_mode", "pro")
+            "kling_mode": request.form.get("kling_mode", "pro"),
+            "skip_preprocessing": skip_worker_preprocessing  # ✅ CRITICAL: Tell worker to skip desaturation
         }
         
         meta_prompt = f"A-B-A Loop: {prompt}"
@@ -1119,8 +1789,8 @@ def generate_animation():
         conn.commit()
     return jsonify({"success": True, "message": f"{len(selected_models)} animation job(s) queued."})
 
-@app.route("/get-animation-idea", methods=["POST"])
-def get_animation_idea():
+@app.route("/get-animation-idea-from-image", methods=["POST"])
+def get_animation_idea_from_image():
     """Get animation idea from image - handles both file uploads and URLs"""
     image_file = request.files.get("image")
     image_url = request.form.get("image_url")
@@ -1786,42 +2456,117 @@ def trim_video():
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/preview-frame', methods=['POST'])
+@app.route('/api/preview-frame', methods=['POST'])  
 def preview_frame():
-    video_path_url = request.form.get('video_path')
-    frame_time = float(request.form.get('frame_time', 0))
-    if not video_path_url: return "Missing video path", 400
-    
-    # Remove cache-busting query parameters (e.g., ?t=1234567890)
-    video_path_url = video_path_url.split('?')[0]
-    
-    video_path = os.path.join(BASE_DIR, video_path_url.lstrip('/'))
-    print(f"🔍 Preview frame request: video_path_url={video_path_url}, frame_time={frame_time}")
-    print(f"   Full path: {video_path}")
-    print(f"   File exists: {os.path.exists(video_path)}")
-    
-    if not os.path.exists(video_path): return "Video file not found", 404
+    """Preview with comprehensive error logging to stderr"""
+    import sys
+    cap = None
+    try:
+        sys.stderr.write("=== PREVIEW START ===\n")
+        sys.stderr.flush()
         
-    cap = cv2.VideoCapture(video_path)
-    cap.set(cv2.CAP_PROP_POS_MSEC, frame_time * 1000)
-    success, frame = cap.read()
-    cap.release()
-    if not success: return "Could not read frame from video", 500
-
-    settings = {
-        "hue_center": int(request.form.get('hue_center', 60)), "hue_tolerance": int(request.form.get('hue_tolerance', 25)),
-        "saturation_min": int(request.form.get('saturation_min', 50)), "value_min": int(request.form.get('value_min', 50)),
-        "erode": int(request.form.get('erode', 0)), "dilate": int(request.form.get('dilate', 0)),
-        "blur": int(request.form.get('blur', 5)), "spill": int(request.form.get('spill', 2))
-    }
-    lower_green = [settings['hue_center'] - settings['hue_tolerance'], settings['saturation_min'], settings['value_min']]
-    upper_green = [settings['hue_center'] + settings['hue_tolerance'], 255, 255]
-    bgra_frame = process_single_frame(
-        frame, lower_green, upper_green,
-        settings['erode'], settings['dilate'], settings['blur'], settings['spill']
-    )
-    _, img_encoded = cv2.imencode('.png', bgra_frame)
-    return send_file(io.BytesIO(img_encoded.tobytes()), mimetype='image/png')
+        video_path_url = request.form.get('video_path')
+        frame_time = float(request.form.get('frame_time', 0))
+        
+        if not video_path_url:
+            return "Missing video path", 400
+        
+        video_path_url = video_path_url.split('?')[0]
+        video_path = os.path.join(BASE_DIR, video_path_url.lstrip('/'))
+        
+        sys.stderr.write(f"Video: {video_path}\n")
+        sys.stderr.write(f"Exists: {os.path.exists(video_path)}\n")
+        sys.stderr.flush()
+        
+        if not os.path.exists(video_path):
+            return "Video file not found", 404
+        
+        # Read frame
+        cap = cv2.VideoCapture(video_path)
+        
+        sys.stderr.write(f"Cap opened: {cap.isOpened()}\n")
+        if cap.isOpened():
+            sys.stderr.write(f"Frame count: {int(cap.get(cv2.CAP_PROP_FRAME_COUNT))}\n")
+            sys.stderr.write(f"FPS: {cap.get(cv2.CAP_PROP_FPS)}\n")
+        sys.stderr.flush()
+        
+        # Just read first frame without setting position
+        success, frame = cap.read()
+        cap.release()
+        cap = None
+        
+        sys.stderr.write(f"Read success: {success}\n")
+        if frame is not None:
+            sys.stderr.write(f"Frame shape: {frame.shape}\n")
+        sys.stderr.flush()
+        
+        if not success:
+            sys.stderr.write("ERROR: Could not read frame\n")
+            sys.stderr.flush()
+            return "Could not read frame", 500
+        
+        sys.stderr.write("Frame read OK\n")
+        sys.stderr.flush()
+        
+        # Get parameters
+        hue_center = int(request.form.get('hue_center', 60))
+        hue_tolerance = int(request.form.get('hue_tolerance', 25))
+        saturation_min = int(request.form.get('saturation_min', 50))
+        value_min = int(request.form.get('value_min', 50))
+        erode = int(request.form.get('erode', 0))
+        dilate = int(request.form.get('dilate', 0))
+        blur = int(request.form.get('blur', 5))
+        spill = int(request.form.get('spill', 10)) / 20.0
+        
+        light_wrap_enabled = request.form.get('light_wrap', 'false') == 'true'
+        light_wrap_intensity = float(request.form.get('light_wrap_intensity', 30)) / 100.0
+        light_wrap_thickness = int(request.form.get('light_wrap_thickness', 5))
+        
+        sys.stderr.write("Processing frame...\n")
+        sys.stderr.flush()
+        
+        # Process
+        lower_green = [hue_center - hue_tolerance, saturation_min, value_min]
+        upper_green = [hue_center + hue_tolerance, 255, 255]
+        
+        bgra_frame = process_single_frame_with_effects(
+            frame, lower_green, upper_green,
+            erode, dilate, blur, spill,
+            motion_blur=False,
+            motion_blur_strength=0,
+            light_wrap=light_wrap_enabled,
+            light_wrap_intensity=light_wrap_intensity,
+            light_wrap_thickness=light_wrap_thickness,
+            previous_keyed_frame=None
+        )
+        
+        sys.stderr.write("Encoding PNG...\n")
+        sys.stderr.flush()
+        
+        # Encode
+        _, img_encoded = cv2.imencode('.png', bgra_frame)
+        
+        sys.stderr.write("=== PREVIEW SUCCESS ===\n")
+        sys.stderr.flush()
+        
+        return send_file(io.BytesIO(img_encoded.tobytes()), mimetype='image/png')
+    
+    except Exception as e:
+        import traceback
+        sys.stderr.write(f"\n=== PREVIEW ERROR ===\n")
+        sys.stderr.write(f"Error: {str(e)}\n")
+        sys.stderr.write(f"Traceback:\n")
+        traceback.print_exc(file=sys.stderr)
+        sys.stderr.write("===================\n")
+        sys.stderr.flush()
+        return f"Preview failed: {str(e)}", 500
+    
+    finally:
+        if cap is not None:
+            try:
+                cap.release()
+            except:
+                pass
 
 # Initialize database when app is imported (for Gunicorn/production)
 # --- STICKER EFFECT TEST PAGE ---
@@ -2157,6 +2902,11 @@ def sticker_debug_page():
     """Debug page for sticker effect step-by-step analysis"""
     return render_template("sticker_debug.html")
 
+@app.route("/page-fold-preview")
+def page_fold_preview():
+    """Interactive page fold preview tool with real-time visual feedback"""
+    return render_template("page_fold_preview.html")
+
 @app.route("/debug-sticker-effect", methods=["POST"])
 def debug_sticker_effect():
     """Process a single frame through each sticker effect step and return intermediate results"""
@@ -2173,7 +2923,7 @@ def debug_sticker_effect():
         # Import worker functions
         from worker import (
             load_texture_sequence, apply_displacement, blend_multiply, blend_add,
-            apply_surface_bevel, apply_alpha_bevel, apply_drop_shadow,
+            apply_surface_bevel, apply_alpha_bevel, apply_page_fold, apply_drop_shadow,
             TEXTURE_DISPLACEMENT_FOLDER, TEXTURE_SCREEN_FOLDER
         )
         
@@ -2215,56 +2965,24 @@ def debug_sticker_effect():
         frame_pil.save(os.path.join(BASE_DIR, original_path.lstrip('/')), 'PNG')
         steps['original'] = original_path
         
-        # Step 2: After Displacement
-        frame_pil = apply_displacement(frame_pil, disp_texture, intensity=50)
-        displaced_path = f"/static/library/debug_steps/{session_id}_2_displacement.png"
-        frame_pil.save(os.path.join(BASE_DIR, displaced_path.lstrip('/')), 'PNG')
-        steps['after_displacement'] = displaced_path
+        # Get parameters from request (or use defaults)
+        fold_position = float(request.form.get('fold_position', 0.5))
+        fold_angle = float(request.form.get('fold_angle', 45))
+        shadow_intensity = float(request.form.get('shadow_intensity', 0.7))
         
-        # Step 3: After Multiply Blend
-        frame_pil = blend_multiply(frame_pil, disp_texture, opacity=1.0)
-        multiply_path = f"/static/library/debug_steps/{session_id}_3_multiply.png"
-        frame_pil.save(os.path.join(BASE_DIR, multiply_path.lstrip('/')), 'PNG')
-        steps['after_multiply'] = multiply_path
+        # Get all page fold steps
+        print(f"   DEBUG: Getting page fold steps breakdown (position={fold_position}, angle={fold_angle}°)")
+        page_fold_steps = apply_page_fold(frame_pil, fold_position=fold_position, fold_angle=fold_angle, 
+                                          shadow_intensity=shadow_intensity, return_steps=True)
         
-        # Step 4: After Add Blend
-        frame_pil = blend_add(frame_pil, screen_texture, opacity=0.7)
-        add_path = f"/static/library/debug_steps/{session_id}_4_add.png"
-        frame_pil.save(os.path.join(BASE_DIR, add_path.lstrip('/')), 'PNG')
-        steps['after_add'] = add_path
+        # Save each page fold step
+        for step_key, step_image in page_fold_steps.items():
+            step_path = f"/static/library/debug_steps/{session_id}_{step_key}.png"
+            step_image.save(os.path.join(BASE_DIR, step_path.lstrip('/')), 'PNG')
+            steps[step_key] = step_path
+            print(f"   DEBUG: Saved {step_key}")
         
-        # Step 5: After Surface Bevel
-        frame_pil = apply_surface_bevel(frame_pil, depth=3, highlight=0.5, shadow=0.5)
-        bevel_path = f"/static/library/debug_steps/{session_id}_5_surface_bevel.png"
-        frame_pil.save(os.path.join(BASE_DIR, bevel_path.lstrip('/')), 'PNG')
-        steps['after_surface_bevel'] = bevel_path
-        
-        # Step 6: After Alpha Bevel
-        frame_pil = apply_alpha_bevel(frame_pil, size=15, blur=2, angle=70, 
-                                      highlight_intensity=0.6, shadow_intensity=0.6)
-        alpha_bevel_path = f"/static/library/debug_steps/{session_id}_6_alpha_bevel.png"
-        frame_pil.save(os.path.join(BASE_DIR, alpha_bevel_path.lstrip('/')), 'PNG')
-        steps['after_alpha_bevel'] = alpha_bevel_path
-        
-        # Step 7: After Drop Shadow
-        frame_pil = apply_drop_shadow(frame_pil, blur=0, offset_x=1, offset_y=1, opacity=1.0)
-        shadow_path = f"/static/library/debug_steps/{session_id}_7_drop_shadow.png"
-        frame_pil.save(os.path.join(BASE_DIR, shadow_path.lstrip('/')), 'PNG')
-        steps['after_drop_shadow'] = shadow_path
-        
-        # Step 8: Final - Restore original alpha and zero out transparent RGB
-        frame_pil.putalpha(original_alpha)
-        frame_array = np.array(frame_pil)
-        alpha_array = np.array(original_alpha)
-        mask = (alpha_array == 0)
-        frame_array[:, :, 0] = np.where(mask, 0, frame_array[:, :, 0])
-        frame_array[:, :, 1] = np.where(mask, 0, frame_array[:, :, 1])
-        frame_array[:, :, 2] = np.where(mask, 0, frame_array[:, :, 2])
-        frame_pil = Image.fromarray(frame_array, 'RGBA')
-        
-        final_path = f"/static/library/debug_steps/{session_id}_8_final.png"
-        frame_pil.save(os.path.join(BASE_DIR, final_path.lstrip('/')), 'PNG')
-        steps['final'] = final_path
+        # Skip all other sticker effects - we only want to see page fold steps
         
         # Cleanup temp image
         if os.path.exists(temp_image_path):
@@ -2274,7 +2992,7 @@ def debug_sticker_effect():
             "success": True, 
             "steps": steps,
             "alpha_stats": alpha_stats,
-            "message": f"Analyzed frame - {alpha_stats['transparent_pixels']}/{alpha_stats['total_pixels']} pixels are transparent ({100*alpha_stats['transparent_pixels']/alpha_stats['total_pixels']:.1f}%)"
+            "message": f"Page Fold Step-by-Step Breakdown - {alpha_stats['transparent_pixels']}/{alpha_stats['total_pixels']} pixels are transparent ({100*alpha_stats['transparent_pixels']/alpha_stats['total_pixels']:.1f}%)"
         })
         
     except Exception as e:
@@ -2282,9 +3000,835 @@ def debug_sticker_effect():
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route("/api/keying-test/upload", methods=["POST"])
+def keying_test_upload():
+    """Upload an image and process it through the full workflow"""
+    import shutil
+    import time
+    from worker import apply_hue_shift, apply_saturation_adjustment, composite_on_green_screen
+    
+    try:
+        if 'image' not in request.files:
+            return jsonify({"success": False, "error": "No image file provided"}), 400
+        
+        file = request.files['image']
+        if file.filename == '':
+            return jsonify({"success": False, "error": "Empty filename"}), 400
+        
+        # Get adjustable pre-keying parameters
+        hue_shift = float(request.form.get('hue_shift', -30))
+        saturation_mult = float(request.form.get('saturation_mult', 0.6))
+        
+        # Save uploaded image as transparent PNG
+        upload_uuid = uuid.uuid4()
+        transparent_filename = f"{upload_uuid}_transparent.png"
+        transparent_filepath = os.path.join(LIBRARY_FOLDER, transparent_filename)
+        
+        # Convert uploaded image to PNG with transparency
+        uploaded_image = Image.open(file.stream).convert("RGBA")
+        uploaded_image.save(transparent_filepath, "PNG")
+        
+        # STEP 1: Save original
+        original_filepath = transparent_filepath.replace('_transparent.png', '_1_ORIGINAL.png')
+        shutil.copy2(transparent_filepath, original_filepath)
+        
+        # STEP 2: Apply adjustments (adjustable hue shift + desaturation)
+        if hue_shift != 0:
+            apply_hue_shift(transparent_filepath, shift_degrees=hue_shift)
+        if saturation_mult != 1.0:
+            apply_saturation_adjustment(transparent_filepath, saturation_multiplier=saturation_mult)
+        
+        # Force file sync
+        time.sleep(0.2)
+        
+        # Save adjusted version
+        adjusted_filepath = transparent_filepath.replace('_transparent.png', '_2_ADJUSTED.png')
+        shutil.copy2(transparent_filepath, adjusted_filepath)
+        
+        # STEP 3: Composite on green screen
+        greenscreen_filepath = composite_on_green_screen(transparent_filepath)
+        if greenscreen_filepath:
+            final_greenscreen = greenscreen_filepath.replace('_transparent_greenscreen.png', '_3_GREENSCREEN.png')
+            shutil.move(greenscreen_filepath, final_greenscreen)
+            greenscreen_filepath = final_greenscreen
+        else:
+            greenscreen_filepath = transparent_filepath
+        
+        # Return paths to all stages (including parameters for later restoration)
+        return jsonify({
+            "success": True,
+            "original": f"/static/library/{os.path.basename(original_filepath)}",
+            "adjusted": f"/static/library/{os.path.basename(adjusted_filepath)}",
+            "greenscreen": f"/static/library/{os.path.basename(greenscreen_filepath)}",
+            "hue_shift": hue_shift,
+            "saturation_mult": saturation_mult
+        })
+        
+    except Exception as e:
+        print(f"Keying test upload error: {e}")
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/keying-test/generate", methods=["POST"])
+def keying_test_generate():
+    """Generate a test image using Leonardo for keying evaluation"""
+    try:
+        object_prompt = request.json.get('object', 'a vibrant green parrot')
+        style_prompt = request.json.get('style', 'photorealistic, professional product shot, centered')
+        
+        # Create a job for image generation
+        input_data = json.dumps({
+            "object_prompt": object_prompt,
+            "style_prompt": style_prompt,
+            "modelId": "b24e16ff-06e3-43eb-8d33-4416c2d75876",  # Leonardo Kino XL
+            "presetStyle": "CINEMATIC"
+        })
+        
+        with get_db_connection() as conn:
+            cursor = conn.execute("""
+                INSERT INTO jobs (job_type, status, input_data, prompt, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, ("image_generation", "queued", input_data, f"{object_prompt}, {style_prompt}", datetime.now()))
+            job_id = cursor.lastrowid
+            conn.commit()
+        
+        return jsonify({"success": True, "job_id": job_id})
+    except Exception as e:
+        print(f"Keying test generate error: {e}")
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/keying-test/reprocess", methods=["POST"])
+def keying_test_reprocess():
+    """Reprocess an original image with new pre-keying parameters"""
+    import shutil
+    import time
+    from worker import apply_hue_shift, apply_saturation_adjustment, composite_on_green_screen
+    
+    try:
+        data = request.json
+        original_path = data.get('original_path')
+        hue_shift = float(data.get('hue_shift', -30))
+        saturation_mult = float(data.get('saturation_mult', 0.6))
+        
+        # Convert relative path to absolute
+        if original_path.startswith('/static/library/'):
+            original_filepath = os.path.join(LIBRARY_FOLDER, os.path.basename(original_path))
+        else:
+            original_filepath = os.path.join(BASE_DIR, original_path.lstrip('/'))
+        
+        if not os.path.exists(original_filepath):
+            return jsonify({"success": False, "error": "Original image not found"}), 404
+        
+        # Create a working copy
+        temp_uuid = uuid.uuid4()
+        temp_filepath = os.path.join(LIBRARY_FOLDER, f"{temp_uuid}_temp.png")
+        shutil.copy2(original_filepath, temp_filepath)
+        
+        # Apply adjustments
+        if hue_shift != 0:
+            apply_hue_shift(temp_filepath, shift_degrees=hue_shift)
+        if saturation_mult != 1.0:
+            apply_saturation_adjustment(temp_filepath, saturation_multiplier=saturation_mult)
+        
+        # Force file sync
+        time.sleep(0.1)
+        
+        # Save adjusted version
+        adjusted_filename = f"adjusted_{temp_uuid.hex[:8]}.png"
+        adjusted_filepath = os.path.join(LIBRARY_FOLDER, adjusted_filename)
+        shutil.copy2(temp_filepath, adjusted_filepath)
+        
+        # Composite on green screen
+        greenscreen_filepath = composite_on_green_screen(temp_filepath)
+        if greenscreen_filepath:
+            final_greenscreen = os.path.join(LIBRARY_FOLDER, f"greenscreen_{temp_uuid.hex[:8]}.png")
+            shutil.move(greenscreen_filepath, final_greenscreen)
+            greenscreen_filepath = final_greenscreen
+        else:
+            greenscreen_filepath = temp_filepath
+        
+        # Clean up temp file
+        if os.path.exists(temp_filepath):
+            os.remove(temp_filepath)
+        
+        return jsonify({
+            "success": True,
+            "adjusted": f"/static/library/{os.path.basename(adjusted_filepath)}",
+            "greenscreen": f"/static/library/{os.path.basename(greenscreen_filepath)}"
+        })
+        
+    except Exception as e:
+        print(f"Keying test reprocess error: {e}")
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/keying-test/restore-colors", methods=["POST"])
+def keying_test_restore_colors():
+    """Restore original colors after keying by reversing the adjustments"""
+    try:
+        data = request.json
+        keyed_image_path = data.get('keyed_path')
+        hue_shift = float(data.get('hue_shift', -30))
+        saturation_mult = float(data.get('saturation_mult', 0.6))
+        
+        # Convert relative path to absolute
+        if keyed_image_path.startswith('/static/library/'):
+            keyed_path = os.path.join(LIBRARY_FOLDER, os.path.basename(keyed_image_path))
+        else:
+            keyed_path = os.path.join(BASE_DIR, keyed_image_path.lstrip('/'))
+        
+        if not os.path.exists(keyed_path):
+            return jsonify({"success": False, "error": "Keyed image not found"}), 404
+        
+        # Load the keyed image
+        keyed_image = Image.open(keyed_path).convert("RGBA")
+        pixels = np.array(keyed_image, dtype=np.float32)
+        
+        r, g, b, a = pixels[:,:,0], pixels[:,:,1], pixels[:,:,2], pixels[:,:,3]
+        mask = a > 0
+        
+        # Restore colors in reverse order: saturation first, then hue
+        from colorsys import rgb_to_hsv, hsv_to_rgb
+        rgb_norm = pixels[:,:,:3] / 255.0
+        h, s, v = np.vectorize(rgb_to_hsv)(rgb_norm[:,:,0], rgb_norm[:,:,1], rgb_norm[:,:,2])
+        
+        # Step 1: Restore saturation (reverse the saturation reduction)
+        if saturation_mult != 1.0 and saturation_mult > 0:
+            # Reverse saturation: if we reduced to 60%, multiply by 1/0.6 to restore
+            s = np.clip(s / saturation_mult, 0, 1)
+        
+        # Step 2: Reverse hue shift (if any)
+        if hue_shift != 0:
+            # Reverse hue shift: if we shifted -30°, shift back +30°
+            h = (h - (hue_shift / 360.0)) % 1.0
+        
+        # Convert back to RGB
+        r_new, g_new, b_new = np.vectorize(hsv_to_rgb)(h, s, v)
+        pixels[:,:,0] = r_new * 255
+        pixels[:,:,1] = g_new * 255
+        pixels[:,:,2] = b_new * 255
+        
+        # Convert back to uint8 and save
+        pixels = np.clip(pixels, 0, 255).astype(np.uint8)
+        restored_image = Image.fromarray(pixels, 'RGBA')
+        
+        # Save restored image
+        output_filename = os.path.basename(keyed_path).replace('keyed_test_', 'restored_')
+        output_path = os.path.join(LIBRARY_FOLDER, output_filename)
+        restored_image.save(output_path, 'PNG')
+        
+        return jsonify({
+            "success": True,
+            "restored_path": f"/static/library/{output_filename}"
+        })
+        
+    except Exception as e:
+        print(f"Keying test restore colors error: {e}")
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/keying-test/apply", methods=["POST"])
+def keying_test_apply():
+    """Apply keying with custom parameters to a green screen image"""
+    try:
+        data = request.json
+        image_path = data.get('image_path')  # Path to the greenscreen image
+        settings = data.get('settings', {})
+        
+        # Convert relative path to absolute
+        if image_path.startswith('http'):
+            # Download S3 image
+            import requests
+            img_response = requests.get(image_path)
+            img_response.raise_for_status()
+            temp_filename = f"temp_keying_{uuid.uuid4()}.png"
+            greenscreen_path = os.path.join(LIBRARY_FOLDER, temp_filename)
+            with open(greenscreen_path, "wb") as f:
+                f.write(img_response.content)
+        else:
+            greenscreen_path = os.path.join(BASE_DIR, image_path.lstrip('/'))
+        
+        if not os.path.exists(greenscreen_path):
+            return jsonify({"success": False, "error": "Image not found"}), 404
+        
+        # Parse keying settings
+        lower_green = [
+            settings.get('hue_center', 60) - settings.get('hue_tolerance', 25),
+            settings.get('saturation_min', 50),
+            settings.get('value_min', 50)
+        ]
+        upper_green = [
+            settings.get('hue_center', 60) + settings.get('hue_tolerance', 25),
+            255,
+            255
+        ]
+        
+        # Read the green screen image
+        greenscreen_frame = cv2.imread(greenscreen_path)
+        if greenscreen_frame is None:
+            return jsonify({"success": False, "error": "Failed to load image"}), 500
+        
+        # Apply keying using the same function as the main workflow
+        keyed_frame = process_single_frame(
+            greenscreen_frame,
+            lower_green=lower_green,
+            upper_green=upper_green,
+            erode_amount=int(settings.get('erode', 0)),
+            dilate_amount=int(settings.get('dilate', 0)),
+            blur_amount=int(settings.get('blur', 5)),
+            spill_amount=float(settings.get('spill', 0.5))
+        )
+        
+        # Convert BGRA to RGBA for PIL
+        b, g, r, a = cv2.split(keyed_frame)
+        rgba_frame = cv2.merge([r, g, b, a])
+        keyed_image = Image.fromarray(rgba_frame, 'RGBA')
+        
+        # Save keyed result
+        output_filename = f"keyed_test_{uuid.uuid4().hex[:8]}.png"
+        output_path = os.path.join(LIBRARY_FOLDER, output_filename)
+        keyed_image.save(output_path, 'PNG')
+        
+        # Return relative path
+        relative_path = f"/static/library/{output_filename}"
+        
+        return jsonify({
+            "success": True,
+            "keyed_path": relative_path
+        })
+        
+    except Exception as e:
+        print(f"Keying test apply error: {e}")
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/get-png-sequence', methods=['POST'])
+def get_png_sequence():
+    """Get list of PNG frames from saved sequence for video editor"""
+    try:
+        job_id = request.json.get('job_id')
+        
+        print(f"📁 Fetching PNG sequence for job {job_id}...")
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            job = cursor.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            
+            if not job:
+                return jsonify({"success": False, "error": "Job not found"}), 404
+            
+            # Try to get PNG sequence path from multiple sources
+            png_path = None
+            
+            # Source 1: Check for keying child job (direct child)
+            keying_child = cursor.execute(
+                "SELECT * FROM jobs WHERE parent_job_id = ? AND job_type = 'keying' AND status = 'completed' ORDER BY id DESC LIMIT 1",
+                (job_id,)
+            ).fetchone()
+            
+            if keying_child:
+                print(f"   Found keying child job #{keying_child['id']}")
+                if keying_child['png_sequence_path']:
+                    png_path = keying_child['png_sequence_path']
+                    print(f"   ✅ Found PNG path from keying child: {png_path}")
+                elif keying_child['keyed_result_data']:
+                    try:
+                        keyed_data = json.loads(keying_child['keyed_result_data'])
+                        png_path = keyed_data.get('png_sequence_path')
+                        if png_path:
+                            print(f"   ✅ Found PNG path in keying child's keyed_result_data: {png_path}")
+                    except:
+                        pass
+            
+            # Source 1b: Check for keying grandchild (video_generation -> animation -> keying)
+            if not png_path:
+                # Get all children
+                children = cursor.execute(
+                    "SELECT id FROM jobs WHERE parent_job_id = ?", (job_id,)
+                ).fetchall()
+                
+                if children:
+                    child_ids = [child['id'] for child in children]
+                    print(f"   Checking {len(child_ids)} children for grandchildren: {child_ids}")
+                    
+                    # Check grandchildren (keying jobs that are children of our children)
+                    placeholders = ','.join('?' * len(child_ids))
+                    keying_grandchild = cursor.execute(
+                        f"SELECT * FROM jobs WHERE parent_job_id IN ({placeholders}) AND job_type = 'keying' AND status = 'completed' ORDER BY id DESC LIMIT 1",
+                        child_ids
+                    ).fetchone()
+                    
+                    if keying_grandchild:
+                        print(f"   Found keying grandchild job #{keying_grandchild['id']}")
+                        if keying_grandchild['png_sequence_path']:
+                            png_path = keying_grandchild['png_sequence_path']
+                            print(f"   ✅ Found PNG path from keying grandchild: {png_path}")
+                        elif keying_grandchild['keyed_result_data']:
+                            try:
+                                keyed_data = json.loads(keying_grandchild['keyed_result_data'])
+                                png_path = keyed_data.get('png_sequence_path')
+                                if png_path:
+                                    print(f"   ✅ Found PNG path in keying grandchild's keyed_result_data: {png_path}")
+                            except:
+                                pass
+            
+            # Source 2: Direct column from source job
+            if not png_path and job['png_sequence_path']:
+                png_path = job['png_sequence_path']
+                print(f"   Found PNG path in png_sequence_path: {png_path}")
+            
+            # Source 3: From keyed_result_data
+            if not png_path and job['keyed_result_data']:
+                try:
+                    keyed_data = json.loads(job['keyed_result_data'])
+                    png_path = keyed_data.get('png_sequence_path')
+                    if png_path:
+                        print(f"   Found PNG path in keyed_result_data: {png_path}")
+                except:
+                    pass
+            
+            # Source 4: From result_data
+            if not png_path and job['result_data']:
+                try:
+                    result_data = json.loads(job['result_data'])
+                    png_path = result_data.get('png_sequence_path')
+                    if png_path:
+                        print(f"   Found PNG path in result_data: {png_path}")
+                except:
+                    pass
+            
+            if not png_path:
+                print(f"   ❌ No PNG sequence path found for job {job_id}")
+                return jsonify({"success": False, "error": "PNG sequence not found"}), 404
+            
+            # Convert to absolute path - paths like /static/... are relative to BASE_DIR
+            if png_path.startswith('/static/') or not png_path.startswith(BASE_DIR):
+                png_path = os.path.join(BASE_DIR, png_path.lstrip('/'))
+            
+            print(f"   🔍 Checking path: {png_path}")
+            
+            # Check if path exists
+            if not os.path.exists(png_path):
+                # Try old format in root directory (for backward compatibility)
+                old_format_path = os.path.join(BASE_DIR, os.path.basename(png_path.rstrip('/')))
+                print(f"   🔍 Trying old location: {old_format_path}")
+                if os.path.exists(old_format_path):
+                    print(f"   🔄 Found PNG sequence in old location (root): {old_format_path}")
+                    png_path = old_format_path
+                else:
+                    print(f"   ❌ PNG sequence not found at: {png_path}")
+                    print(f"   ❌ Also checked old location: {old_format_path}")
+                    return jsonify({"success": False, "error": "PNG sequence directory not found"}), 404
+            
+            # List all PNG files
+            try:
+                all_files = os.listdir(png_path)
+                png_files = sorted([f for f in all_files if f.lower().endswith('.png')])
+                
+                if not png_files:
+                    print(f"   ❌ No PNG files found in: {png_path}")
+                    return jsonify({"success": False, "error": "No PNG files in sequence"}), 404
+                
+                print(f"   ✅ Found {len(png_files)} PNG frames")
+                
+                # Convert to URLs
+                relative_path = png_path.replace(BASE_DIR, '').lstrip('/')
+                frame_urls = [f"/{relative_path}/{filename}" for filename in png_files]
+                
+                # Calculate metadata
+                fps = 30  # Default FPS
+                
+                # Try to get FPS from job data
+                try:
+                    if job['keyed_result_data']:
+                        keyed_data = json.loads(job['keyed_result_data'])
+                        fps = keyed_data.get('fps', 30)
+                except:
+                    pass
+                
+                duration = len(png_files) / fps
+                
+                print(f"   📊 Sequence: {len(png_files)} frames, {fps} FPS, {duration:.2f}s duration")
+                
+                return jsonify({
+                    "success": True,
+                    "frames": frame_urls,
+                    "fps": fps,
+                    "duration": duration,
+                    "total_frames": len(png_files)
+                })
+                
+            except Exception as e:
+                print(f"   ❌ Error reading PNG directory: {e}")
+                return jsonify({"success": False, "error": f"Error reading PNG files: {str(e)}"}), 500
+            
+    except Exception as e:
+        print(f"ERROR in /api/get-png-sequence: {e}")
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/extract-video-frames', methods=['POST'])
+def extract_video_frames():
+    """Extract frame thumbnails from a video for timeline display"""
+    try:
+        data = request.json
+        job_id = data.get('job_id')
+        num_frames = data.get('num_frames', 30)  # Default 30 thumbnail frames
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            job = cursor.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            
+            if not job:
+                return jsonify({"success": False, "error": "Job not found"}), 404
+            
+            # Get video path - PREFER KEYED (TRANSPARENT) VIDEO
+            video_url = None
+            if job['keyed_result_data']:
+                try:
+                    keyed_data = json.loads(job['keyed_result_data'])
+                    video_url = keyed_data.get('webm') or job['keyed_result_data']
+                    print(f"   🔑 Extracting frames from KEYED video: {video_url}")
+                except:
+                    video_url = job['keyed_result_data']
+                    print(f"   🔑 Extracting frames from keyed video (string): {video_url}")
+            elif job['result_data']:
+                try:
+                    result_data = json.loads(job['result_data'])
+                    video_url = result_data.get('video_path') or result_data.get('webm')
+                    print(f"   📹 Extracting frames from result_data video: {video_url}")
+                except:
+                    video_url = job['result_data']
+                    print(f"   📹 Extracting frames from result_data (string): {video_url}")
+            
+            if not video_url:
+                return jsonify({"success": False, "error": "No video found"}), 404
+            
+            # Convert URL to local path
+            video_path = os.path.join(BASE_DIR, video_url.lstrip('/'))
+            
+            if not os.path.exists(video_path):
+                print(f"   ❌ Video file not found at: {video_path}")
+                return jsonify({"success": False, "error": "Video file not found"}), 404
+            
+            print(f"   ✅ Found video file: {video_path}")
+            
+            # Get video metadata using FFprobe
+            probe_cmd = ['ffprobe', '-v', 'error', '-show_entries', 
+                        'stream=r_frame_rate,duration,nb_frames', 
+                        '-of', 'json', video_path]
+            probe_result = subprocess.run(probe_cmd, capture_output=True, text=True)
+            probe_data = json.loads(probe_result.stdout)
+            
+            # Extract FPS and duration
+            stream = probe_data['streams'][0]
+            fps_str = stream.get('r_frame_rate', '30/1')
+            fps_num, fps_den = map(int, fps_str.split('/'))
+            fps = fps_num / fps_den if fps_den > 0 else 30
+            
+            # Try to get frame count, fallback to calculating from duration
+            total_frames = int(stream.get('nb_frames', 0))
+            if total_frames == 0:
+                duration = float(stream.get('duration', 0))
+                total_frames = int(duration * fps) if duration > 0 else 100
+            else:
+                duration = total_frames / fps if fps > 0 else 0
+            
+            frames_data = []
+            frame_interval = max(1, total_frames // num_frames)
+            
+            # Extract frames using FFmpeg to preserve alpha channel
+            # We'll extract frames as PNG which supports transparency
+            import tempfile
+            with tempfile.TemporaryDirectory() as tmpdir:
+                for i in range(0, total_frames, frame_interval):
+                    frame_time = i / fps if fps > 0 else 0
+                    output_file = os.path.join(tmpdir, f'frame_{i}.png')
+                    
+                    # FFmpeg command to extract a single frame with alpha channel
+                    extract_cmd = [
+                        'ffmpeg', '-y',
+                        '-ss', str(frame_time),
+                        '-i', video_path,
+                        '-frames:v', '1',
+                        '-vf', 'scale=-1:100',  # Resize to height 100, maintain aspect ratio
+                        output_file
+                    ]
+                    
+                    result = subprocess.run(extract_cmd, capture_output=True, text=True, timeout=5)
+                    
+                    if result.returncode == 0 and os.path.exists(output_file):
+                        # Read the PNG file and convert to base64
+                        with open(output_file, 'rb') as f:
+                            frame_bytes = f.read()
+                            frame_base64 = base64.b64encode(frame_bytes).decode('utf-8')
+                            
+                            frames_data.append({
+                                'index': i,
+                                'time': frame_time,
+                                'thumbnail': f'data:image/png;base64,{frame_base64}'
+                            })
+                    
+                    # Stop if we have enough frames
+                    if len(frames_data) >= num_frames:
+                        break
+            
+            print(f"   ✅ Extracted {len(frames_data)} frames with alpha channel preserved")
+            
+            return jsonify({
+                "success": True,
+                "frames": frames_data,
+                "total_frames": total_frames,
+                "fps": fps,
+                "duration": duration
+            })
+            
+    except Exception as e:
+        print(f"ERROR in /api/extract-video-frames: {e}")
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/create-boomerang', methods=['POST'])
+def create_boomerang():
+    """Create boomerang automation job from two extracted frames"""
+    try:
+        start_frame_file = request.files.get('start_frame')
+        end_frame_file = request.files.get('end_frame')
+        job_id = request.form.get('job_id')
+        in_frame = request.form.get('in_frame')
+        out_frame = request.form.get('out_frame')
+        
+        if not start_frame_file or not end_frame_file:
+            return jsonify({"success": False, "error": "Missing frame images"}), 400
+        
+        print(f"🪃 Creating boomerang from frames {in_frame} to {out_frame} (job {job_id})")
+        
+        # Save uploaded frames
+        start_filename = f"{uuid.uuid4()}-start-frame.png"
+        end_filename = f"{uuid.uuid4()}-end-frame.png"
+        start_s3_key = f"uploads/{start_filename}"
+        end_s3_key = f"uploads/{end_filename}"
+        
+        start_image_url = save_uploaded_file(start_frame_file, start_s3_key)
+        end_image_url = save_uploaded_file(end_frame_file, end_s3_key)
+        
+        print(f"   Saved frames to: {start_image_url}, {end_image_url}")
+        
+        # Create boomerang automation job
+        # Use default settings for now - user can modify if needed
+        input_data = {
+            "image_url": start_image_url,
+            "end_image_url": end_image_url,
+            "prompt": "smooth animation",
+            "negative_prompt": "static, blurry, distorted",
+            "background": "green",  # Green screen for later keying
+            "white_outline": False,
+            "outline_thickness": 3,
+            "video_model": "kling-v2.1",
+            "seamless_loop": False,
+            "kling_duration": 5,
+            "kling_mode": "pro"
+        }
+        
+        meta_prompt = f"Boomerang: Frame {in_frame} ↔ {out_frame}"
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO jobs (job_type, status, created_at, prompt, input_data, parent_job_id) VALUES (?, ?, ?, ?, ?, ?)",
+                ('boomerang_automation', 'queued', datetime.now(), meta_prompt, json.dumps(input_data), job_id)
+            )
+            conn.commit()
+            new_job_id = cursor.lastrowid
+        
+        print(f"✅ Created boomerang automation job #{new_job_id}")
+        
+        return jsonify({
+            "success": True,
+            "job_id": new_job_id,
+            "message": f"Boomerang job created: {meta_prompt}"
+        })
+        
+    except Exception as e:
+        print(f"❌ Error creating boomerang: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/apply-video-effects', methods=['POST'])
+def apply_video_effects():
+    """Apply effects to video (boomerang, pingpong, speed, trim)"""
+    try:
+        data = request.json
+        job_id = data.get('job_id')
+        effect_type = data.get('effect')  # 'boomerang', 'pingpong', 'linear', 'speed'
+        in_point = float(data.get('in_point', 0))
+        out_point = data.get('out_point')
+        speed = float(data.get('speed', 1.0))
+        speed_segments = data.get('speed_segments')  # Array of {startFrame, endFrame, speed}
+        fps = data.get('fps', 30)
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            source_job = cursor.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            
+            if not source_job:
+                return jsonify({"success": False, "error": "Job not found"}), 404
+            
+            # Get PNG sequence and video URL - PREFER PNG SEQUENCE for perfect quality
+            png_sequence_path = None
+            video_url = None
+            
+            # Check if there's a keying child job (direct child)
+            keying_child = cursor.execute(
+                "SELECT * FROM jobs WHERE parent_job_id = ? AND job_type = 'keying' AND status = 'completed' ORDER BY id DESC LIMIT 1",
+                (job_id,)
+            ).fetchone()
+            
+            if keying_child:
+                print(f"   🔑 Found keying child job #{keying_child['id']}")
+                # Use keying child's data
+                if keying_child['png_sequence_path']:
+                    png_sequence_path = keying_child['png_sequence_path']
+                    print(f"   📁 Found PNG sequence from keying child: {png_sequence_path}")
+                elif keying_child['keyed_result_data']:
+                    try:
+                        keyed_data = json.loads(keying_child['keyed_result_data'])
+                        png_sequence_path = keyed_data.get('png_sequence_path')
+                        if png_sequence_path:
+                            print(f"   📁 Found PNG sequence in keying child's keyed_result_data: {png_sequence_path}")
+                        video_url = keyed_data.get('webm')
+                        if video_url:
+                            print(f"   🔑 Found keyed video from child: {video_url}")
+                    except:
+                        pass
+            
+            # Check for keying grandchild (video_generation -> animation -> keying)
+            if not png_sequence_path and not video_url:
+                # Get all children
+                children = cursor.execute(
+                    "SELECT id FROM jobs WHERE parent_job_id = ?", (job_id,)
+                ).fetchall()
+                
+                if children:
+                    child_ids = [child['id'] for child in children]
+                    print(f"   Checking {len(child_ids)} children for grandchildren: {child_ids}")
+                    
+                    # Check grandchildren
+                    placeholders = ','.join('?' * len(child_ids))
+                    keying_grandchild = cursor.execute(
+                        f"SELECT * FROM jobs WHERE parent_job_id IN ({placeholders}) AND job_type = 'keying' AND status = 'completed' ORDER BY id DESC LIMIT 1",
+                        child_ids
+                    ).fetchone()
+                    
+                    if keying_grandchild:
+                        print(f"   🔑 Found keying grandchild job #{keying_grandchild['id']}")
+                        if keying_grandchild['png_sequence_path']:
+                            png_sequence_path = keying_grandchild['png_sequence_path']
+                            print(f"   📁 Found PNG sequence from keying grandchild: {png_sequence_path}")
+                        elif keying_grandchild['keyed_result_data']:
+                            try:
+                                keyed_data = json.loads(keying_grandchild['keyed_result_data'])
+                                png_sequence_path = keyed_data.get('png_sequence_path')
+                                if png_sequence_path:
+                                    print(f"   📁 Found PNG sequence in keying grandchild's keyed_result_data: {png_sequence_path}")
+                                video_url = keyed_data.get('webm')
+                                if video_url:
+                                    print(f"   🔑 Found keyed video from grandchild: {video_url}")
+                            except:
+                                pass
+            
+            # Fallback: Try source job's own data
+            if not png_sequence_path and source_job['png_sequence_path']:
+                png_sequence_path = source_job['png_sequence_path']
+                print(f"   📁 Found PNG sequence in source job: {png_sequence_path}")
+            
+            if not png_sequence_path and not video_url and source_job['keyed_result_data']:
+                try:
+                    keyed_data = json.loads(source_job['keyed_result_data'])
+                    png_sequence_path = keyed_data.get('png_sequence_path')
+                    if png_sequence_path:
+                        print(f"   📁 Found PNG sequence in source job's keyed_result_data: {png_sequence_path}")
+                    if not video_url:
+                        video_url = keyed_data.get('webm')
+                except:
+                    pass
+            
+            # Get video URL as fallback
+            if source_job['keyed_result_data']:
+                try:
+                    keyed_data = json.loads(source_job['keyed_result_data'])
+                    video_url = keyed_data.get('webm') or source_job['keyed_result_data']
+                    print(f"   🔑 Found keyed (transparent) video: {video_url}")
+                except:
+                    video_url = source_job['keyed_result_data']
+                    print(f"   🔑 Found keyed video (string format): {video_url}")
+            elif source_job['result_data']:
+                try:
+                    result_data = json.loads(source_job['result_data'])
+                    video_url = result_data.get('video_path') or result_data.get('webm')
+                    print(f"   📹 Found result_data video: {video_url}")
+                except:
+                    video_url = source_job['result_data']
+            
+            if not png_sequence_path and not video_url:
+                return jsonify({"success": False, "error": "No PNG sequence or video found"}), 404
+            
+            # Create effect description
+            effect_desc = {
+                'boomerang': 'Boomerang',
+                'pingpong': 'Ping Pong Loop',
+                'linear': 'Linear Loop',
+                'speed': f'{speed}x Speed'
+            }.get(effect_type, effect_type)
+            
+            # Build prompt suffix
+            prompt_suffix = f" [{effect_desc}"
+            if in_point > 0 or out_point:
+                prompt_suffix += f" {in_point:.1f}s-{out_point:.1f}s" if out_point else f" from {in_point:.1f}s"
+            if speed_segments:
+                prompt_suffix += f" +{len(speed_segments)} speed segments"
+            prompt_suffix += "]"
+            
+            new_prompt = f"{source_job['prompt']}{prompt_suffix}"
+            
+            print(f"   📝 Effect: {effect_type}, Speed segments: {len(speed_segments) if speed_segments else 0}")
+            
+            # Store effect parameters (include PNG sequence path for perfect transparency)
+            effect_params = json.dumps({
+                'source_video_url': video_url,
+                'png_sequence_path': png_sequence_path,
+                'effect': effect_type,
+                'in_point': in_point,
+                'out_point': out_point,
+                'speed': speed,
+                'speed_segments': speed_segments,
+                'fps': fps,
+                'pingpong': effect_type in ['pingpong', 'boomerang']
+            })
+            
+            # Create new job
+            cursor.execute(
+                """INSERT INTO jobs 
+                (job_type, prompt, status, input_data, created_at) 
+                VALUES (?, ?, ?, ?, ?)""",
+                ('video_effect', new_prompt, 'queued', effect_params, datetime.now().isoformat())
+            )
+            new_job_id = cursor.lastrowid
+            conn.commit()
+            
+            print(f"   ✅ Created video effect job #{new_job_id}: {effect_desc}")
+            return jsonify({"success": True, "job_id": new_job_id})
+            
+    except Exception as e:
+        print(f"ERROR in /api/apply-video-effects: {e}")
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
 if __name__ == '__main__':
     # Initialize database on startup (for direct execution)
     init_db()
-    # Start the Flask development server
-    app.run(debug=True, host='0.0.0.0', port=5001)
+    # Start the Flask development server on port 5002 (to avoid conflict with original app)
+    app.run(debug=True, host='0.0.0.0', port=5002)
 
