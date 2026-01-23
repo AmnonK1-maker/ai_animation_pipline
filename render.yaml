@@ -5,6 +5,10 @@ services:
     env: docker
     plan: free
     dockerfilePath: ./Dockerfile
+    disk:
+      - name: data
+        mountPath: /opt/render/project/src/data
+        sizeGB: 5
     envVars:
       - key: OPENAI_API_KEY
         sync: false
