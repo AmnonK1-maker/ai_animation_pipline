@@ -3301,6 +3301,68 @@ def handle_keying(job):
             print(f"   JOB #{job_id}: ERROR - {error_msg}")
             return None, error_msg
         
+        # Parse keying settings - check keying_settings column first (for auto-keying jobs), then input_data
+        if job['keying_settings']:
+            try:
+                settings = json.loads(job['keying_settings'])
+                print(f"   JOB #{job_id}: Using settings from keying_settings column")
+            except:
+                settings = input_data
+                print(f"   JOB #{job_id}: Failed to parse keying_settings, using input_data")
+        else:
+            settings = input_data  # Settings are directly in input_data for manual keying jobs
+            print(f"   JOB #{job_id}: Using settings from input_data")
+
+        # Check if sticker effect OR posterize OR any exports are requested BEFORE processing
+        sticker_effect_requested = settings.get('sticker_effect', False)
+        posterize_requested = settings.get('posterize_enabled', False)
+        export_gif = settings.get('export_gif', False)
+        export_png_zip = settings.get('export_png_zip', False)
+        skip_encoding_needed = sticker_effect_requested or posterize_requested or export_gif or export_png_zip
+
+        # Optional: Use Blender server if configured and no post-processing is needed
+        blender_server_url = os.getenv("BLENDER_SERVER_URL")
+        blender_api_key = os.getenv("BLENDER_SERVER_API_KEY")
+        if blender_server_url and blender_api_key and video_url.startswith('http') and not skip_encoding_needed:
+            detected_screen_color = (
+                settings.get('screen_color')
+                or settings.get('key_color')
+                or 'green'
+            )
+            blender_params = {
+                "key_color": detected_screen_color,
+                "clip_white": settings.get("clip_white", settings.get("white_level", 0.887)),
+                "saturation": settings.get("saturation", 1.5),
+                "curve_x": settings.get("curve_x", 0.6),
+                "curve_y": settings.get("curve_y", 0.7),
+                "crf": settings.get("crf", "LOSSLESS"),
+                "gopsize": settings.get("gopsize", 18),
+                "threads": settings.get("threads", 4),
+            }
+            try:
+                print(f"   JOB #{job_id}: 🚀 Sending to Blender server for keying...")
+                response = requests.post(
+                    f"{blender_server_url.rstrip('/')}/key_video",
+                    json={"video_url": video_url, "job_id": job_id, "params": blender_params},
+                    headers={"X-API-Key": blender_api_key},
+                    timeout=900,
+                )
+                if response.ok:
+                    data = response.json()
+                    if data.get("success") and data.get("result_url"):
+                        result_data = {
+                            "webm": data["result_url"],
+                            "gif": None,
+                            "png_zip": None,
+                            "png_sequence_path": None,
+                        }
+                        result_json = json.dumps(result_data)
+                        print(f"   JOB #{job_id}: 🎉 Blender keying complete: {result_json}")
+                        return result_json, None
+                print(f"   JOB #{job_id}: ⚠️ Blender server failed, falling back to OpenCV")
+            except Exception as e:
+                print(f"   JOB #{job_id}: ⚠️ Blender server error: {e}, falling back to OpenCV")
+
         if video_url.startswith('http'):
             # It's an S3 URL - download it first
             print(f"   JOB #{job_id}: Downloading video from S3...")
@@ -3326,18 +3388,6 @@ def handle_keying(job):
         # AUTO-DETECT screen color from video
         detected_screen_color = detect_screen_color_from_video(greenscreen_video_path)
         
-        # Parse keying settings - check keying_settings column first (for auto-keying jobs), then input_data
-        if job['keying_settings']:
-            try:
-                settings = json.loads(job['keying_settings'])
-                print(f"   JOB #{job_id}: Using settings from keying_settings column")
-            except:
-                settings = input_data
-                print(f"   JOB #{job_id}: Failed to parse keying_settings, using input_data")
-        else:
-            settings = input_data  # Settings are directly in input_data for manual keying jobs
-            print(f"   JOB #{job_id}: Using settings from input_data")
-        
         # SMART KEYING: Adjust hue_center based on detected screen color
         if detected_screen_color == 'blue':
             settings['hue_center'] = 120  # Blue hue in OpenCV HSV (0-180 range, 240° / 2 = 120)
@@ -3359,13 +3409,6 @@ def handle_keying(job):
         lower_green = [settings['hue_center'] - settings['hue_tolerance'], settings['saturation_min'], settings['value_min']]
         upper_green = [settings['hue_center'] + settings['hue_tolerance'], 255, 255]
         print(f"   JOB #{job_id}: Color range - Lower: {lower_green}, Upper: {upper_green}")
-        
-        # Check if sticker effect OR posterize OR any exports are requested BEFORE processing
-        sticker_effect_requested = settings.get('sticker_effect', False)
-        posterize_requested = settings.get('posterize_enabled', False)
-        export_gif = settings.get('export_gif', False)
-        export_png_zip = settings.get('export_png_zip', False)
-        skip_encoding_needed = sticker_effect_requested or posterize_requested or export_gif or export_png_zip
         
         # Initialize export URLs (will be set if exports are requested)
         gif_url = None
