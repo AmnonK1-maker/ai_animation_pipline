@@ -1856,7 +1856,8 @@ function updateLoopOutlineThickness() {
 // ===== SMART POLLING SYSTEM =====
 function hashJobs(jobs) {
     // Create a simple hash of job data to detect changes
-    return jobs.map(j => `${j.id}-${j.status}-${j.result_data ? '1' : '0'}`).join('|');
+    // Include keyed_result_data so UI refreshes when keying completes
+    return jobs.map(j => `${j.id}-${j.status}-${j.result_data ? '1' : '0'}-${j.keyed_result_data ? '1' : '0'}`).join('|');
 }
 
 function hasActiveJobs(jobs) {

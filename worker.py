@@ -1110,6 +1110,68 @@ def handle_boomerang_automation(job, conn):
             print(f"Could not rollback transaction: {rollback_error}")
         return None, f"A-B-A Loop Automation setup failed: {e}"
 
+def upscale_video(video_url, target_resolution="1080p", target_fps=30):
+    """
+    Upscale video using Topaz Labs Video Upscaler on Replicate
+    Reference: https://replicate.com/topazlabs/video-upscale
+    
+    Args:
+        video_url: URL of video to upscale (S3 URL)
+        target_resolution: "720p", "1080p", or "4k" (default: 1080p)
+        target_fps: 15-60 fps (default: 30)
+    
+    Returns:
+        (upscaled_video_url, error) tuple
+    """
+    try:
+        print(f"   🔼 Starting video upscale...")
+        print(f"   🔼 Input: {video_url}")
+        print(f"   🔼 Target: {target_resolution} @ {target_fps}fps")
+        
+        # Call Topaz Labs upscaler on Replicate
+        # Reference: https://replicate.com/topazlabs/video-upscale
+        output = replicate.run(
+            "topazlabs/video-upscale",
+            input={
+                "video": video_url,
+                "target_resolution": target_resolution,
+                "target_fps": target_fps
+            }
+        )
+        
+        # The output is a URL to the upscaled video
+        upscaled_url = output
+        print(f"   ✅ Video upscaled: {upscaled_url}")
+        
+        # Download and re-upload to our S3 bucket for consistency
+        print(f"   📥 Downloading upscaled video...")
+        response = requests.get(upscaled_url)
+        response.raise_for_status()
+        
+        upscaled_filename = f"upscaled_{uuid.uuid4()}.mp4"
+        upscaled_filepath = os.path.join(ANIMATIONS_FOLDER_GENERATED, upscaled_filename)
+        
+        with open(upscaled_filepath, "wb") as f:
+            f.write(response.content)
+        
+        print(f"   📤 Uploading upscaled video to S3...")
+        s3_key = f"animations/upscaled/{upscaled_filename}"
+        final_url = upload_file(upscaled_filepath, s3_key)
+        
+        # Clean up local file
+        try:
+            os.remove(upscaled_filepath)
+        except Exception as e:
+            print(f"   ⚠️ Could not delete temp upscaled file: {e}")
+        
+        print(f"   ✅ Upscale complete: {final_url}")
+        return final_url, None
+        
+    except Exception as e:
+        print(f"   ❌ Upscale failed: {e}")
+        traceback.print_exc()
+        return None, f"Video upscale error: {e}"
+
 def handle_animation(job):
     try:
         print(f"-> Starting animation generation for job {job['id']}...")
@@ -2856,14 +2918,10 @@ def handle_video_generation(job, conn):
         else:
             # Generate image using specified model
             print(f"   🎨 Generating image with {image_model} model...")
-            # Add default vector style if no style keywords in prompt
-            style_keywords = ['style', 'vector', '3d', '2d', 'realistic', 'cartoon', 'anime', 'sketch', 'painting']
-            has_style = any(keyword in prompt.lower() for keyword in style_keywords)
-            enhanced_prompt = f"{prompt}, vector style, 2d, graphic" if not has_style else prompt
-            print(f"   🎨 Enhanced prompt: {enhanced_prompt}")
+            print(f"   🎨 Prompt: {prompt}")
             
             img_gen_input = {
-                "prompt": enhanced_prompt,
+                "prompt": prompt,
                 "model": image_model,
                 "aspect_ratio": aspect_ratio
             }
@@ -3088,11 +3146,30 @@ def handle_video_generation(job, conn):
         
         print(f"   ✅ Video generated: {video_path}")
         
-        # STEP 4: Auto-key the video
+        # STEP 3.5: Upscale the video to 1080p
+        print(f"   🔼 Upscaling video to 1080p...")
+        upscaled_path, upscale_error = upscale_video(video_path, target_resolution="1080p", target_fps=30)
+        
+        if upscale_error:
+            print(f"   ⚠️ Upscale failed, using original video: {upscale_error}")
+            # Continue with original video if upscale fails
+            final_video_path = video_path
+        else:
+            print(f"   ✅ Video upscaled: {upscaled_path}")
+            final_video_path = upscaled_path
+            
+            # Update animation job with upscaled video
+            conn.execute(
+                "UPDATE jobs SET result_data = ? WHERE id = ?",
+                (upscaled_path, animation_job_id)
+            )
+            conn.commit()
+        
+        # STEP 4: Auto-key the video (using upscaled version)
         print(f"   🔑 Queuing auto-keying job...")
         
         keying_input = {
-            "video_url": video_path,  # handle_keying expects 'video_url', not 'video_path'
+            "video_url": final_video_path,  # handle_keying expects 'video_url', not 'video_path'
             "source_job_id": animation_job_id,
             # Green screen keying settings - updated parameters
             "hue_center": 60,  # Green hue (or 240 for blue screen)
@@ -3117,10 +3194,12 @@ def handle_video_generation(job, conn):
         # Return result as JSON string for database storage
         result_data = {
             "image_path": image_path,
-            "video_path": video_path,
+            "video_path": final_video_path,  # Use upscaled path if available
+            "original_video_path": video_path,  # Keep original for reference
+            "upscaled": final_video_path != video_path,  # Flag if upscaling was successful
             "animation_job_id": animation_job_id,
             "keying_job_id": keying_job_id,
-            "status": "Video generated, keying queued"
+            "status": "Video generated, upscaled, keying queued" if final_video_path != video_path else "Video generated, keying queued"
         }
         
         print(f"🎉 Video generation complete! Keying will process automatically.")
