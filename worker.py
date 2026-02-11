@@ -1110,67 +1110,89 @@ def handle_boomerang_automation(job, conn):
             print(f"Could not rollback transaction: {rollback_error}")
         return None, f"A-B-A Loop Automation setup failed: {e}"
 
-def upscale_video(video_url, target_resolution="1080p", target_fps=30):
+def upscale_video(video_url, target_resolution="4k", target_fps=30, max_retries=2):
     """
     Upscale video using Topaz Labs Video Upscaler on Replicate
     Reference: https://replicate.com/topazlabs/video-upscale
     
     Args:
         video_url: URL of video to upscale (S3 URL)
-        target_resolution: "720p", "1080p", or "4k" (default: 1080p)
+        target_resolution: "720p", "1080p", or "4k" (default: 4k for best quality)
         target_fps: 15-60 fps (default: 30)
+        max_retries: Number of retry attempts (default: 2)
     
     Returns:
         (upscaled_video_url, error) tuple
     """
-    try:
-        print(f"   🔼 Starting video upscale...")
-        print(f"   🔼 Input: {video_url}")
-        print(f"   🔼 Target: {target_resolution} @ {target_fps}fps")
-        
-        # Call Topaz Labs upscaler on Replicate
-        # Reference: https://replicate.com/topazlabs/video-upscale
-        output = replicate.run(
-            "topazlabs/video-upscale",
-            input={
-                "video": video_url,
-                "target_resolution": target_resolution,
-                "target_fps": target_fps
-            }
-        )
-        
-        # The output is a URL to the upscaled video
-        upscaled_url = output
-        print(f"   ✅ Video upscaled: {upscaled_url}")
-        
-        # Download and re-upload to our S3 bucket for consistency
-        print(f"   📥 Downloading upscaled video...")
-        response = requests.get(upscaled_url)
-        response.raise_for_status()
-        
-        upscaled_filename = f"upscaled_{uuid.uuid4()}.mp4"
-        upscaled_filepath = os.path.join(ANIMATIONS_FOLDER_GENERATED, upscaled_filename)
-        
-        with open(upscaled_filepath, "wb") as f:
-            f.write(response.content)
-        
-        print(f"   📤 Uploading upscaled video to S3...")
-        s3_key = f"animations/upscaled/{upscaled_filename}"
-        final_url = upload_file(upscaled_filepath, s3_key)
-        
-        # Clean up local file
+    import time
+    
+    for attempt in range(max_retries + 1):
         try:
-            os.remove(upscaled_filepath)
+            if attempt > 0:
+                wait_time = attempt * 10  # 10s, 20s backoff
+                print(f"   🔄 Retry attempt {attempt}/{max_retries} after {wait_time}s...")
+                time.sleep(wait_time)
+            
+            print(f"   🔼 Starting video upscale...")
+            print(f"   🔼 Input: {video_url}")
+            print(f"   🔼 Target: {target_resolution} @ {target_fps}fps")
+            
+            # Call Topaz Labs upscaler on Replicate
+            # Reference: https://replicate.com/topazlabs/video-upscale
+            output = replicate.run(
+                "topazlabs/video-upscale",
+                input={
+                    "video": video_url,
+                    "target_resolution": target_resolution,
+                    "target_fps": target_fps
+                }
+            )
+            
+            # The output is a URL to the upscaled video
+            upscaled_url = output
+            print(f"   ✅ Video upscaled: {upscaled_url}")
+            
+            # Download and re-upload to our S3 bucket for consistency
+            print(f"   📥 Downloading upscaled video...")
+            response = requests.get(upscaled_url, timeout=300)  # 5 min timeout
+            response.raise_for_status()
+            
+            upscaled_filename = f"upscaled_{uuid.uuid4()}.mp4"
+            upscaled_filepath = os.path.join(ANIMATIONS_FOLDER_GENERATED, upscaled_filename)
+            
+            with open(upscaled_filepath, "wb") as f:
+                f.write(response.content)
+            
+            print(f"   📤 Uploading upscaled video to S3...")
+            s3_key = f"animations/upscaled/{upscaled_filename}"
+            final_url = upload_file(upscaled_filepath, s3_key)
+            
+            # Clean up local file
+            try:
+                os.remove(upscaled_filepath)
+            except Exception as e:
+                print(f"   ⚠️ Could not delete temp upscaled file: {e}")
+            
+            print(f"   ✅ Upscale complete: {final_url}")
+            return final_url, None
+            
         except Exception as e:
-            print(f"   ⚠️ Could not delete temp upscaled file: {e}")
-        
-        print(f"   ✅ Upscale complete: {final_url}")
-        return final_url, None
-        
-    except Exception as e:
-        print(f"   ❌ Upscale failed: {e}")
-        traceback.print_exc()
-        return None, f"Video upscale error: {e}"
+            error_msg = str(e)
+            print(f"   ❌ Upscale attempt {attempt + 1} failed: {error_msg}")
+            
+            # Check if it's a retriable error (502, 503, timeout)
+            is_retriable = any(code in error_msg for code in ['502', '503', '504', 'timeout', 'timed out'])
+            
+            if attempt < max_retries and is_retriable:
+                print(f"   🔄 Retriable error detected, will retry...")
+                continue
+            else:
+                # Final failure or non-retriable error
+                traceback.print_exc()
+                return None, f"Video upscale error after {attempt + 1} attempts: {error_msg}"
+    
+    # Should never reach here, but just in case
+    return None, "Video upscale failed after all retries"
 
 def handle_animation(job):
     try:
@@ -3146,9 +3168,9 @@ def handle_video_generation(job, conn):
         
         print(f"   ✅ Video generated: {video_path}")
         
-        # STEP 3.5: Upscale the video to 1080p
-        print(f"   🔼 Upscaling video to 1080p...")
-        upscaled_path, upscale_error = upscale_video(video_path, target_resolution="1080p", target_fps=30)
+        # STEP 3.5: Upscale the video to 4K for better quality
+        print(f"   🔼 Upscaling video to 4K...")
+        upscaled_path, upscale_error = upscale_video(video_path, target_resolution="4k", target_fps=30)
         
         if upscale_error:
             print(f"   ⚠️ Upscale failed, using original video: {upscale_error}")
