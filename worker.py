@@ -3439,9 +3439,11 @@ def handle_keying(job):
                 "crf": settings.get("crf", "LOSSLESS"),
                 "gopsize": settings.get("gopsize", 18),
                 "threads": settings.get("threads", 4),
+                "crf": 15,  # Very high quality (0-63, lower = better)
+                "gopsize": 18,
             }
             try:
-                print(f"   JOB #{job_id}: 🚀 Sending to Blender server for keying...")
+                print(f"   JOB #{job_id}: 🚀 Sending to Blender server for keying (CRF=15, very high quality)...")
                 response = requests.post(
                     f"{blender_server_url.rstrip('/')}/key_video",
                     json={"video_url": video_url, "job_id": job_id, "params": blender_params},

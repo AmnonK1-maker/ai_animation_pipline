@@ -77,7 +77,13 @@ def setup_and_render(input_path, output_path, params):
 
     node_curve = tree.nodes.new(type="CompositorNodeCurveRGB")
     node_curve.location = (300, 0)
-    node_curve.mapping.curves[3].points.new(curve_x, curve_y)
+    # Add curve point safely
+    try:
+        curve = node_curve.mapping.curves[3]
+        new_point = curve.points.new(curve_x, curve_y)
+        node_curve.mapping.update()
+    except Exception as e:
+        print(f"Warning: Could not add curve point: {e}")
 
     node_output = tree.nodes.new(type="CompositorNodeComposite")
     node_output.location = (600, 0)
@@ -93,8 +99,9 @@ def setup_and_render(input_path, output_path, params):
     scene.render.film_transparent = True
     scene.render.image_settings.file_format = "FFMPEG"
     scene.render.ffmpeg.format = "WEBM"
-    scene.render.ffmpeg.codec = "VP9"
-    scene.render.ffmpeg.constant_rate_factor = params.get("crf", "LOSSLESS")
+    scene.render.ffmpeg.codec = "WEBM"
+    # VP9 CRF: 0-63 (lower = better quality, 15 = very high quality)
+    scene.render.ffmpeg.constant_rate_factor = str(params.get("crf", 15))
     scene.render.ffmpeg.gopsize = params.get("gopsize", 18)
     scene.render.image_settings.color_mode = "RGBA"
     scene.render.image_settings.color_depth = "8"
@@ -103,9 +110,30 @@ def setup_and_render(input_path, output_path, params):
     scene.render.threads_mode = "FIXED"
     scene.render.threads = int(params.get("threads", 4))
 
+    # For FFMPEG/WebM, use the full path with extension
     scene.render.filepath = output_path
     print(f"Render Target: {output_path}")
-    bpy.ops.render.render(animation=True)
+    
+    try:
+        bpy.ops.render.render(animation=True)
+        print(f"✅ Render completed")
+        
+        # Check if output exists
+        if os.path.exists(output_path):
+            print(f"✅ Output file found: {output_path}")
+        else:
+            # List files in temp directory to debug
+            temp_dir = os.path.dirname(output_path)
+            if os.path.exists(temp_dir):
+                files = os.listdir(temp_dir)
+                print(f"❌ Output not found. Files in {temp_dir}: {files}")
+            else:
+                print(f"❌ Temp directory doesn't exist: {temp_dir}")
+    except Exception as e:
+        print(f"❌ Render failed: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
 
 def main():

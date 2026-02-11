@@ -1873,8 +1873,8 @@ function adjustPollSpeed(jobs) {
         // No jobs - poll slowly
         newSpeed = 10000; // 10 seconds
     } else if (hasActiveJobs(jobs)) {
-        // Active jobs - poll frequently
-        newSpeed = 2000; // 2 seconds
+        // Active jobs - poll very frequently for immediate feedback
+        newSpeed = 1000; // 1 second (increased from 2 for faster updates)
     } else {
         // All jobs complete/failed - poll moderately
         newSpeed = 5000; // 5 seconds
