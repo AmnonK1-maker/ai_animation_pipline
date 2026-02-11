@@ -3829,6 +3829,7 @@ def apply_video_effects():
 if __name__ == '__main__':
     # Initialize database on startup (for direct execution)
     init_db()
-    # Start the Flask development server on port 5002 (to avoid conflict with original app)
-    app.run(debug=True, host='0.0.0.0', port=5002)
+    # Use PORT from environment variable (Render requirement) or default to 5002 for local dev
+    port = int(os.getenv('PORT', 5002))
+    app.run(debug=True, host='0.0.0.0', port=port)
 
