@@ -2465,15 +2465,15 @@ def preview_frame():
         sys.stderr.write("=== PREVIEW START ===\n")
         sys.stderr.flush()
         
-    video_path_url = request.form.get('video_path')
-    frame_time = float(request.form.get('frame_time', 0))
-    
+        video_path_url = request.form.get('video_path')
+        frame_time = float(request.form.get('frame_time', 0))
+        
         if not video_path_url:
             return "Missing video path", 400
-    
+        
         video_path_url = video_path_url.split('?')[0]
-    video_path = os.path.join(BASE_DIR, video_path_url.lstrip('/'))
-    
+        video_path = os.path.join(BASE_DIR, video_path_url.lstrip('/'))
+        
         sys.stderr.write(f"Video: {video_path}\n")
         sys.stderr.write(f"Exists: {os.path.exists(video_path)}\n")
         sys.stderr.flush()
@@ -2482,7 +2482,7 @@ def preview_frame():
             return "Video file not found", 404
         
         # Read frame
-    cap = cv2.VideoCapture(video_path)
+        cap = cv2.VideoCapture(video_path)
         
         sys.stderr.write(f"Cap opened: {cap.isOpened()}\n")
         if cap.isOpened():
@@ -2491,8 +2491,8 @@ def preview_frame():
         sys.stderr.flush()
         
         # Just read first frame without setting position
-    success, frame = cap.read()
-    cap.release()
+        success, frame = cap.read()
+        cap.release()
         cap = None
         
         sys.stderr.write(f"Read success: {success}\n")
@@ -2530,7 +2530,7 @@ def preview_frame():
         upper_green = [hue_center + hue_tolerance, 255, 255]
         
         bgra_frame = process_single_frame_with_effects(
-        frame, lower_green, upper_green,
+            frame, lower_green, upper_green,
             erode, dilate, blur, spill,
             motion_blur=False,
             motion_blur_strength=0,
@@ -2544,12 +2544,12 @@ def preview_frame():
         sys.stderr.flush()
         
         # Encode
-    _, img_encoded = cv2.imencode('.png', bgra_frame)
+        _, img_encoded = cv2.imencode('.png', bgra_frame)
         
         sys.stderr.write("=== PREVIEW SUCCESS ===\n")
         sys.stderr.flush()
         
-    return send_file(io.BytesIO(img_encoded.tobytes()), mimetype='image/png')
+        return send_file(io.BytesIO(img_encoded.tobytes()), mimetype='image/png')
     
     except Exception as e:
         import traceback
