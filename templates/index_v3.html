@@ -4978,13 +4978,29 @@ function showDownloadMenu(jobId) {
     const pngSequencePath = job.keyed_result_data?.png_zip || job.result_data?.png_sequence_path;
     const greenscreenVideo = job.result_data?.video_path;  // The green/blue screen MP4
     
+    // Parse result_data to get original and upscaled videos
+    let originalVideo = null;
+    let upscaledVideo = null;
+    let wasUpscaled = false;
+    
+    if (job.result_data && typeof job.result_data === 'string') {
+        try {
+            const resultData = JSON.parse(job.result_data);
+            originalVideo = resultData.original_video_path;
+            upscaledVideo = resultData.video_path;
+            wasUpscaled = resultData.upscaled === true;
+        } catch (e) {
+            // If parsing fails, just use result_data as is
+        }
+    }
+    
     menu.innerHTML = `
         ${videoPath ? `
             <div style="padding: 8px 16px; cursor: pointer; transition: background 0.2s;" 
                  onmouseover="this.style.background='#f5f5f5'" 
                  onmouseout="this.style.background='white'"
-                 onclick="downloadFile('${videoPath}', 'video.webm')">
-                📥 Download WebM (Alpha)
+                 onclick="downloadFile('${videoPath}', 'video_keyed.webm')">
+                📥 Download Keyed WebM (Final)
             </div>
         ` : ''}
         ${pngSequencePath ? `
@@ -4995,12 +5011,28 @@ function showDownloadMenu(jobId) {
                 📦 Download PNG Sequence
             </div>
         ` : ''}
+        ${wasUpscaled && originalVideo ? `
+            <div style="padding: 8px 16px; border-top: 1px solid #eee; cursor: pointer; transition: background 0.2s;" 
+                 onmouseover="this.style.background='#f5f5f5'" 
+                 onmouseout="this.style.background='white'"
+                 onclick="downloadFile('${originalVideo}', 'video_original.mp4')">
+                📹 Download Original (Before Upscale)
+            </div>
+        ` : ''}
+        ${wasUpscaled && upscaledVideo ? `
+            <div style="padding: 8px 16px; cursor: pointer; transition: background 0.2s;" 
+                 onmouseover="this.style.background='#f5f5f5'" 
+                 onmouseout="this.style.background='white'"
+                 onclick="downloadFile('${upscaledVideo}', 'video_upscaled_4k.mp4')">
+                🔼 Download 4K Upscaled (Before Keying)
+            </div>
+        ` : ''}
         ${greenscreenVideo ? `
             <div style="padding: 8px 16px; cursor: pointer; transition: background 0.2s;" 
                  onmouseover="this.style.background='#f5f5f5'" 
                  onmouseout="this.style.background='white'"
                  onclick="downloadFile('${greenscreenVideo}', 'video_with_screen.mp4')">
-                🎬 Download with Colored Screen (MP4)
+                🎬 Download with Colored Screen
             </div>
         ` : ''}
         <div style="padding: 8px 16px; border-top: 1px solid #eee; cursor: pointer; transition: background 0.2s;" 
@@ -5370,6 +5402,9 @@ window.refreshInterval = setInterval(() => {
 
 // Initial load
 refreshJobs();
+
+// Auto-refresh every 1 second for active jobs
+setInterval(refreshJobs, 1000);
 
 // Close modals when clicking backdrop
 document.querySelectorAll('.modal-backdrop').forEach(backdrop => {
